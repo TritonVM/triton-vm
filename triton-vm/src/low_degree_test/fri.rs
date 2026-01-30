@@ -10,6 +10,8 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::LdtParameterError;
 use crate::error::LdtProvingError;
 use crate::error::LdtVerificationError;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::VerifierTranscript;
 use crate::profiler::profiler;
 use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
@@ -56,8 +58,7 @@ pub struct FriResponse {
 
 /// A transcript of a [FRI verification](Fri::verify).
 ///
-/// For additional details, see
-/// [`VerifierTranscript`](super::VerificationTranscript).
+/// For additional details, see [`VerifierTranscript`].
 //
 // Marked `#[non_exhaustive]` because
 // 1. additional fields might be added in the future and I don't want that to be
@@ -67,7 +68,11 @@ pub struct FriResponse {
 // Also applies to the other “Transcript” structs.
 #[non_exhaustive]
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Transcript {}
+pub struct Transcript {
+    // todo: use relevant fields (compare to STIR)
+    pub partial_first_codeword: Vec<XFieldElement>,
+    pub first_round_indices: Vec<usize>,
+}
 
 impl FriProver<'_> {
     fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
@@ -533,17 +538,69 @@ impl FriVerifier<'_> {
         Ok(())
     }
 
-    fn first_round_partially_revealed_codeword(&self) -> Vec<(usize, XFieldElement)> {
-        self.collinearity_check_a_indices_for_round(0)
-            .into_iter()
-            .zip_eq(self.rounds[0].partial_codeword_a.clone())
-            .collect()
+    fn transcript(self) -> Transcript {
+        let partial_first_codeword = self.rounds[0].partial_codeword_a.clone();
+        let first_round_indices = self.collinearity_check_a_indices_for_round(0);
+
+        Transcript {
+            partial_first_codeword,
+            first_round_indices,
+        }
     }
 }
 
 impl VerifierRound {
     fn merkle_tree_height(&self) -> u32 {
         self.domain.len().ilog2()
+    }
+}
+
+impl super::private::Seal for Fri {}
+
+impl LowDegreeTest for Fri {
+    fn initial_domain(&self) -> ArithmeticDomain {
+        self.domain
+    }
+
+    fn num_first_round_queries(&self) -> usize {
+        self.num_collinearity_checks
+    }
+
+    fn prove(
+        &self,
+        codeword: &[XFieldElement],
+        proof_stream: &mut ProofStream,
+    ) -> ProverResult<Vec<usize>> {
+        let mut prover = self.prover(proof_stream);
+
+        prover.commit(codeword)?;
+        prover.query();
+
+        // Sample one XFieldElement from Fiat-Shamir and then throw it away.
+        // This scalar is the indeterminate for the low degree test using the
+        // barycentric evaluation formula. This indeterminate is used only by
+        // the verifier, but it is important to modify the sponge state the same
+        // way.
+        prover.proof_stream.sample_scalars(1);
+
+        Ok(prover.first_round_collinearity_check_indices)
+    }
+
+    fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<VerifierTranscript> {
+        profiler!(start "init");
+        let mut verifier = self.verifier(proof_stream);
+        verifier.initialize()?;
+        profiler!(stop "init");
+
+        profiler!(start "fold all rounds");
+        verifier.compute_last_round_folded_partial_codeword()?;
+        profiler!(stop "fold all rounds");
+
+        profiler!(start "authenticate last round codeword");
+        verifier.authenticate_last_round_codeword()?;
+        profiler!(stop "authenticate last round codeword");
+
+        Ok(VerifierTranscript::Fri(verifier.transcript()))
     }
 }
 
@@ -573,25 +630,10 @@ impl Fri {
         })
     }
 
-    /// Create a FRI proof and return a-indices of revealed elements of round 0.
-    pub fn prove(
-        &self,
-        codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream,
-    ) -> ProverResult<Vec<usize>> {
-        let mut prover = self.prover(proof_stream);
-
-        prover.commit(codeword)?;
-        prover.query();
-
-        // Sample one XFieldElement from Fiat-Shamir and then throw it away.
-        // This scalar is the indeterminate for the low degree test using the
-        // barycentric evaluation formula. This indeterminate is used only by
-        // the verifier, but it is important to modify the sponge state the same
-        // way.
-        prover.proof_stream.sample_scalars(1);
-
-        Ok(prover.first_round_collinearity_check_indices)
+    /// The highest polynomial degree for which low-degreeness can be proven
+    /// with this FRI instance.
+    pub fn max_degree(&self) -> usize {
+        (self.domain.len() / self.expansion_factor) - 1
     }
 
     fn prover<'stream>(
@@ -606,29 +648,6 @@ impl Fri {
             num_collinearity_checks: self.num_collinearity_checks,
             first_round_collinearity_check_indices: vec![],
         }
-    }
-
-    /// Verify low-degreeness of the polynomial on the proof stream.
-    /// Returns the indices and revealed elements of the codeword at the top
-    /// level of the FRI proof.
-    pub fn verify(
-        &self,
-        proof_stream: &mut ProofStream,
-    ) -> VerifierResult<Vec<(usize, XFieldElement)>> {
-        profiler!(start "init");
-        let mut verifier = self.verifier(proof_stream);
-        verifier.initialize()?;
-        profiler!(stop "init");
-
-        profiler!(start "fold all rounds");
-        verifier.compute_last_round_folded_partial_codeword()?;
-        profiler!(stop "fold all rounds");
-
-        profiler!(start "authenticate last round codeword");
-        verifier.authenticate_last_round_codeword()?;
-        profiler!(stop "authenticate last round codeword");
-
-        Ok(verifier.first_round_partially_revealed_codeword())
     }
 
     fn verifier<'stream>(
@@ -648,8 +667,8 @@ impl Fri {
         }
     }
 
-    pub fn num_rounds(&self) -> usize {
-        let first_round_code_dimension = self.first_round_max_degree() + 1;
+    fn num_rounds(&self) -> usize {
+        let first_round_code_dimension = self.max_degree() + 1;
         let max_num_rounds = first_round_code_dimension.next_power_of_two().ilog2();
 
         // Skip rounds for which Merkle tree verification cost exceeds
@@ -662,13 +681,8 @@ impl Fri {
         num_rounds.try_into().unwrap()
     }
 
-    pub fn last_round_max_degree(&self) -> usize {
-        self.first_round_max_degree() >> self.num_rounds()
-    }
-
-    pub fn first_round_max_degree(&self) -> usize {
-        assert!(self.domain.len() >= self.expansion_factor);
-        (self.domain.len() / self.expansion_factor) - 1
+    fn last_round_max_degree(&self) -> usize {
+        self.max_degree() >> self.num_rounds()
     }
 }
 
@@ -750,7 +764,7 @@ mod tests {
 
     #[proptest]
     fn num_rounds_are_reasonable(fri: Fri) {
-        let expected_last_round_max_degree = fri.first_round_max_degree() >> fri.num_rounds();
+        let expected_last_round_max_degree = fri.max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
         if fri.num_rounds() > 0 {
             prop_assert!(fri.num_collinearity_checks <= expected_last_round_max_degree);
@@ -777,10 +791,10 @@ mod tests {
     #[proptest(cases = 50)]
     fn prove_and_verify_low_degree_polynomial(
         fri: Fri,
-        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
-        debug_assert!(polynomial.degree() <= fri.first_round_max_degree() as isize);
+        debug_assert!(polynomial.degree() <= fri.max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
@@ -793,11 +807,11 @@ mod tests {
     #[proptest(cases = 50)]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         fri: Fri,
-        #[strategy(Just((1 + #fri.first_round_max_degree()) as i64))] _too_high_degree: i64,
+        #[strategy(Just((1 + #fri.max_degree()) as i64))] _too_high_degree: i64,
         #[strategy(#_too_high_degree..2 * #_too_high_degree)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
-        debug_assert!(polynomial.degree() > fri.first_round_max_degree() as isize);
+        debug_assert!(polynomial.degree() > fri.max_degree() as isize);
         let codeword = fri.domain.evaluate(&polynomial);
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
@@ -814,7 +828,7 @@ mod tests {
 
     #[test]
     fn smallest_possible_fri_can_only_verify_constant_polynomials() {
-        assert_eq!(0, smallest_fri().first_round_max_degree());
+        assert_eq!(0, smallest_fri().max_degree());
     }
 
     fn smallest_fri() -> Fri {
@@ -844,12 +858,10 @@ mod tests {
         prop_assert_eq!(LdtParameterError::TooBigInitialExpansionFactor, err);
     }
 
-    // todo: add test fuzzing proof_stream
-
     #[proptest(cases = 50)]
     fn serialization(
         fri: Fri,
-        #[strategy(-1_i64..=#fri.first_round_max_degree() as i64)] _degree: i64,
+        #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] polynomial: XfePoly,
     ) {
         let codeword = fri.domain.evaluate(&polynomial);
@@ -1054,7 +1066,7 @@ mod tests {
     #[proptest]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         fri: Fri,
-        #[strategy(Just(#fri.first_round_max_degree() as i64 + 1))] _min_fail_deg: i64,
+        #[strategy(Just(#fri.max_degree() as i64 + 1))] _min_fail_deg: i64,
         #[strategy(#_min_fail_deg..2 * #_min_fail_deg)] _degree: i64,
         #[strategy(arbitrary_polynomial_of_degree(#_degree))] poly: XfePoly,
     ) {

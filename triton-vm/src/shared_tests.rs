@@ -15,6 +15,7 @@ use twenty_first::prelude::*;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::VMError;
+use crate::low_degree_test::LowDegreeTest;
 use crate::low_degree_test::stir::StirResponse;
 use crate::prelude::*;
 use crate::profiler::profiler;

@@ -3,6 +3,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
+use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 
 const FIBONACCI_INDEX: u32 = 100;

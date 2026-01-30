@@ -46,14 +46,14 @@ pub trait LowDegreeTest: private::Seal {
     /// Verify that the polynomial committed to via the proof stream is of low
     /// degree.
     ///
-    /// Returns a [transcript](VerificationTranscript), from which the partial
+    /// Returns a [transcript](VerifierTranscript), from which the partial
     /// codeword of the first round as well as their corresponding indices can
     /// be fetched. These revealed elements are relevant when using STIR in a
     /// bigger context.
     fn verify(
         &self,
         proof_stream: &mut ProofStream,
-    ) -> Result<VerificationTranscript, LdtVerificationError>;
+    ) -> Result<VerifierTranscript, LdtVerificationError>;
 }
 
 /// The type of soundness assumption (or lack thereof) you are willing to make
@@ -110,23 +110,23 @@ pub enum SoundnessType {
 /// [first_queries]: Self::first_round_indices
 /// [auth_struct]: twenty_first::prelude::MerkleTreeInclusionProof::authentication_structure
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum VerificationTranscript {
+pub enum VerifierTranscript {
     Stir(stir::Transcript),
     Fri(fri::Transcript),
 }
 
-impl VerificationTranscript {
+impl VerifierTranscript {
     pub fn partial_first_codeword(&self) -> &[XFieldElement] {
         match self {
             Self::Stir(t) => &t.partial_first_codeword,
-            Self::Fri(t) => todo!(),
+            Self::Fri(t) => &t.partial_first_codeword,
         }
     }
 
     pub fn first_round_indices(&self) -> &[usize] {
         match self {
             Self::Stir(t) => t.first_round_indices(),
-            Self::Fri(t) => todo!(),
+            Self::Fri(t) => &t.first_round_indices,
         }
     }
 }

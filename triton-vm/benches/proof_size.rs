@@ -17,6 +17,7 @@ use twenty_first::prelude::*;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
+use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;

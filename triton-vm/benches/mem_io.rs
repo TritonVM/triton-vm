@@ -5,6 +5,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 
+use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 use triton_vm::profiler::VMPerformanceProfile;
 

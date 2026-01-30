@@ -29,7 +29,9 @@ use crate::error::ProvingError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::error::VerificationError;
-use crate::low_degree_test::stir::SoundnessType;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::SoundnessType;
+use crate::low_degree_test::fri::Fri;
 use crate::low_degree_test::stir::Stir;
 use crate::low_degree_test::stir::StirParameters;
 use crate::ndarray_helper;
@@ -1304,9 +1306,9 @@ impl Verifier {
 
         // verify low degree of combination polynomial
         profiler!(start "low-degree test");
-        let stir_transcript = stir.verify(&mut proof_stream)?;
-        let revealed_current_row_indices = stir_transcript.first_round_indices();
-        let revealed_ldt_values = &stir_transcript.partial_first_codeword;
+        let ldt_transcript = stir.verify(&mut proof_stream)?;
+        let revealed_current_row_indices = ldt_transcript.first_round_indices();
+        let revealed_ldt_values = ldt_transcript.partial_first_codeword();
         profiler!(stop "low-degree test");
 
         profiler!(start "check leafs");
@@ -1602,6 +1604,24 @@ impl Stark {
     /// # Panics
     ///
     /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
+    pub fn ldt(&self, padded_height: usize) -> Result<Box<dyn LowDegreeTest>, LdtParameterError> {
+        let ldt = if padded_height.ilog2() < 20 {
+            Box::new(self.fri(padded_height)?) as Box<dyn LowDegreeTest>
+        } else {
+            Box::new(self.stir(padded_height)?) as Box<dyn LowDegreeTest>
+        };
+
+        Ok(ldt)
+    }
+
+    /// Derive an instance of [FRI](Fri) that's usable for the parameters of
+    /// this STARK.
+    pub fn fri(&self, padded_height: usize) -> Result<Fri, LdtParameterError> {
+        todo!()
+    }
+
+    /// Derive an instance of [STIR](Stir) that's usable for the parameters of
+    /// this STARK.
     pub fn stir(&self, padded_height: usize) -> Result<Stir, LdtParameterError> {
         let padded_height = padded_height
             .checked_next_power_of_two()

@@ -22,6 +22,9 @@ use crate::error::LdtProvingError;
 use crate::error::LdtVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::SoundnessType;
+use crate::low_degree_test::VerifierTranscript;
 use crate::profiler::profiler;
 use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
@@ -105,7 +108,7 @@ pub struct StirParameters {
 }
 
 /// The “Shift to Improve Rate” (“[STIR][stir]”) low-degree test
-/// (“[LDT](super::LowDegreeTest)”).
+/// (“[LDT](LowDegreeTest)”).
 ///
 /// STIR is an Interactive Oracle Proof of Proximity for Reed-Solomon codes.
 /// When combined with the [BCS] transform and the [Fiat-Shamir] heuristic (as
@@ -127,34 +130,6 @@ pub struct Stir {
     /// Additional parameters derived from the
     /// [initial parameters](StirParameters).
     round_params: RoundParams,
-}
-
-/// The type of soundness assumption (or lack thereof) you are willing to make
-/// for [STIR](Stir).
-///
-/// The choice influences the derivation of additional parameters used in STIR,
-/// like the [number of queries](RoundTranscript::queried_indices) per round
-/// (called “t_i” in the paper). Generally, the more “daring” the assumption,
-/// the lower the runtime cost and proof size, but the higher the risk that the
-/// resulting system is unsound due to as-of-yet undiscovered attacks.
-///
-/// The [`Provable`](Self::Provable) variant is generally recommended.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub enum SoundnessType {
-    /// Only use provable results.
-    ///
-    /// In particular, assume that the distance of each oracle is within the
-    /// Johnson bound, (1 - √ρ).
-    #[default]
-    Provable,
-
-    /// Use the conjecture that Reed-Solomon codes are list-decodable up to
-    /// capacity and have correlated agreement up to capacity.
-    ///
-    /// In particular, assume that the distance of each oracle is within the
-    /// capacity bound, (1 - ρ).
-    Conjectured,
 }
 
 /// A [STIR](Stir) round's revealed values together with an authentication
@@ -182,8 +157,7 @@ pub struct StirResponse {
 
 /// A transcript of a [STIR verification](Stir::verify).
 ///
-/// For additional details, see
-/// [`VerifierTranscript`](super::VerificationTranscript).
+/// For additional details, see [`VerifierTranscript`].
 //
 // Marked `#[non_exhaustive]` because
 // 1. additional fields might be added in the future and I don't want that to be
@@ -1012,32 +986,14 @@ fn log2_binomial_coefficient(a: u64, b: u64) -> f64 {
     log2_binom
 }
 
-impl Stir {
-    /// (Try to) construct a new STIR instance for the given initial parameters.
-    ///
-    /// It is equivalent to use the provided trait implementation of
-    /// [`TryFrom<StirParameters> for Stir`](TryFrom).
-    ///
-    /// # Errors
-    ///
-    /// Errors if any of the pre-conditions documented in the [StirParameters]
-    /// are violated.
-    pub fn new(params: StirParameters) -> SetupResult<Self> {
-        params.try_into()
-    }
+impl super::private::Seal for Stir {}
 
-    /// The domain for the initial codeword of the [prover](Self::prove).
-    pub fn initial_domain(&self) -> ArithmeticDomain {
+impl LowDegreeTest for Stir {
+    fn initial_domain(&self) -> ArithmeticDomain {
         self.initial_domain
     }
 
-    /// The number of in-domain queries made in the first round.
-    ///
-    /// This value is particularly relevant when using STIR as a sub-protocol in
-    /// a Zero-Knowledge protocol: the number of “masking” or “randomizing”
-    /// values must be at least as big as this number to uphold the Zero-
-    /// Knowledge guarantees.
-    pub fn num_first_round_queries(&self) -> usize {
+    fn num_first_round_queries(&self) -> usize {
         let params = &self.round_params;
 
         params
@@ -1046,15 +1002,7 @@ impl Stir {
             .map_or(params.final_num_in_domain_queries, |query| query.in_domain)
     }
 
-    /// Prove that the given codeword corresponds to a polynomial of
-    /// [low degree](StirParameters::max_degree) and populate the proof stream
-    /// with the generated proof artifacts.
-    ///
-    /// Returns the indices the verifier queried in the first round. If STIR is
-    /// used in a larger context (like a STARK), then these indices can be used
-    /// to prove that the codeword of low degree actually corresponds to some
-    /// codeword of interest, not just any codeword.
-    pub fn prove(
+    fn prove(
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream,
@@ -1164,45 +1112,7 @@ impl Stir {
         Ok(first_round_queried_indices.unwrap_or(queried_indices))
     }
 
-    /// # Panics
-    ///
-    /// Panics if the folding factor is 0.
-    fn fold_polynomial<FF>(
-        poly: &Polynomial<FF>,
-        folding_factor: usize,
-        folding_randomness: FF,
-    ) -> Polynomial<'static, FF>
-    where
-        FF: FiniteField,
-    {
-        let folded_coefficients = poly
-            .coefficients()
-            .chunks(folding_factor)
-            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(folding_randomness))
-            .collect();
-
-        Polynomial::new(folded_coefficients)
-    }
-
-    fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
-        let next_domain = domain
-            .pow(1 << StirParameters::LOG2_DOMAIN_SHRINKAGE)
-            .unwrap();
-
-        next_domain.with_offset(next_domain.offset() * domain.offset())
-    }
-
-    /// Verify that the polynomial committed to via the proof stream is of low
-    /// degree.
-    ///
-    /// Returns a [transcript](Transcript), from which the
-    /// [partial codeword of the first round][elems] as well as their
-    /// [corresponding indices][idx] can be fetched. These revealed elements
-    /// are relevant when using STIR in a bigger context.
-    ///
-    /// [elems]: Transcript::partial_first_codeword
-    /// [idx]: Transcript::first_round_indices
-    pub fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<Transcript> {
+    fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<VerifierTranscript> {
         profiler!(start "initialize");
         let mut partial_first_codeword = None;
         let mut previous_quotienting_data = None;
@@ -1313,7 +1223,50 @@ impl Stir {
         };
         profiler!(stop "final round");
 
-        Ok(transcript)
+        Ok(VerifierTranscript::Stir(transcript))
+    }
+}
+
+impl Stir {
+    /// (Try to) construct a new STIR instance for the given initial parameters.
+    ///
+    /// It is equivalent to use the provided trait implementation of
+    /// [`TryFrom<StirParameters> for Stir`](TryFrom).
+    ///
+    /// # Errors
+    ///
+    /// Errors if any of the pre-conditions documented in the [StirParameters]
+    /// are violated.
+    pub fn new(params: StirParameters) -> SetupResult<Self> {
+        params.try_into()
+    }
+
+    /// # Panics
+    ///
+    /// Panics if the folding factor is 0.
+    fn fold_polynomial<FF>(
+        poly: &Polynomial<FF>,
+        folding_factor: usize,
+        folding_randomness: FF,
+    ) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField,
+    {
+        let folded_coefficients = poly
+            .coefficients()
+            .chunks(folding_factor)
+            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(folding_randomness))
+            .collect();
+
+        Polynomial::new(folded_coefficients)
+    }
+
+    fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
+        let next_domain = domain
+            .pow(1 << StirParameters::LOG2_DOMAIN_SHRINKAGE)
+            .unwrap();
+
+        next_domain.with_offset(next_domain.offset() * domain.offset())
     }
 
     fn extract_inclusion_proof(
@@ -1639,6 +1592,7 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::arithmetic_domain::tests::arbitrary_domain;
+    use crate::low_degree_test::VerifierTranscript;
     use crate::shared_tests::DigestCorruptor;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
 
@@ -1972,7 +1926,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         stir.prove(&zero_poly, &mut proof_stream).unwrap();
         proof_stream.reset_sponge();
-        let transcript = stir.verify(&mut proof_stream).unwrap();
+        let_assert!(VerifierTranscript::Stir(transcript) = stir.verify(&mut proof_stream).unwrap());
 
         // the sanity check
         assert!(transcript.rounds.len() > 0);
@@ -2004,7 +1958,7 @@ mod tests {
         let prover_sponge = proof_stream.sponge.clone();
 
         proof_stream.reset_sponge();
-        let transcript = stir.verify(&mut proof_stream)?;
+        let_assert!(VerifierTranscript::Stir(transcript) = stir.verify(&mut proof_stream)?);
         let verifier_sponge = proof_stream.sponge;
 
         prop_assert_eq!(prover_sponge, verifier_sponge);
