@@ -57,7 +57,7 @@ pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
 /// The number of randomizer polynomials over the [extension
 /// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
-/// zero-knowledge in the [low-degree test](Stir).
+/// zero-knowledge in the [low-degree test](LowDegreeTest).
 pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
@@ -76,7 +76,7 @@ pub struct Stark {
     pub security_level: usize,
 
     /// The (log₂ of the) ratio between the lengths of the randomized trace
-    /// domain and the [low-degree test domain](Stark::stir).
+    /// domain and the [low-degree test domain](Stark::ldt).
     ///
     /// If set to 0, generation and verification of STARK proofs will fail.
     pub log2_ldt_expansion_factor: usize,
@@ -167,7 +167,7 @@ pub(crate) struct ProverDomains {
     /// [LDE step](MasterTable::maybe_low_degree_extend_all_columns) and,
     /// consequently, all committed codewords are defined over this domain.
     ///
-    /// See also [Stark::stir] and [Stir::initial_domain].
+    /// See also [Stark::ldt] and [LowDegreeTest::initial_domain].
     pub ldt: ArithmeticDomain,
 }
 
@@ -252,15 +252,15 @@ impl Prover {
 
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
-        let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
+        let ldt = self.parameters.ldt(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
         let max_degree = self
             .parameters
             .max_degree(padded_height, num_trace_randomizers);
         let domains = ProverDomains::derive(
             padded_height,
             num_trace_randomizers,
-            stir.initial_domain(),
+            ldt.initial_domain(),
             max_degree,
         );
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
@@ -489,7 +489,7 @@ impl Prover {
         profiler!(stop "combined DEEP polynomial");
 
         profiler!(start "low-degree test");
-        let revealed_current_row_indices = stir.prove(&combination_codeword, &mut proof_stream)?;
+        let revealed_current_row_indices = ldt.prove(&combination_codeword, &mut proof_stream)?;
         profiler!(stop "low-degree test");
 
         profiler!(start "open trace leafs");
@@ -1159,9 +1159,9 @@ impl Verifier {
         };
 
         let padded_height = 1 << log2_padded_height;
-        let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
-        let merkle_tree_height = stir.initial_domain().len().ilog2();
+        let ldt = self.parameters.ldt(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
+        let merkle_tree_height = ldt.initial_domain().len().ilog2();
 
         // The trace domain used by the prover is not necessarily of length
         // `padded_height`. Concretely, this is the case if the number of trace
@@ -1306,7 +1306,7 @@ impl Verifier {
 
         // verify low degree of combination polynomial
         profiler!(start "low-degree test");
-        let ldt_transcript = stir.verify(&mut proof_stream)?;
+        let ldt_transcript = ldt.verify(&mut proof_stream)?;
         let revealed_current_row_indices = ldt_transcript.first_round_indices();
         let revealed_ldt_values = ldt_transcript.partial_first_codeword();
         profiler!(stop "low-degree test");
@@ -1389,7 +1389,7 @@ impl Verifier {
         profiler!(stop "check leafs");
 
         profiler!(start "linear combination");
-        let num_revealed_elements = stir.num_first_round_queries();
+        let num_revealed_elements = ldt.num_first_round_queries();
         if num_revealed_elements != revealed_current_row_indices.len() {
             return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
@@ -1415,7 +1415,7 @@ impl Verifier {
         ) {
             let main_row = Array1::from(main_row.to_vec());
             let aux_row = Array1::from(aux_row.to_vec());
-            let current_ldt_domain_value = stir.initial_domain().value(row_idx as u32);
+            let current_ldt_domain_value = ldt.initial_domain().value(row_idx as u32);
 
             profiler!(start "main & aux elements" ("CC"));
             let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
@@ -1692,10 +1692,10 @@ impl Stark {
     /// The type of the trace randomizers must be of the table's corresponding
     /// field, _i.e._, [base field](BFieldElement) elements for the main table
     /// and [extension field](XFieldElement) elements for the auxiliary table).
-    pub(crate) fn num_trace_randomizers(stir: &Stir) -> usize {
+    pub(crate) fn num_trace_randomizers(ldt: &dyn LowDegreeTest) -> usize {
         let num_out_of_domain_rows = 2;
 
-        stir.num_first_round_queries()
+        ldt.num_first_round_queries()
             + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
             + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE
     }
@@ -1922,9 +1922,9 @@ pub(crate) mod tests {
         let mut aux = artifacts.master_aux_table;
         let ch = artifacts.challenges;
         let padded_height = main.trace_table().nrows();
-        let stir = stark.stir(padded_height).unwrap();
-        let num_trace_randos = Stark::num_trace_randomizers(&stir);
-        let ldt_dom = stir.initial_domain();
+        let ldt = stark.ldt(padded_height).unwrap();
+        let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
+        let ldt_dom = ldt.initial_domain();
         let max_degree = stark.max_degree(padded_height, num_trace_randos);
         let domains = ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
         let quot_dom = domains.quotient;
@@ -1969,9 +1969,9 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             let padded_height = main.trace_table().nrows();
-            let stir = stark.stir(padded_height).unwrap();
-            let ldt_dom = stir.initial_domain();
-            let num_trace_randos = Stark::num_trace_randomizers(&stir);
+            let ldt = stark.ldt(padded_height).unwrap();
+            let ldt_dom = ldt.initial_domain();
+            let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
             let max_degree = stark.max_degree(padded_height, num_trace_randos);
             let domains =
                 ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);

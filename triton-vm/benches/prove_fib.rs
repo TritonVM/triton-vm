@@ -3,7 +3,6 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
-use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 
 const FIBONACCI_INDEX: u32 = 100;
@@ -32,10 +31,10 @@ fn prove_fib(c: &mut Criterion) {
     let profile = triton_vm::profiler::finish();
 
     let padded_height = aet.padded_height();
-    let stir = stark.stir(padded_height).unwrap();
+    let ldt = stark.ldt(padded_height).unwrap();
     let profile = profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
-        .with_ldt_domain_len(stir.initial_domain().len());
+        .with_ldt_domain_len(ldt.initial_domain().len());
     eprintln!("{profile}");
 }

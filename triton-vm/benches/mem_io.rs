@@ -5,7 +5,6 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 
-use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 use triton_vm::profiler::VMPerformanceProfile;
 
@@ -84,11 +83,11 @@ impl MemIOBench {
 
         let trace_len = aet.height().height;
         let padded_height = proof.padded_height().unwrap();
-        let stir = stark.stir(padded_height).unwrap();
+        let ldt = stark.ldt(padded_height).unwrap();
 
         profile
             .with_cycle_count(trace_len)
             .with_padded_height(padded_height)
-            .with_ldt_domain_len(stir.initial_domain().len())
+            .with_ldt_domain_len(ldt.initial_domain().len())
     }
 }

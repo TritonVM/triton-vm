@@ -17,7 +17,6 @@ use twenty_first::prelude::*;
 
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::example_programs::VERIFY_SUDOKU;
-use triton_vm::low_degree_test::LowDegreeTest;
 use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::prove_program;
@@ -185,9 +184,9 @@ fn program_halt() -> ProgramAndInput {
 /// The base 2, integer logarithm of the length of the low-degree test domain.
 fn log_2_ldt_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
-    let stir = stark.stir(padded_height).unwrap();
+    let ldt = stark.ldt(padded_height).unwrap();
 
-    stir.initial_domain().len().ilog2()
+    ldt.initial_domain().len().ilog2()
 }
 
 /// List the sizes of the proof's parts. If the same item type is contained
