@@ -11,6 +11,7 @@ use crate::error::LdtParameterError;
 use crate::error::LdtProvingError;
 use crate::error::LdtVerificationError;
 use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::SoundnessType;
 use crate::low_degree_test::VerifierTranscript;
 use crate::profiler::profiler;
 use crate::proof_item::AuthenticationStructure;
@@ -21,11 +22,56 @@ pub(crate) type SetupResult<T> = Result<T, LdtParameterError>;
 pub(crate) type ProverResult<T> = Result<T, LdtProvingError>;
 pub(crate) type VerifierResult<T> = Result<T, LdtVerificationError>;
 
-#[derive(Debug, Copy, Clone)]
+/// The initial parameters from which to derive a [FRI](Fri) instance.
+///
+/// This struct captures the defining protocol parameters. It can be used to
+/// [create an instance of FRI](Fri::new).
+/// Note that this is a fallible operation because there are invalid parameter
+/// combinations. The documentation on this struct's fields informs about the
+/// legal parameter space.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct FriParameters {
+    /// The desired security level in bits.
+    ///
+    /// Concretely, the system
+    /// - is perfectly complete, and
+    /// - has soundness error 2^(-security_level).
+    #[cfg_attr(test, strategy(16_usize..=192))]
+    pub security_level: usize,
+
+    /// The soundness assumption (or lack thereof) you are willing to make.
+    pub soundness: SoundnessType,
+
+    /// The amount of “redundancy” in the [prover](Fri::prove)'s input.
+    ///
+    /// In particular, the Reed-Solomon code's rate is the reciprocal of 2
+    /// raised to this value. In other words, the initial rate equals
+    /// `1 / 2^initial_log2_expansion_factor`.
+    ///
+    /// Must be greater than 0.
+    #[cfg_attr(test, strategy(1_usize..=6))]
+    pub log2_initial_expansion_factor: usize,
+
+    /// The low-degree test's degree bound.
+    ///
+    /// In particular, the (log₂ of the) polynomial degree that is considered
+    /// “high” (_i.e._, “not low”) for this STIR instance.
+    ///
+    /// In other words, the low-degreeness of polynomials with degree
+    /// `2^log2_high_degree_bound` (and higher) cannot be [proven](Fri::prove)
+    /// (in a way that the [verifier](Fri::verify) accepts). On the other hand,
+    /// the low-degreeness of polynomials with degree
+    /// `2^log2_high_degree_bound - 1` (and lower) _can_ be proven.
+    #[cfg_attr(test, strategy(0_usize..=15))]
+    pub log2_high_degree_bound: usize,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Fri {
-    pub expansion_factor: usize,
-    pub num_collinearity_checks: usize,
-    pub domain: ArithmeticDomain,
+    expansion_factor: usize,
+    num_collinearity_checks: usize,
+    domain: ArithmeticDomain,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -72,6 +118,14 @@ pub struct Transcript {
     // todo: use relevant fields (compare to STIR)
     pub partial_first_codeword: Vec<XFieldElement>,
     pub first_round_indices: Vec<usize>,
+}
+
+impl TryFrom<FriParameters> for Fri {
+    type Error = LdtParameterError;
+
+    fn try_from(params: FriParameters) -> SetupResult<Self> {
+        params.try_into_fri()
+    }
 }
 
 impl FriProver<'_> {
@@ -601,6 +655,19 @@ impl LowDegreeTest for Fri {
         profiler!(stop "authenticate last round codeword");
 
         Ok(VerifierTranscript::Fri(verifier.transcript()))
+    }
+}
+
+impl FriParameters {
+    pub fn try_into_fri(self) -> SetupResult<Fri> {
+        todo!()
+    }
+
+    pub(crate) fn expansion_factor(&self) -> usize {
+        let err = "internal error: log₂(expansion factor) exceeds expected maximum";
+        let log2_expansion_factor = u32::try_from(self.log2_initial_expansion_factor).expect(err);
+
+        1_usize.checked_shl(log2_expansion_factor).expect(err)
     }
 }
 

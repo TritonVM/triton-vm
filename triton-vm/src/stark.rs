@@ -32,6 +32,7 @@ use crate::error::VerificationError;
 use crate::low_degree_test::LowDegreeTest;
 use crate::low_degree_test::SoundnessType;
 use crate::low_degree_test::fri::Fri;
+use crate::low_degree_test::fri::FriParameters;
 use crate::low_degree_test::stir::Stir;
 use crate::low_degree_test::stir::StirParameters;
 use crate::ndarray_helper;
@@ -1616,12 +1617,57 @@ impl Stark {
 
     /// Derive an instance of [FRI](Fri) that's usable for the parameters of
     /// this STARK.
+    ///
+    /// The parameter `padded_height` must be a power of 2. To ensure proper
+    /// operation of this method, the parameter is
+    /// [rounded](usize::next_power_of_two) before use.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
+    //
+    // This method is similar to [Stark::stir]; see there for further comments.
     pub fn fri(&self, padded_height: usize) -> Result<Fri, LdtParameterError> {
-        todo!()
+        let padded_height = padded_height
+            .checked_next_power_of_two()
+            .expect("padded height drastically exceeds assumed maximum");
+        let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
+
+        let mut fri_parameters = FriParameters {
+            security_level: self.security_level,
+            soundness: SoundnessType::Provable,
+            log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
+            log2_high_degree_bound: log2_padded_height,
+        };
+
+        for _ in 0..=ArithmeticDomain::LOG2_MAX_LEN {
+            fri_parameters.log2_high_degree_bound += 1;
+            let fri = Fri::try_from(fri_parameters)?;
+
+            let expansion_factor = fri_parameters.expansion_factor();
+            if Self::is_ldt_initial_domain_large_enough(&fri, padded_height, expansion_factor) {
+                return Ok(fri);
+            }
+        }
+
+        // if no candidate worked, that's a problem we can't recover from…
+        let max_domain_len = ArithmeticDomain::LOG2_MAX_LEN
+            .try_into()
+            .expect(USIZE_TO_U64_ERR);
+
+        Err(LdtParameterError::InitialDomainTooBig(max_domain_len))
     }
 
     /// Derive an instance of [STIR](Stir) that's usable for the parameters of
     /// this STARK.
+    ///
+    /// The parameter `padded_height` must be a power of 2. To ensure proper
+    /// operation of this method, the parameter is
+    /// [rounded](usize::next_power_of_two) before use.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
     pub fn stir(&self, padded_height: usize) -> Result<Stir, LdtParameterError> {
         let padded_height = padded_height
             .checked_next_power_of_two()
@@ -1666,11 +1712,8 @@ impl Stark {
             stir_parameters.log2_high_degree_bound += 1;
             let stir = Stir::try_from(stir_parameters)?;
 
-            let num_trace_randomizers = Self::num_trace_randomizers(&stir);
-            let randomized_trace_len =
-                Self::randomized_trace_len(padded_height, num_trace_randomizers);
             let expansion_factor = stir_parameters.expansion_factor();
-            if stir.initial_domain().len() >= randomized_trace_len * expansion_factor {
+            if Self::is_ldt_initial_domain_large_enough(&stir, padded_height, expansion_factor) {
                 return Ok(stir);
             }
         }
@@ -1681,6 +1724,19 @@ impl Stark {
             .expect(USIZE_TO_U64_ERR);
 
         Err(LdtParameterError::InitialDomainTooBig(max_domain_len))
+    }
+
+    /// Check whether the initial domain of the given low-degree test is large
+    /// enough for the given parameters.
+    fn is_ldt_initial_domain_large_enough(
+        ldt: &dyn LowDegreeTest,
+        padded_height: usize,
+        expansion_factor: usize,
+    ) -> bool {
+        let num_trace_randomizers = Self::num_trace_randomizers(ldt);
+        let randomized_trace_len = Self::randomized_trace_len(padded_height, num_trace_randomizers);
+
+        ldt.initial_domain().len() >= randomized_trace_len * expansion_factor
     }
 
     /// The number of trace randomizers to use.
