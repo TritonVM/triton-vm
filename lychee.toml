@@ -1,3 +1,8 @@
 # Configuration for link-checker lychee. See also: https://lychee.cli.rs
 include_fragments = true
 require_https = true
+
+# eprint.iacr.org is very restrictive right now; see also https://eprint.iacr.org/robots.txt
+exclude = [
+    '^https?://eprint\.iacr\.org',
+]
