@@ -1034,4 +1034,14 @@ mod tests {
         let expected_len = 2 * OpStackElement::COUNT - 1;
         prop_assert_eq!(expected_len, op_stack.len());
     }
+
+    #[proptest]
+    fn payload_is_accessible(is_read: bool, #[strategy(arb())] payload: BFieldElement) {
+        let underflow_io = if is_read {
+            UnderflowIO::Read(payload)
+        } else {
+            UnderflowIO::Write(payload)
+        };
+        prop_assert_eq!(payload, underflow_io.payload());
+    }
 }
