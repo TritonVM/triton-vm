@@ -7,6 +7,7 @@ use std::fmt::Debug;
 use arbitrary::Arbitrary;
 use serde::Deserialize;
 use serde::Serialize;
+use strum::Display;
 use strum::EnumIter;
 use twenty_first::prelude::XFieldElement;
 
@@ -109,7 +110,18 @@ pub trait LowDegreeTest: private::Seal + Debug {
 ///
 /// The [`Proven`](Self::Proven) variant is generally recommended.
 #[derive(
-    Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, EnumIter, Arbitrary,
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    Arbitrary,
 )]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum ProximityRegime {

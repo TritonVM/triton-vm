@@ -14,6 +14,7 @@ use rand::random;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
+use strum::Display;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
@@ -121,7 +122,7 @@ pub struct Stark {
 ///   are faster in that context).
 ///
 /// Otherwise, use [STIR](Self::Stir).
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
 pub enum LdtChoice {
     /// Use [STIR](Stir) as the [low-degree test](LowDegreeTest).
     Stir,
