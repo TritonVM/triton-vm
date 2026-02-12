@@ -125,7 +125,20 @@ pub enum ProximityRegime {
     /// capacity.
     ///
     /// In particular, assume that the distance of each oracle is within the
-    /// capacity bound, (1 - ρ).
+    /// list-decoding capacity bound, (1 - H_q(ρ)), where H_q is the q-ary
+    /// entropy function and q is the number of elements in the
+    /// [extension field](XFieldElement), _i.e._,
+    /// [`BFieldElement::P`](crate::prelude::BFieldElement::P) to the power
+    /// [3](twenty_first::math::x_field_element::EXTENSION_DEGREE).
+    ///
+    /// This soundness assumption takes into account the results of 2025.
+    /// See, for example,
+    /// “[On Reed–Solomon Proximity Gaps Conjectures][crites_stewart]”,
+    /// or [this blog post][blog] for a more high-level overview of those
+    /// results.
+    ///
+    /// [crites_stewart]: https://eprint.iacr.org/2025/2046.pdf
+    /// [blog]: https://blog.zksecurity.xyz/posts/proximity-conjecture/
     Conjectured,
 }
 
@@ -196,6 +209,24 @@ struct ReedSolomonCode {
 }
 
 impl ReedSolomonCode {
+    /// The base-2 logarithm of the size of the
+    /// [extension field](XFieldElement).
+    const LOG2_FIELD_SIZE: f64 = 191.99999999899228;
+
+    #[must_use]
+    fn new(log2_expansion_factor: usize) -> Self {
+        ReedSolomonCode {
+            soundness: ProximityRegime::default(),
+            log2_expansion_factor,
+        }
+    }
+
+    #[must_use]
+    fn with_soundness(mut self, soundness: ProximityRegime) -> Self {
+        self.soundness = soundness;
+        self
+    }
+
     /// The proximity parameter of this Reed-Solomon code.
     ///
     /// This is the δ in a (δ, ℓ)-list-decodable Reed-Solomon code as well as
@@ -203,29 +234,14 @@ impl ReedSolomonCode {
     /// are considered “far” from the code.
     ///
     /// Note that there are a range of valid values for δ. This method makes a
-    /// concrete choice; see also [`Self::log2_slackness_factor`].
+    /// concrete choice; see also [`Self::slackness_factor`].
     fn proximity_parameter(&self) -> SetupResult<f64> {
-        let log2_slackness_factor = self.log2_slackness_factor();
-        let slackness_factor = 2_f64.powf(log2_slackness_factor);
-
-        let Ok(log2_expansion_factor) = u32::try_from(self.log2_expansion_factor) else {
-            return Err(LdtParameterError::TooBigInitialExpansionFactor);
-        };
-        let Some(expansion_factor) = 1_u32.checked_shl(log2_expansion_factor) else {
-            return Err(LdtParameterError::TooBigInitialExpansionFactor);
-        };
-        let rate = 1.0 / f64::from(expansion_factor);
-        let proximity_parameter = match self.soundness {
-            ProximityRegime::Proven => 1.0 - rate.sqrt() - slackness_factor,
-            ProximityRegime::Conjectured => 1.0 - rate - slackness_factor,
-        };
-
-        Ok(proximity_parameter)
+        Ok(1.0 - self.proximity_margin()? - self.slackness_factor()?)
     }
 
-    /// The (log₂ of the) distance between the
+    /// The distance between the
     /// [proximity parameter](Self::proximity_parameter) δ and the
-    /// [chosen bound](Self::soundness).
+    /// [proximity bound](Self::soundness).
     ///
     /// This parameter is often called η in the context of Reed-Solomon codes.
     /// In this implementation, it is not a parameter; the choice has been
@@ -235,67 +251,99 @@ impl ReedSolomonCode {
     /// [list size](Self::log2_list_size) only holds for proximity parameters δ
     /// that are slightly below the bound. This function defines just how big
     /// the distance between the proximity parameter and the bound is.
-    ///
-    /// For example, if the chosen bound is the
-    /// [Johnson bound](ProximityRegime::Proven), then δ ∈ (0, 1 - √ρ),
-    /// and we chose δ = 1 - √ρ - η.
-    /// For the [conjectured bound](ProximityRegime::Conjectured),
-    /// δ ∈ (0, 1 - ρ), and we chose δ = 1 - ρ - η. In either case, η is defined
-    /// in this method.
     //
     // Giacomo thinks this can be set in a better way. Maybe it makes more sense
     // if it's multiplicative? In either case, it's based on some heuristic by
-    // Giacomo that Ferdinand doesn't fully understand. It might be interesting
-    // to explore different things at some point.
-    //
-    // According to Giacomo: “Funnily enough, [η = ρ/10 or η = √ρ/10] avoids
-    // all the new attacks on proximity gaps 😉”. Presumably, division by 20
-    // also works.
-    //
-    // A high-level overview of the new attacks mentioned above:
-    // https://blog.zksecurity.xyz/posts/proximity-conjecture/
-    fn log2_slackness_factor(&self) -> f64 {
-        let log2_expansion_factor = self.log2_expansion_factor as f64;
-        let log2_rho_or_sqrt_rho = match self.soundness {
-            ProximityRegime::Proven => 0.5 * -log2_expansion_factor,
-            ProximityRegime::Conjectured => -log2_expansion_factor,
-        };
-
-        // This is where the heuristic kicks in:
-        // log₂(ρ/20) or log₂(√ρ/20)
-        log2_rho_or_sqrt_rho - core::f64::consts::LOG2_10 - 1.0
+    // Giacomo that Ferdinand doesn't fully understand the reasons for. It might
+    // be interesting to explore different things at some point.
+    fn slackness_factor(&self) -> SetupResult<f64> {
+        // this is the heuristic
+        Ok(self.proximity_margin()? / 20.0)
     }
 
-    /// The list size of the Reed-Solomon code.
+    /// The margin (distance from 1) of the
+    /// [proximity parameter](Self::proximity_parameter)'s upper bound.
+    fn proximity_margin(&self) -> SetupResult<f64> {
+        let margin = match self.soundness {
+            ProximityRegime::Proven => self.rate()?.sqrt(),
+            ProximityRegime::Conjectured => self.q_ary_entropy()?,
+        };
+
+        Ok(margin)
+    }
+
+    /// The q-ary entropy function evaluated at the rate, ρ (see also
+    /// [`Self::log2_expansion_factor`]).
+    ///
+    /// “Parameter” q is hardcoded to the size of the extension field; see also
+    /// [ProximityRegime::Conjectured].
+    //
+    // The hardcoded nature of `q` allows some approximations to gracefully
+    // work around potential loss of precision arising from floating point
+    // operations.
+    //
+    // Start with the definition of h_q(ρ):
+    //
+    //     h_q(ρ) = ρ·log_q(q-1) - ρ·log_q(ρ) - (1-ρ)·log_q(1-ρ).
+    //
+    // As a first simplification, approximate log_q(q-1) with 1. (The error in
+    // this approximation is about 1e-60.)
+    // Next, move to base 2 as much as possible:
+    //
+    //     h_q(ρ) = ρ -  ρ·log₂(ρ)/log₂(q) - (1-ρ)·log₂(1-ρ)/log₂(q)
+    //            = ρ - (ρ·log₂(ρ)         + (1-ρ)·log₂(1-ρ)) / log₂(q)
+    //
+    // Finally, observe that log₂(ρ) = -log₂(expansion_factor).
+    fn q_ary_entropy(&self) -> SetupResult<f64> {
+        let rate = self.rate()?;
+        let rate_log_rate = rate * -(self.log2_expansion_factor as f64);
+        let one_m_rate_log_one_m_rate = (1.0 - rate) * (1.0 - rate).log2();
+
+        Ok(rate - (rate_log_rate + one_m_rate_log_one_m_rate) / Self::LOG2_FIELD_SIZE)
+    }
+
+    /// The code's rate, ρ.
+    fn rate(&self) -> SetupResult<f64> {
+        let err = LdtParameterError::TooBigInitialExpansionFactor;
+        let log2_expansion_factor = u32::try_from(self.log2_expansion_factor).map_err(|_| err)?;
+        let expansion_factor = 1_u32.checked_shl(log2_expansion_factor).ok_or(err)?;
+        let rate = 1.0 / f64::from(expansion_factor);
+
+        Ok(rate)
+    }
+
+    /// The (log₂ of the) list size of the Reed-Solomon code.
     ///
     /// This is the ℓ in a (δ, ℓ)-list-decodable Reed-Solomon code.
     ///
     /// The Reed-Solomon code in question is defined by the given polynomial
     /// degree and the given rate. The [proximity
     /// parameter](Self::proximity_parameter) δ is implied by the [slackness
-    /// factor](Self::log2_slackness_factor) η.
+    /// factor](Self::slackness_factor) η.
     ///
     /// For the [Johnson bound](ProximityRegime::Proven), it is shown that
-    /// the Reed-Solomon codes are (1-√ρ-η, 1/(2·√ρ·η))-list decodable. In
-    /// other words, the list size for δ = 1-√ρ-η is
-    /// ℓ = √(expansion_factor)/(2·η).
+    /// the Reed-Solomon codes are (1-√ρ-η, 1/(2·√ρ·η))-list decodable, _i.e._,
+    /// ℓ = 1/(2·√ρ·η).
     ///
     /// For the [conjectured bound](ProximityRegime::Conjectured), it is
-    /// assumed that Reed-Solomon codes are (1-ρ-η, d/(ρ·η))-list decodable. In
-    /// other words, the list size for δ = 1-ρ-η is
-    /// ℓ = degree·expansion_factor/η.
-    /// See also Conjecture 5.6 in the STIR paper.
-    fn log2_list_size(&self, log2_poly_degree: usize) -> f64 {
-        let log2_slackness_factor = self.log2_slackness_factor();
-
-        match self.soundness {
+    /// assumed that Reed-Solomon codes are (1-H_q(ρ)-η, d/(H_q(ρ)·η))-list
+    /// decodable, _i.e._, ℓ = d/(H_q(ρ)·η), where H_q(ρ) is the
+    /// [q-ary entropy function](Self::q_ary_entropy).
+    /// Beware that there's a _lot_ of uncertainty in this bound.
+    /// See also Conjecture 5.6 in the STIR paper (which uses out-of-date
+    /// assumptions but is informative regardless).
+    fn log2_list_size(&self, log2_poly_degree: u32) -> SetupResult<f64> {
+        let list_size = match self.soundness {
             ProximityRegime::Proven => {
-                self.log2_expansion_factor as f64 / 2. - 1. - log2_slackness_factor
+                1.0 / (2.0 * self.rate()?.sqrt() * self.slackness_factor()?)
             }
             ProximityRegime::Conjectured => {
-                (log2_poly_degree + self.log2_expansion_factor) as f64 - log2_slackness_factor
+                1_f64.powf(f64::from(log2_poly_degree))
+                    / (self.q_ary_entropy()? * self.slackness_factor()?)
             }
-        }
+        };
+
+        Ok(list_size.log2())
     }
 }
 
@@ -306,6 +354,7 @@ pub(crate) mod tests {
     use test_strategy::proptest;
     use twenty_first::prelude::BFieldCodec;
     use twenty_first::prelude::BFieldElement;
+    use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
     use twenty_first::xfe_vec;
 
     use super::*;
@@ -331,6 +380,33 @@ pub(crate) mod tests {
 
             proof_size_bytes.div_ceil(1024)
         }
+    }
+
+    #[test]
+    fn log2_extension_field_size_is_correct() {
+        let log2_field_size = (BFieldElement::P as f64)
+            .powf(EXTENSION_DEGREE as f64)
+            .log2();
+        assert!((ReedSolomonCode::LOG2_FIELD_SIZE - log2_field_size).abs() < 0.0001);
+    }
+
+    #[test]
+    fn q_ary_entropy_fn_is_correct() {
+        const DELTA: f64 = 0.0001;
+
+        let assert_are_close = |l: f64, r: f64| assert!((l - r).abs() < DELTA, "{l} != {r}");
+        let entropy_of_log2_expansion_factor =
+            |l2_exp_factor| ReedSolomonCode::new(l2_exp_factor).q_ary_entropy().unwrap();
+
+        // references computed with sage
+        assert_are_close(0.505208333333361, entropy_of_log2_expansion_factor(1));
+        assert_are_close(0.254225406898247, entropy_of_log2_expansion_factor(2));
+        assert_are_close(0.127831064808346, entropy_of_log2_expansion_factor(3));
+        assert_are_close(0.064256719096972, entropy_of_log2_expansion_factor(4));
+        assert_are_close(0.032294907939134, entropy_of_log2_expansion_factor(5));
+        assert_are_close(0.016229766017215, entropy_of_log2_expansion_factor(6));
+        assert_are_close(0.008155804230956, entropy_of_log2_expansion_factor(7));
+        assert_are_close(0.004098304720073, entropy_of_log2_expansion_factor(8));
     }
 
     #[proptest]

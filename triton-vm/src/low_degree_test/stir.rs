@@ -20,7 +20,6 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::error::LdtParameterError;
 use crate::error::LdtProvingError;
 use crate::error::LdtVerificationError;
-use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
 use crate::low_degree_test::LowDegreeTest;
 use crate::low_degree_test::ProverResult;
@@ -409,7 +408,8 @@ impl StirParameters {
     /// difference is about 1.0e-9, while the rounding error for the “actual”
     /// log₂(|𝔽|) in double-precision IEEE 754 floating point format (i.e.,
     /// rust's [f64]) is about 1.2e-7.
-    const LOG2_FIELD_SIZE: usize = BFieldElement::BYTES * 8 * x_field_element::EXTENSION_DEGREE;
+    const LOG2_FIELD_SIZE: u32 =
+        (BFieldElement::BYTES * 8 * x_field_element::EXTENSION_DEGREE) as u32;
 
     /// The (log₂ of the) relative length difference of the evaluation
     /// domains of two consecutive rounds.
@@ -489,12 +489,9 @@ impl StirParameters {
             // respect to the new rate.
             let log2_next_expansion_factor =
                 log2_expansion_factor + self.log2_folding_factor - Self::LOG2_DOMAIN_SHRINKAGE;
-            let log2_folded_poly_degree = folded_poly_degree
-                .ilog2()
-                .try_into()
-                .expect(U32_TO_USIZE_ERR);
+            let log2_folded_poly_degree = folded_poly_degree.ilog2();
             let out_of_domain =
-                self.num_ood_queries(log2_folded_poly_degree, log2_next_expansion_factor);
+                self.num_ood_queries(log2_folded_poly_degree, log2_next_expansion_factor)?;
 
             let num_queries = NumQueries {
                 in_domain,
@@ -634,10 +631,7 @@ impl StirParameters {
     // Since 0 < δ < 1, we know that log₂(1 - δ) < 0:
     //             t ⩾ -security_level / log₂(1-δ)
     fn num_unique_in_domain_queries(&self, log2_expansion_factor: usize) -> SetupResult<usize> {
-        let rs_code = ReedSolomonCode {
-            soundness: self.soundness,
-            log2_expansion_factor,
-        };
+        let rs_code = ReedSolomonCode::new(log2_expansion_factor).with_soundness(self.soundness);
         let proximity_parameter = rs_code.proximity_parameter()?;
         let num_queries = -(self.security_level as f64) / (1.0 - proximity_parameter).log2();
 
@@ -834,16 +828,17 @@ impl StirParameters {
     //
     // Long story short:
     //   s ⩾ (security_level - 1 + 2·log₂(ℓ)) / (log₂(|𝔽|) - log₂(d))
-    fn num_ood_queries(&self, log2_poly_degree: usize, log2_expansion_factor: usize) -> usize {
-        let rs_code = ReedSolomonCode {
-            soundness: self.soundness,
-            log2_expansion_factor,
-        };
-        let log2_list_size = rs_code.log2_list_size(log2_poly_degree);
+    fn num_ood_queries(
+        &self,
+        log2_poly_degree: u32,
+        log2_expansion_factor: usize,
+    ) -> SetupResult<usize> {
+        let rs_code = ReedSolomonCode::new(log2_expansion_factor).with_soundness(self.soundness);
+        let log2_list_size = rs_code.log2_list_size(log2_poly_degree)?;
         let num_ood_queries = (self.security_level as f64 - 1.0 + 2.0 * log2_list_size)
-            / (Self::LOG2_FIELD_SIZE - log2_poly_degree) as f64;
+            / f64::from(Self::LOG2_FIELD_SIZE - log2_poly_degree);
 
-        num_ood_queries.ceil() as usize
+        Ok(num_ood_queries.ceil() as usize)
     }
 }
 

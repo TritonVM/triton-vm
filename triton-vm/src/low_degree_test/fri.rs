@@ -825,10 +825,8 @@ impl FriParameters {
             .with_offset(BFieldElement::generator());
 
         // See also: https://eprint.iacr.org/2020/654.pdf Theorem 1.2
-        let rs_code = ReedSolomonCode {
-            soundness: self.soundness,
-            log2_expansion_factor: self.log2_initial_expansion_factor,
-        };
+        let rs_code =
+            ReedSolomonCode::new(self.log2_initial_expansion_factor).with_soundness(self.soundness);
         let proximity_parameter = rs_code.proximity_parameter()?;
         let num_collinearity_checks =
             (-(self.security_level as f64) / (1.0 - proximity_parameter).log2()).ceil() as usize;
