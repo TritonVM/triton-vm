@@ -191,7 +191,6 @@ pub mod constraints;
 pub mod error;
 pub mod example_programs;
 pub mod execution_trace_profiler;
-pub mod fri;
 pub mod memory_layout;
 mod ndarray_helper;
 pub mod prelude;
@@ -200,6 +199,7 @@ pub mod proof;
 pub mod proof_item;
 pub mod proof_stream;
 pub mod stark;
+pub mod stir;
 pub mod table;
 pub mod vm;
 
@@ -350,9 +350,9 @@ mod tests {
         implements_auto_traits::<error::VMError>();
         implements_auto_traits::<error::ArithmeticDomainError>();
         implements_auto_traits::<error::ProofStreamError>();
-        implements_auto_traits::<error::FriSetupError>();
-        implements_auto_traits::<error::FriProvingError>();
-        implements_auto_traits::<error::FriValidationError>();
+        implements_auto_traits::<error::StirParameterError>();
+        implements_auto_traits::<error::StirProvingError>();
+        implements_auto_traits::<error::StirVerificationError>();
         implements_auto_traits::<error::ProvingError>();
         implements_auto_traits::<error::VerificationError>();
 
@@ -374,12 +374,14 @@ mod tests {
         implements_auto_traits::<execution_trace_profiler::ExecutionTraceProfile>();
         implements_auto_traits::<execution_trace_profiler::ProfileLine>();
         implements_auto_traits::<execution_trace_profiler::VMTableHeights>();
-        implements_auto_traits::<fri::Fri>();
+        implements_auto_traits::<stir::Stir>();
+        implements_auto_traits::<stir::StirParameters>();
+        implements_auto_traits::<stir::StirResponse>();
+        implements_auto_traits::<stir::Postscript>();
         implements_auto_traits::<memory_layout::DynamicTasmConstraintEvaluationMemoryLayout>();
         implements_auto_traits::<memory_layout::MemoryRegion>();
         implements_auto_traits::<memory_layout::StaticTasmConstraintEvaluationMemoryLayout>();
         implements_auto_traits::<profiler::VMPerformanceProfile>();
-        implements_auto_traits::<proof_item::FriResponse>();
         implements_auto_traits::<proof_item::ProofItem>();
         implements_auto_traits::<proof_stream::ProofStream>();
         implements_auto_traits::<TypeHint>();

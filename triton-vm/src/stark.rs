@@ -25,9 +25,10 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::ProvingError;
+use crate::error::StirParameterError;
+use crate::error::U32_TO_USIZE_ERR;
+use crate::error::USIZE_TO_U64_ERR;
 use crate::error::VerificationError;
-use crate::fri;
-use crate::fri::Fri;
 use crate::ndarray_helper;
 use crate::ndarray_helper::COL_AXIS;
 use crate::ndarray_helper::ROW_AXIS;
@@ -36,6 +37,9 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
+use crate::stir::ProximityRegime;
+use crate::stir::Stir;
+use crate::stir::StirParameters;
 use crate::table::QuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
 use crate::table::master_table::BfeSlice;
@@ -46,12 +50,12 @@ use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::max_degree_with_origin;
 
 /// The number of segments the quotient polynomial is split into.
-/// Helps keeping the FRI domain small.
+/// Helps keeping the low-degree test domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
 /// The number of randomizer polynomials over the [extension
 /// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
-/// zero-knowledge in [FRI](Fri).
+/// zero-knowledge in the [low-degree test](Stir).
 pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
@@ -69,19 +73,11 @@ pub struct Stark {
     /// - has soundness error 2^(-security_level).
     pub security_level: usize,
 
-    /// The ratio between the lengths of the randomized trace domain and the
-    /// [FRI domain](Stark::fri). Must be a power of 2 for efficiency reasons.
-    pub fri_expansion_factor: usize,
-
-    /// The number of randomizers for the execution trace. The trace randomizers
-    /// are integral for achieving zero-knowledge. In particular, they
-    /// achieve ZK for the (DEEP) ALI part of the zk-STARK.
-    //
-    // See also [`MasterTable::trace_randomizer_for_column`].
-    pub num_trace_randomizers: usize,
-
-    /// The number of collinearity checks to perform in [FRI](Fri).
-    pub num_collinearity_checks: usize,
+    /// The (log₂ of the) ratio between the lengths of the randomized trace
+    /// domain and the [low-degree test domain](Stark::stir).
+    ///
+    /// If set to 0, generation and verification of STARK proofs will fail.
+    pub log2_ldt_expansion_factor: usize,
 }
 
 /// The prover for Triton VM's [zk-STARK](Stark). The core method is
@@ -160,22 +156,24 @@ pub(crate) struct ProverDomains {
     /// computations on polynomials. Concretely, the maximal degree of a
     /// polynomial over the quotient domain is at most only slightly larger than
     /// the maximal degree allowed in the STARK proof, and could be equal. This
-    /// makes computation for the prover much faster.
-    ///
-    /// This domain _could_ be replaced by the [FRI domain](ProverDomains::fri)
-    /// to achieve the same functionality in principle. However, the FRI domain
-    /// is usually longer.
+    /// makes computation for the prover as fast as possible.
     pub quotient: ArithmeticDomain,
 
-    /// See also [Stark::fri].
-    pub fri: ArithmeticDomain,
+    /// The initial domain of the low-degree test.
+    ///
+    /// This domain coincides with the target domain of the
+    /// [LDE step](MasterTable::maybe_low_degree_extend_all_columns) and,
+    /// consequently, all committed codewords are defined over this domain.
+    ///
+    /// See also [Stark::stir] and [Stir::initial_domain].
+    pub ldt: ArithmeticDomain,
 }
 
 impl ProverDomains {
     pub fn derive(
         padded_height: usize,
         num_trace_randomizers: usize,
-        fri_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
         max_degree: isize,
     ) -> Self {
         let randomized_trace_len =
@@ -187,13 +185,13 @@ impl ProverDomains {
         let quotient_domain_length = max_degree.next_power_of_two();
         let quotient_domain = ArithmeticDomain::of_length(quotient_domain_length)
             .unwrap()
-            .with_offset(fri_domain.offset());
+            .with_offset(ldt_domain.offset());
 
         Self {
             trace: trace_domain,
             randomized_trace: randomized_trace_domain,
             quotient: quotient_domain,
-            fri: fri_domain,
+            ldt: ldt_domain,
         }
     }
 }
@@ -252,24 +250,24 @@ impl Prover {
 
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
-        let fri = self.parameters.fri(padded_height)?;
+        let stir = self.parameters.stir(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
+        let max_degree = self
+            .parameters
+            .max_degree(padded_height, num_trace_randomizers);
         let domains = ProverDomains::derive(
             padded_height,
-            self.parameters.num_trace_randomizers,
-            fri.domain,
-            self.parameters.max_degree(padded_height),
+            num_trace_randomizers,
+            stir.initial_domain(),
+            max_degree,
         );
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         profiler!(stop "derive additional parameters");
 
         profiler!(start "main tables");
         profiler!(start "create" ("gen"));
-        let mut master_main_table = MasterMainTable::new(
-            aet,
-            domains,
-            self.parameters.num_trace_randomizers,
-            self.randomness_seed,
-        );
+        let mut master_main_table =
+            MasterMainTable::new(aet, domains, num_trace_randomizers, self.randomness_seed);
         profiler!(stop "create");
 
         profiler!(start "pad" ("gen"));
@@ -309,7 +307,7 @@ impl Prover {
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
 
-        let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
+        let (ldt_domain_quotient_segment_codewords, quotient_segment_polynomials) =
             Self::compute_quotient_segments(
                 &mut master_main_table,
                 &mut master_aux_table,
@@ -324,19 +322,19 @@ impl Prover {
             let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
             Tip5::hash_varlen(&row_as_bfes)
         };
-        let quotient_segments_rows = fri_domain_quotient_segment_codewords
+        let quotient_segments_rows = ldt_domain_quotient_segment_codewords
             .axis_iter(ROW_AXIS)
             .into_par_iter();
-        let fri_domain_quotient_segment_codewords_digests =
+        let ldt_domain_quotient_segment_codewords_digests =
             quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
         profiler!(stop "hash rows of quotient segments");
         profiler!(start "Merkle tree" ("hash"));
-        let quot_merkle_tree = MerkleTree::par_new(&fri_domain_quotient_segment_codewords_digests)?;
+        let quot_merkle_tree = MerkleTree::par_new(&ldt_domain_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
 
-        debug_assert_eq!(domains.fri.len(), quot_merkle_tree.num_leafs());
+        debug_assert_eq!(domains.ldt.len(), quot_merkle_tree.num_leafs());
 
         profiler!(start "out-of-domain rows");
         let trace_domain_generator = master_main_table.domains().trace.generator();
@@ -375,9 +373,9 @@ impl Prover {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
         profiler!(stop "Fiat-Shamir");
 
-        let fri_domain_is_short_domain = domains.fri.len() <= domains.quotient.len();
-        let short_domain = if fri_domain_is_short_domain {
-            domains.fri
+        let ldt_domain_is_short_domain = domains.ldt.len() <= domains.quotient.len();
+        let short_domain = if ldt_domain_is_short_domain {
+            domains.ldt
         } else {
             domains.quotient
         };
@@ -475,27 +473,22 @@ impl Prover {
         );
 
         profiler!(stop "sum");
-        let fri_combination_codeword = if fri_domain_is_short_domain {
+        let combination_codeword = if ldt_domain_is_short_domain {
             deep_codeword
         } else {
             profiler!(start "LDE" ("LDE"));
             let deep_codeword = domains
                 .quotient
-                .low_degree_extension(&deep_codeword, domains.fri);
+                .low_degree_extension(&deep_codeword, domains.ldt);
             profiler!(stop "LDE");
             deep_codeword
         };
-        assert_eq!(domains.fri.len(), fri_combination_codeword.len());
+        assert_eq!(domains.ldt.len(), combination_codeword.len());
         profiler!(stop "combined DEEP polynomial");
 
-        profiler!(start "FRI");
-        let revealed_current_row_indices =
-            fri.prove(&fri_combination_codeword, &mut proof_stream)?;
-        assert_eq!(
-            self.parameters.num_collinearity_checks,
-            revealed_current_row_indices.len()
-        );
-        profiler!(stop "FRI");
+        profiler!(start "low-degree test");
+        let revealed_current_row_indices = stir.prove(&combination_codeword, &mut proof_stream)?;
+        profiler!(stop "low-degree test");
 
         profiler!(start "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
@@ -537,7 +530,7 @@ impl Prover {
             |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
-            .map(|&i| fri_domain_quotient_segment_codewords.row(i))
+            .map(|&i| ldt_domain_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
         let revealed_quotient_authentication_structure =
@@ -576,11 +569,11 @@ impl Prover {
             // consumption, it is beneficial to clear any unused cache.
             //
             // Discarding the cache incurs a performance penalty later, when
-            // revealing the rows indicated by FRI. This is an acceptable
-            // tradeoff: Executing this very code path means that in the current
-            // environment, peak memory usage is a concern. Running out of
-            // memory results in abnormal termination of the prover. Slower
-            // execution is an acceptable price for normal termination.
+            // revealing the rows indicated by the low-degree test. This is an
+            // acceptable tradeoff: Executing this very code path means that in
+            // the current environment, peak memory usage is a concern. Running
+            // out of memory results in abnormal termination of the prover.
+            // Slower execution is an acceptable price for normal termination.
             //
             // [^1]: Code using exactly one cache _could_ exist, but oh! the
             //       engineering.
@@ -588,7 +581,7 @@ impl Prover {
             aux_table.clear_cache();
 
             profiler!(start "quotient calculation (just-in-time)");
-            let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
+            let (ldt_domain_quotient_segment_codewords, quotient_segment_polynomials) =
                 Self::compute_quotient_segments_with_jit_lde(
                     main_table,
                     aux_table,
@@ -598,7 +591,7 @@ impl Prover {
             profiler!(stop "quotient calculation (just-in-time)");
 
             return (
-                fri_domain_quotient_segment_codewords,
+                ldt_domain_quotient_segment_codewords,
                 quotient_segment_polynomials,
             );
         };
@@ -620,13 +613,14 @@ impl Prover {
         let quotient_segment_polynomials =
             Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
 
-        let fri_domain = main_table.domains().fri;
-        let fri_domain_quotient_segment_codewords =
-            Self::fri_domain_segment_polynomials(quotient_segment_polynomials.view(), fri_domain);
+        let ldt_domain_quotient_segment_codewords = Self::ldt_domain_segment_polynomials(
+            quotient_segment_polynomials.view(),
+            main_table.domains().ldt,
+        );
         profiler!(stop "quotient LDE");
 
         (
-            fri_domain_quotient_segment_codewords,
+            ldt_domain_quotient_segment_codewords,
             quotient_segment_polynomials,
         )
     }
@@ -672,7 +666,7 @@ impl Prover {
 
         // the powers of ι define `NUM_COSETS`-many cosets of the working domain
         let iota = BFieldElement::primitive_root_of_unity(coset_root_order).unwrap();
-        let psi = domains.fri.offset();
+        let psi = domains.ldt.offset();
 
         // for every coset, evaluate constraints
         profiler!(start "zero-initialization");
@@ -715,7 +709,7 @@ impl Prover {
         for (coset_index, quotient_column) in
             (0..).zip(quotient_multicoset_evaluations.columns_mut())
         {
-            // offset by fri domain offset to avoid division-by-zero errors
+            // offset by low-degree test domain offset to avoid division by zero
             let working_domain = working_domain.with_offset(iota.mod_pow(coset_index) * psi);
             profiler!(start "poly evaluate" ("LDE"));
             Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
@@ -819,7 +813,7 @@ impl Prover {
             quotient_multicoset_evaluations,
             psi,
             iota,
-            domains.fri,
+            domains.ldt,
         );
         profiler!(stop "segmentify");
 
@@ -842,7 +836,7 @@ impl Prover {
     /// Map a matrix whose columns represent the evaluation of a high-degree
     /// polynomial f on all constituents of a partition of some large domain
     /// into smaller cosets, to
-    /// 1. a matrix of segment codewords (on the FRI domain), and
+    /// 1. a matrix of segment codewords (on the low-degree test domain), and
     /// 2. an array of matching segment polynomials,
     ///
     /// such that the segment polynomials correspond to the interleaving split
@@ -865,11 +859,11 @@ impl Prover {
     /// For example, for `K = 2`, this is f(X) = f_E(X²) + X·f_O(X²).
     ///
     /// The produced segment codewords are the segment polynomial's evaluations
-    /// on the FRI domain:
+    /// on the low-degree test (“LDT”) domain:
     ///
     /// ```txt
     /// ⎛  …            …   …             ⎞  ┬
-    /// ⎜ f_0(FRI_dom)  …  f_K-1(FRI_dom) ⎟ FRI domain length
+    /// ⎜ f_0(LDT_dom)  …  f_K-1(LDT_dom) ⎟ LDT domain length
     /// ⎝  …            …   …             ⎠  ┴
     ///
     /// ├────────── NUM_SEGMENTS ─────────┤
@@ -963,7 +957,7 @@ impl Prover {
         quotient_multicoset_evaluations: Array2<XFieldElement>,
         psi: BFieldElement,
         iota: BFieldElement,
-        fri_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
     ) -> (
         Array2<XFieldElement>,
         Array1<Polynomial<'static, XFieldElement>>,
@@ -1031,13 +1025,13 @@ impl Prover {
                 }
             });
 
-        // low-degree extend columns from trace to FRI domain
+        // low-degree extend columns from trace to low-degree test domain
         let segment_domain_offset = psi.mod_pow(NUM_SEGMENTS.try_into().unwrap());
         let segment_domain = ArithmeticDomain::of_length(num_output_rows)
             .unwrap()
             .with_offset(segment_domain_offset);
 
-        let mut quotient_codewords = Array2::zeros([fri_domain.len(), NUM_SEGMENTS]);
+        let mut quotient_codewords = Array2::zeros([ldt_domain.len(), NUM_SEGMENTS]);
         let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
         Zip::from(quotient_segments.axis_iter(COL_AXIS))
             .and(quotient_codewords.axis_iter_mut(COL_AXIS))
@@ -1046,7 +1040,7 @@ impl Prover {
                 // Getting a column as a contiguous piece of memory from a
                 // row-majority matrix requires `.to_vec()`.
                 let interpolant = segment_domain.interpolate(&segment.to_vec());
-                let lde_codeword = fri_domain.evaluate(&interpolant);
+                let lde_codeword = ldt_domain.evaluate(&interpolant);
                 Array1::from(lde_codeword).move_into(target_codeword);
                 Array0::from_elem((), interpolant).move_into(target_polynomial);
             });
@@ -1096,13 +1090,14 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    fn fri_domain_segment_polynomials(
+    /// Th segment polynomials evaluated over the low-degree test domain.
+    fn ldt_domain_segment_polynomials(
         quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
-        fri_domain: ArithmeticDomain,
+        ldt_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
-        let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
+        let ldt_domain_codewords: Vec<_> = quotient_segment_polynomials
             .into_par_iter()
-            .flat_map(|segment| fri_domain.evaluate(segment))
+            .flat_map(|segment| ldt_domain.evaluate(segment))
             .collect();
 
         // While later steps would benefit from row majority (“`C`”), the
@@ -1110,8 +1105,8 @@ impl Prover {
         // expensive. Should we decide to chase small gains at some point,
         // then a parallel transpose could be considered.
         Array2::from_shape_vec(
-            [fri_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
-            fri_domain_codewords,
+            [ldt_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
+            ldt_domain_codewords,
         )
         .unwrap()
     }
@@ -1162,8 +1157,9 @@ impl Verifier {
         };
 
         let padded_height = 1 << log2_padded_height;
-        let fri = self.parameters.fri(padded_height)?;
-        let merkle_tree_height = fri.domain.len().ilog2();
+        let stir = self.parameters.stir(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
+        let merkle_tree_height = stir.initial_domain().len().ilog2();
 
         // The trace domain used by the prover is not necessarily of length
         // `padded_height`. Concretely, this is the case if the number of trace
@@ -1172,7 +1168,7 @@ impl Verifier {
         // trace domain's length, due to the current approach for randomizing
         // the trace.
         let trace_domain_len =
-            Stark::randomized_trace_len(padded_height, self.parameters.num_trace_randomizers) / 2;
+            Stark::randomized_trace_len(padded_height, num_trace_randomizers) / 2;
         profiler!(stop "derive additional parameters");
 
         profiler!(start "Fiat-Shamir 1" ("hash"));
@@ -1306,12 +1302,12 @@ impl Verifier {
             .dot(&out_of_domain_curr_row_quot_segments);
         profiler!(stop "sum out-of-domain values");
 
-        // verify low degree of combination polynomial with FRI
-        profiler!(start "FRI");
-        let revealed_fri_indices_and_elements = fri.verify(&mut proof_stream)?;
-        let (revealed_current_row_indices, revealed_fri_values): (Vec<_>, Vec<_>) =
-            revealed_fri_indices_and_elements.into_iter().unzip();
-        profiler!(stop "FRI");
+        // verify low degree of combination polynomial
+        profiler!(start "low-degree test");
+        let stir_postscript = stir.verify(&mut proof_stream)?;
+        let revealed_current_row_indices = stir_postscript.first_round_indices();
+        let revealed_ldt_values = &stir_postscript.partial_first_codeword;
+        profiler!(stop "low-degree test");
 
         profiler!(start "check leafs");
         profiler!(start "dequeue main elements");
@@ -1391,32 +1387,33 @@ impl Verifier {
         profiler!(stop "check leafs");
 
         profiler!(start "linear combination");
-        if self.parameters.num_collinearity_checks != revealed_current_row_indices.len() {
+        let num_revealed_elements = stir.num_first_round_queries();
+        if num_revealed_elements != revealed_current_row_indices.len() {
             return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
-        if self.parameters.num_collinearity_checks != revealed_fri_values.len() {
-            return Err(VerificationError::IncorrectNumberOfFRIValues);
+        if num_revealed_elements != revealed_ldt_values.len() {
+            return Err(VerificationError::IncorrectNumberOfLowDegTestValues);
         };
-        if self.parameters.num_collinearity_checks != revealed_quotient_segments_elements.len() {
+        if num_revealed_elements != revealed_quotient_segments_elements.len() {
             return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
         };
-        if self.parameters.num_collinearity_checks != main_table_rows.len() {
+        if num_revealed_elements != main_table_rows.len() {
             return Err(VerificationError::IncorrectNumberOfMainTableRows);
         };
-        if self.parameters.num_collinearity_checks != aux_table_rows.len() {
+        if num_revealed_elements != aux_table_rows.len() {
             return Err(VerificationError::IncorrectNumberOfAuxTableRows);
         };
 
-        for (row_idx, main_row, aux_row, quotient_segments_elements, fri_value) in izip!(
+        for (&row_idx, main_row, aux_row, quotient_segments_elements, &revealed_value) in izip!(
             revealed_current_row_indices,
             main_table_rows,
             aux_table_rows,
             revealed_quotient_segments_elements,
-            revealed_fri_values,
+            revealed_ldt_values,
         ) {
             let main_row = Array1::from(main_row.to_vec());
             let aux_row = Array1::from(aux_row.to_vec());
-            let current_fri_domain_value = fri.domain.value(row_idx as u32);
+            let current_ldt_domain_value = stir.initial_domain().value(row_idx as u32);
 
             profiler!(start "main & aux elements" ("CC"));
             let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
@@ -1431,19 +1428,19 @@ impl Verifier {
 
             profiler!(start "DEEP update");
             let main_and_aux_curr_row_deep_value = Stark::deep_update(
-                current_fri_domain_value,
+                current_ldt_domain_value,
                 main_and_aux_curr_row_element,
                 out_of_domain_point_curr_row,
                 out_of_domain_curr_row_main_and_aux_value,
             );
             let main_and_aux_next_row_deep_value = Stark::deep_update(
-                current_fri_domain_value,
+                current_ldt_domain_value,
                 main_and_aux_curr_row_element,
                 out_of_domain_point_next_row,
                 out_of_domain_next_row_main_and_aux_value,
             );
             let quot_curr_row_deep_value = Stark::deep_update(
-                current_fri_domain_value,
+                current_ldt_domain_value,
                 quotient_segments_curr_row_element,
                 out_of_domain_point_curr_row_pow_num_segments,
                 out_of_domain_curr_row_quotient_segment_value,
@@ -1456,7 +1453,7 @@ impl Verifier {
                 main_and_aux_next_row_deep_value,
                 quot_curr_row_deep_value,
             ]);
-            if fri_value != weights.deep.dot(&deep_value_components) {
+            if revealed_value != weights.deep.dot(&deep_value_components) {
                 return Err(VerificationError::CombinationCodewordMismatch);
             };
             profiler!(stop "combination codeword equality");
@@ -1491,29 +1488,22 @@ impl Verifier {
 }
 
 impl Stark {
+    /// Create a new STARK instance.
+    ///
+    /// The defining parameters are the `security_level`
+    ///
     /// # Panics
     ///
-    /// Panics if `log2_of_fri_expansion_factor` is zero.
-    pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
+    /// Panics if `log2_ldt_expansion_factor` is zero.
+    pub fn new(security_level: usize, log2_ldt_expansion_factor: usize) -> Self {
         assert_ne!(
-            0, log2_of_fri_expansion_factor,
-            "FRI expansion factor must be greater than one."
+            0, log2_ldt_expansion_factor,
+            "low-degree test expansion factor must be greater than one."
         );
-
-        let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
-        let num_collinearity_checks = security_level / log2_of_fri_expansion_factor;
-        let num_collinearity_checks = std::cmp::max(num_collinearity_checks, 1);
-
-        let num_out_of_domain_rows = 2;
-        let num_trace_randomizers = num_collinearity_checks
-            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
-            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE;
 
         Stark {
             security_level,
-            fri_expansion_factor,
-            num_trace_randomizers,
-            num_collinearity_checks,
+            log2_ldt_expansion_factor,
         }
     }
 
@@ -1544,24 +1534,39 @@ impl Stark {
     /// The length of the trace-randomized, padded trace.
     ///
     /// Guaranteed to be a power of two.
-    pub(crate) fn randomized_trace_len(
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> usize {
-        let total_table_length = padded_height + num_trace_randomizers;
-        total_table_length.next_power_of_two()
+    //
+    // There are two lower bounds on the required length of the randomized
+    // trace, both of which have to be met:
+    //
+    // 1. The randomized trace domain must be long enough to include both, all
+    //    elements of the padded trace and all trace randomizers.
+    // 2. Due to the way we do trace randomization,
+    //    a. the length of the trace domain must always be exactly half the
+    //       length of the randomized trace domain, and
+    //    b. the degree of the trace-randomized interpolation polynomial for any
+    //       trace column must be less than the length of the randomized trace
+    //       domain.
+    //    These two conditions imply:
+    //
+    //       len > degree(randomized_trace_column_interpolant)
+    //     ⟺ len > num_trace_randomizers + degree(zerofier(trace_domain))
+    //     ⟺ len > num_trace_randomizers + (len / 2)
+    //     ⟺ len > 2·num_trace_randomizers
+    fn randomized_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
+        (padded_height + num_trace_randomizers)
+            .max(2 * num_trace_randomizers + 1)
+            .next_power_of_two()
     }
 
-    pub(crate) fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
+    fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
         (Self::randomized_trace_len(padded_height, num_trace_randomizers) - 1) as isize
     }
 
     /// The upper bound to use for the maximum degree the quotients given the
     /// length of the trace and the number of trace randomizers. The degree
     /// of the quotients depends on the [AIR](air) constraints.
-    pub fn max_degree(&self, padded_height: usize) -> isize {
-        let interpolant_degree =
-            Self::interpolant_degree(padded_height, self.num_trace_randomizers);
+    pub fn max_degree(&self, padded_height: usize, num_trace_randomizers: usize) -> isize {
+        let interpolant_degree = Self::interpolant_degree(padded_height, num_trace_randomizers);
         let max_constraint_degree_with_origin =
             max_degree_with_origin(interpolant_degree, padded_height);
         let max_constraint_degree = max_constraint_degree_with_origin.degree as u64;
@@ -1573,27 +1578,106 @@ impl Stark {
         max_degree_supported_by_that_smallest_arithmetic_domain as isize
     }
 
-    /// The parameters for [FRI](Fri). The length of the
-    /// [FRI domain](ArithmeticDomain) has a major influence on
-    /// [proving](Prover::prove) time. It is influenced by the length of the
-    /// [execution trace](AlgebraicExecutionTrace) and the FRI expansion factor,
-    /// a security parameter.
+    /// Derive the low-degree test (usually abbreviated “LDT”) for this STARK.
     ///
-    /// In principle, the FRI domain length is also influenced by the AIR's
-    /// degree (see [`air::TARGET_DEGREE`]). However, by segmenting the
-    /// quotient polynomial into `TARGET_DEGREE`-many parts, that influence
-    /// is mitigated.
-    pub fn fri(&self, padded_height: usize) -> fri::SetupResult<Fri> {
-        let fri_domain_length = self.fri_expansion_factor
-            * Self::randomized_trace_len(padded_height, self.num_trace_randomizers);
-        let coset_offset = BFieldElement::generator();
-        let domain = ArithmeticDomain::of_length(fri_domain_length)?.with_offset(coset_offset);
+    /// The length of the [low-degree test domain](ArithmeticDomain) has a major
+    /// influence on [proving](Prover::prove) time. It is influenced by the
+    /// length of the [execution trace](AlgebraicExecutionTrace) and the STIR
+    /// expansion factor, a parameter.
+    ///
+    /// In principle, the low-degree test domain length is also influenced by
+    /// the AIR's degree (see [`air::TARGET_DEGREE`]) as well as the number of
+    /// quotient segments (see [`NUM_QUOTIENT_SEGMENTS`]): the higher the AIR's
+    /// degree, and the lower the number of quotient segments, the larger the
+    /// required low-degree test domain (with limits on all contributing
+    /// factors).
+    /// By choosing a number of segments that equals the AIR's degree, the
+    /// influence of the AIR degree on the low-degree test domain can be fully
+    /// mitigated.
+    ///
+    /// The parameter `padded_height` must be a power of 2. To ensure proper
+    /// operation of this method, the parameter is
+    /// [rounded](usize::next_power_of_two) before use.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
+    pub fn stir(&self, padded_height: usize) -> Result<Stir, StirParameterError> {
+        let padded_height = padded_height
+            .checked_next_power_of_two()
+            .expect("padded height drastically exceeds assumed maximum");
+        let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
 
-        Fri::new(
-            domain,
-            self.fri_expansion_factor,
-            self.num_collinearity_checks,
-        )
+        // The reason that the bound at which a polynomial is considered to be
+        // of “high” degree equals the padded height is a bit subtle:
+        // A polynomial interpolating through `padded_height` points is of
+        // degree `padded_height - 1`. This is the highest degree that the
+        // low-degree test should accept as “low.” Polynomials of degree
+        // `padded_height` (and higher) have “high” degree.
+        let log2_high_degree_bound = log2_padded_height;
+        let mut stir_parameters = StirParameters {
+            security_level: self.security_level,
+            soundness: ProximityRegime::Proven,
+            log2_folding_factor: 2,
+            log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
+            log2_high_degree_bound,
+        };
+
+        // The initial domain of STIR must be longer than the length of the
+        // randomized trace (after accounting for the expansion factor).
+        // However, the STIR instance itself influences the number of trace
+        // randomizers, and good luck writing out the direct dependency between
+        // the `log2_high_degree_bound` and the number of trace randomizers. I'm
+        // sure it can be done, I'm not sure if it's worth the effort. Instead,
+        // we perform a linear search for the smallest factor by which to grow
+        // the initial domain such that it is big enough.
+        //
+        // While a binary search would be faster asymptotically, we expect to
+        // find the factor very quickly (usually on the first iteration) since a
+        // doubling in the domain size grants ample additional space if the
+        // `padded_height` is sufficiently large. It's only for very small
+        // `padded_heights` that additional iterations are necessary, and there,
+        // things are fast anyway.
+        //
+        // A tighter bound for the maximum number of iterations exists. However,
+        // too-large domains cause an unsuccessful derivation of STIR and an
+        // early return. Therefore, it's fine to use the absolute maximum here.
+        for _ in 0..=ArithmeticDomain::LOG2_MAX_LEN {
+            stir_parameters.log2_high_degree_bound += 1;
+            let stir = Stir::try_from(stir_parameters)?;
+
+            let num_trace_randomizers = Self::num_trace_randomizers(&stir);
+            let randomized_trace_len =
+                Self::randomized_trace_len(padded_height, num_trace_randomizers);
+            let expansion_factor = stir_parameters.expansion_factor();
+            if stir.initial_domain().len() >= randomized_trace_len * expansion_factor {
+                return Ok(stir);
+            }
+        }
+
+        // if no candidate worked, that's a problem we can't recover from…
+        let max_domain_len = ArithmeticDomain::LOG2_MAX_LEN
+            .try_into()
+            .expect(USIZE_TO_U64_ERR);
+
+        Err(StirParameterError::InitialDomainTooBig(max_domain_len))
+    }
+
+    /// The number of trace randomizers to use.
+    ///
+    /// Each column of the [main](MasterMainTable) and
+    /// [auxiliary](MasterAuxTable) must be trace-randomized with this many
+    /// randomizers in order for the STARK to be Zero-Knowledge.
+    ///
+    /// The type of the trace randomizers must be of the table's corresponding
+    /// field, _i.e._, [base field](BFieldElement) elements for the main table
+    /// and [extension field](XFieldElement) elements for the auxiliary table).
+    pub(crate) fn num_trace_randomizers(stir: &Stir) -> usize {
+        let num_out_of_domain_rows = 2;
+
+        stir.num_first_round_queries()
+            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
+            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
@@ -1613,10 +1697,7 @@ impl Stark {
 
 impl Default for Stark {
     fn default() -> Self {
-        let log_2_of_fri_expansion_factor = 2;
-        let security_level = 160;
-
-        Self::new(security_level, log_2_of_fri_expansion_factor)
+        Stark::new(160, 2)
     }
 }
 
@@ -1629,8 +1710,8 @@ impl Default for Prover {
 impl<'a> Arbitrary<'a> for Stark {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let security_level = u.int_in_range(1..=490)?;
-        let log_2_of_fri_expansion_factor = u.int_in_range(1..=8)?;
-        Ok(Self::new(security_level, log_2_of_fri_expansion_factor))
+        let log2_expansion_factor = u.int_in_range(1..=8)?;
+        Ok(Self::new(security_level, log2_expansion_factor))
     }
 }
 
@@ -1810,7 +1891,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn quotient_segments_are_independent_of_fri_table_caching() {
+    fn quotient_segments_are_independent_of_table_caching() {
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
@@ -1821,26 +1902,27 @@ pub(crate) mod tests {
         let mut aux = artifacts.master_aux_table;
         let ch = artifacts.challenges;
         let padded_height = main.trace_table().nrows();
-        let fri_dom = stark.fri(padded_height).unwrap().domain;
-        let max_degree = stark.max_degree(padded_height);
-        let num_trace_randos = stark.num_trace_randomizers;
-        let domains = ProverDomains::derive(padded_height, num_trace_randos, fri_dom, max_degree);
+        let stir = stark.stir(padded_height).unwrap();
+        let num_trace_randos = Stark::num_trace_randomizers(&stir);
+        let ldt_dom = stir.initial_domain();
+        let max_degree = stark.max_degree(padded_height, num_trace_randos);
+        let domains = ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
         let quot_dom = domains.quotient;
         let weights = StdRng::seed_from_u64(1632525295622789151)
             .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
-        debug_assert!(main.fri_domain_table().is_none());
-        debug_assert!(aux.fri_domain_table().is_none());
+        debug_assert!(main.ldt_domain_table().is_none());
+        debug_assert!(aux.ldt_domain_table().is_none());
         let jit_segments =
             Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
-        debug_assert!(main.fri_domain_table().is_none());
+        debug_assert!(main.ldt_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns();
-        debug_assert!(main.fri_domain_table().is_some());
+        debug_assert!(main.ldt_domain_table().is_some());
 
-        debug_assert!(aux.fri_domain_table().is_none());
+        debug_assert!(aux.ldt_domain_table().is_none());
         aux.maybe_low_degree_extend_all_columns();
-        debug_assert!(aux.fri_domain_table().is_some());
+        debug_assert!(aux.ldt_domain_table().is_some());
 
         let cache_segments =
             Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
@@ -1867,19 +1949,20 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             let padded_height = main.trace_table().nrows();
-            let fri_dom = stark.fri(padded_height).unwrap().domain;
-            let max_degree = stark.max_degree(padded_height);
-            let num_trace_randos = stark.num_trace_randomizers;
+            let stir = stark.stir(padded_height).unwrap();
+            let ldt_dom = stir.initial_domain();
+            let num_trace_randos = Stark::num_trace_randomizers(&stir);
+            let max_degree = stark.max_degree(padded_height, num_trace_randos);
             let domains =
-                ProverDomains::derive(padded_height, num_trace_randos, fri_dom, max_degree);
+                ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
             let quot_dom = domains.quotient;
 
             if cache_decision == CacheDecision::Cache {
                 main.maybe_low_degree_extend_all_columns();
-                assert!(main.fri_domain_table().is_some());
+                assert!(main.ldt_domain_table().is_some());
 
                 aux.maybe_low_degree_extend_all_columns();
-                assert!(aux.fri_domain_table().is_some());
+                assert!(aux.ldt_domain_table().is_some());
             }
 
             let weights = StdRng::seed_from_u64(15157673430940347283)
@@ -1916,11 +1999,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"08133801845754967830,\
-              12011037839595956778,\
-              14175473847383162005,\
-              05024926201443895262,\
-              17294001373192224874",
+            @"14428865015799898120,\
+              14868542598403314151,\
+              03444580805507157155,\
+              10914412567008792448,\
+              15160499444300110189",
         );
     }
 
@@ -3106,7 +3189,7 @@ pub(crate) mod tests {
             let iota =
                 BFieldElement::primitive_root_of_unity((trace_length * num_cosets) as u64).unwrap();
             let trace_domain = ArithmeticDomain::of_length(trace_length)?;
-            let fri_domain = ArithmeticDomain::of_length(trace_length * expansion_factor)?
+            let ldt_domain = ArithmeticDomain::of_length(trace_length * expansion_factor)?
                 .with_offset(test_data.psi);
 
             let coset_evaluations = (0..u32::try_from(num_cosets)?)
@@ -3119,7 +3202,7 @@ pub(crate) mod tests {
                 Array2::from_shape_vec((trace_length, num_cosets).f(), coset_evaluations)?;
 
             let (actual_segment_codewords, segment_polynomials) =
-                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota, fri_domain);
+                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota, ldt_domain);
 
             prop_assert_eq!(N, actual_segment_codewords.ncols());
             prop_assert_eq!(N, segment_polynomials.len());
@@ -3141,10 +3224,10 @@ pub(crate) mod tests {
 
             let segments_codewords = segment_polynomials
                 .iter()
-                .flat_map(|polynomial| Array1::from(fri_domain.evaluate(polynomial)))
+                .flat_map(|polynomial| Array1::from(ldt_domain.evaluate(polynomial)))
                 .collect_vec();
             let segments_codewords =
-                Array2::from_shape_vec((fri_domain.len(), N).f(), segments_codewords)?;
+                Array2::from_shape_vec((ldt_domain.len(), N).f(), segments_codewords)?;
             prop_assert_eq!(segments_codewords, actual_segment_codewords);
 
             Ok(())

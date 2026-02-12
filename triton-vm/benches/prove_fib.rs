@@ -31,10 +31,10 @@ fn prove_fib(c: &mut Criterion) {
     let profile = triton_vm::profiler::finish();
 
     let padded_height = aet.padded_height();
-    let fri = stark.fri(padded_height).unwrap();
+    let stir = stark.stir(padded_height).unwrap();
     let profile = profile
         .with_cycle_count(aet.processor_trace.nrows())
         .with_padded_height(padded_height)
-        .with_fri_domain_len(fri.domain.len());
+        .with_ldt_domain_len(stir.initial_domain().len());
     eprintln!("{profile}");
 }
