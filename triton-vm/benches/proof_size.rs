@@ -184,9 +184,9 @@ fn program_halt() -> ProgramAndInput {
 /// The base 2, integer logarithm of the length of the low-degree test domain.
 fn log_2_ldt_domain_length(stark: Stark, proof: &Proof) -> u32 {
     let padded_height = proof.padded_height().unwrap();
-    let stir = stark.stir(padded_height).unwrap();
+    let ldt = stark.ldt(padded_height).unwrap();
 
-    stir.initial_domain().len().ilog2()
+    ldt.initial_domain().len().ilog2()
 }
 
 /// List the sizes of the proof's parts. If the same item type is contained

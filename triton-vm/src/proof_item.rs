@@ -7,11 +7,13 @@ use twenty_first::prelude::*;
 
 use crate::error::ProofStreamError;
 use crate::error::ProofStreamError::UnexpectedItem;
-use crate::stir::AuthenticationStructure;
-use crate::stir::StirResponse;
+use crate::low_degree_test::fri::FriResponse;
+use crate::low_degree_test::stir::StirResponse;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
 use crate::table::QuotientSegments;
+
+pub type AuthenticationStructure = Vec<Digest>;
 
 macro_rules! proof_items {
     ($($variant:ident($payload:ty) => $in_fiat_shamir_heuristic:literal, $try_into_fn:ident,)+) => {
@@ -96,7 +98,7 @@ proof_items!(
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
     OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
-    StirPolynomial(Polynomial<'static, XFieldElement>) => true, try_into_stir_polynomial,
+    Polynomial(Polynomial<'static, XFieldElement>) => true, try_into_polynomial,
     StirOutOfDomainValues(Vec<XFieldElement>) => true, try_into_stir_ood_values,
 
     // For performance reasons (only!), the following items are not included in
@@ -132,9 +134,14 @@ proof_items!(
     MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,
     QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
 
-    // Since a `StirResponse` is both, an authentication structure and some
-    // revealed elements, the arguments of `AuthenticationStructure` and the
-    // tables' rows apply.
+    // 1. The Merkle root of the tree of the codeword is integrated into the
+    //    proof stream before the codeword is sent.
+    FriCodeword(Vec<XFieldElement>) => false, try_into_fri_codeword,
+
+    // Since a `{Fri, Stir}Response` is both, an authentication structure and
+    // some revealed elements, the arguments of `AuthenticationStructure` and
+    // the tables' rows apply.
+    FriResponse(FriResponse) => false, try_into_fri_response,
     StirResponse(StirResponse) => false, try_into_stir_response,
 );
 
@@ -215,7 +222,7 @@ pub(crate) mod tests {
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_log2_padded_height());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_quot_segments_elements());
         assert!(let Err(UnexpectedItem{..}) = item.clone().try_into_stir_ood_values());
-        assert!(let Err(UnexpectedItem{..}) = item.try_into_stir_polynomial());
+        assert!(let Err(UnexpectedItem{..}) = item.try_into_polynomial());
     }
 
     #[test]
@@ -244,8 +251,8 @@ pub(crate) mod tests {
             ProofItemVariant::Log2PaddedHeight.bfield_codec_discriminant()
         );
         assert_eq!(
-            ProofItem::StirPolynomial(Polynomial::new(vec![])).bfield_codec_discriminant(),
-            ProofItemVariant::StirPolynomial.bfield_codec_discriminant()
+            ProofItem::Polynomial(Polynomial::new(vec![])).bfield_codec_discriminant(),
+            ProofItemVariant::Polynomial.bfield_codec_discriminant()
         );
     }
 

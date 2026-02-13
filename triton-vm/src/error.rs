@@ -80,14 +80,15 @@ pub enum ProofStreamError {
     DecodingError(#[from] <ProofStream as BFieldCodec>::Error),
 }
 
-/// Indicates the choice of an invalid combination of initial parameters.
+/// Indicates the choice of an invalid combination of initial parameters for
+/// the [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-pub enum StirParameterError {
-    #[error("the log₂ of the STIR folding factor must be greater than or equal to 2, but is {0}")]
+pub enum LdtParameterError {
+    #[error("the log₂ of the folding factor must be greater than or equal to 2, but is {0}")]
     TooSmallLog2FoldingFactor(usize),
 
-    #[error("the log₂ of the STIR folding factor must be less than 32, but is {0}")]
+    #[error("the log₂ of the folding factor must be less than 32, but is {0}")]
     TooBigLog2FoldingFactor(usize),
 
     #[error("the log₂ of the initial expansion factor must be greater than 0")]
@@ -99,13 +100,16 @@ pub enum StirParameterError {
     #[error("the “high degree” threshold must be greater than or equal to the folding factor")]
     TooLowDegreeOfHighDegreePolynomials,
 
-    #[error("the initial domain must be shorter than or equal to 2^32, but was 2^{0}")]
+    #[error("the initial domain must be shorter than 2^32, but was 2^{0}")]
     InitialDomainTooBig(u64),
 }
 
+/// Indicates an error that occurred during
+/// [proving](crate::low_degree_test::LowDegreeTest::prove) of the
+/// [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-pub enum StirProvingError {
+pub enum LdtProvingError {
     #[error("initial domain len ({domain_len}) must equal first codeword len ({codeword_len})")]
     InitialCodewordMismatch {
         domain_len: usize,
@@ -113,14 +117,20 @@ pub enum StirProvingError {
     },
 }
 
+/// Indicates an error that occurred during
+/// [verification](crate::low_degree_test::LowDegreeTest::verify) of the
+/// [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Error)]
-pub enum StirVerificationError {
-    #[error("the number of revealed leaves does not match the number of in-domain queries")]
+pub enum LdtVerificationError {
+    #[error("the number of revealed leaves does not match the number of (in-domain) queries")]
     IncorrectNumberOfRevealedLeaves,
 
     #[error("Merkle tree authentication failed")]
     BadMerkleAuthenticationPath,
+
+    #[error("computed and received codeword of last round do not match")]
+    LastCodewordMismatch,
 
     #[error("evaluations of last round's polynomial and last round codeword do not match")]
     LastRoundPolynomialEvaluationMismatch,
@@ -128,8 +138,14 @@ pub enum StirVerificationError {
     #[error("last round's polynomial has too high degree")]
     LastRoundPolynomialHasTooHighDegree,
 
+    #[error("received codeword of last round does not correspond to its commitment")]
+    BadMerkleRootForLastCodeword,
+
     #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
+
+    #[error(transparent)]
+    MerkleTreeError(#[from] MerkleTreeError),
 }
 
 #[non_exhaustive]
@@ -154,10 +170,10 @@ pub enum ProvingError {
     ArithmeticDomainError(#[from] ArithmeticDomainError),
 
     #[error(transparent)]
-    StirParameterError(#[from] StirParameterError),
+    LdtParameterError(#[from] LdtParameterError),
 
     #[error(transparent)]
-    StirProvingError(#[from] StirProvingError),
+    LdtProvingError(#[from] LdtProvingError),
 
     #[error(transparent)]
     VMError(#[from] VMError),
@@ -206,10 +222,10 @@ pub enum VerificationError {
     ArithmeticDomainError(#[from] ArithmeticDomainError),
 
     #[error(transparent)]
-    StirParameterError(#[from] StirParameterError),
+    LdtParameterError(#[from] LdtParameterError),
 
     #[error(transparent)]
-    StirVerificationError(#[from] StirVerificationError),
+    LdtVerificationError(#[from] LdtVerificationError),
 }
 
 #[cfg(test)]

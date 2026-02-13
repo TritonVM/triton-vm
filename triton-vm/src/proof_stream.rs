@@ -132,9 +132,9 @@ mod tests {
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
+    use crate::low_degree_test::stir::StirResponse;
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
-    use crate::stir::StirResponse;
     use crate::table::AuxiliaryRow;
     use crate::table::MainRow;
     use crate::table::QuotientSegments;
@@ -198,7 +198,7 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::StirResponse(response.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::StirPolynomial(poly.clone()));
+        proof_stream.enqueue(ProofItem::Polynomial(poly.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
 
         let proof = proof_stream.into();
@@ -239,7 +239,7 @@ mod tests {
         assert!(response == response_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::StirPolynomial(poly_)) = proof_stream.dequeue());
+        let_assert!(Ok(ProofItem::Polynomial(poly_)) = proof_stream.dequeue());
         assert!(poly == poly_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));

@@ -24,11 +24,16 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
+use crate::error::LdtParameterError;
 use crate::error::ProvingError;
-use crate::error::StirParameterError;
 use crate::error::U32_TO_USIZE_ERR;
-use crate::error::USIZE_TO_U64_ERR;
 use crate::error::VerificationError;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::ProximityRegime;
+use crate::low_degree_test::fri::Fri;
+use crate::low_degree_test::fri::FriParameters;
+use crate::low_degree_test::stir::Stir;
+use crate::low_degree_test::stir::StirParameters;
 use crate::ndarray_helper;
 use crate::ndarray_helper::COL_AXIS;
 use crate::ndarray_helper::ROW_AXIS;
@@ -37,9 +42,6 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::stir::ProximityRegime;
-use crate::stir::Stir;
-use crate::stir::StirParameters;
 use crate::table::QuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
 use crate::table::master_table::BfeSlice;
@@ -55,7 +57,7 @@ pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
 /// The number of randomizer polynomials over the [extension
 /// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
-/// zero-knowledge in the [low-degree test](Stir).
+/// zero-knowledge in the [low-degree test](LowDegreeTest).
 pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
@@ -66,18 +68,66 @@ const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 /// The two core methods are [`Stark::prove`] and [`Stark::verify`].
 ///
 /// [stark]: https://www.iacr.org/archive/crypto2019/116940201/116940201.pdf
+#[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Stark {
-    /// The conjectured security level in bits. Concretely, the system
+    /// The conjectured security level in bits.
+    ///
+    /// In particular, this is the soundness error of the underlying
+    /// _interactive oracle proof_ (“IOP”), which
     /// - is perfectly complete, and
     /// - has soundness error 2^(-security_level).
     pub security_level: usize,
 
     /// The (log₂ of the) ratio between the lengths of the randomized trace
-    /// domain and the [low-degree test domain](Stark::stir).
+    /// domain and the [low-degree test domain](Stark::ldt).
+    ///
+    /// Influences runtime performance of both the prover and the verifier.
+    /// If you are unsure, use 2 as a starting point (corresponding to an
+    /// expansion factor of 4). Then, feel free to experiment.
     ///
     /// If set to 0, generation and verification of STARK proofs will fail.
     pub log2_ldt_expansion_factor: usize,
+
+    /// Which [low-degree test](Self::ldt) to perform.
+    ///
+    /// If no preference [is given](Self::with_ldt_choice), a sane default is
+    /// used.
+    pub ldt_choice: Option<LdtChoice>,
+
+    /// Whether to rely on conjectured or proven proximity gap results in the
+    /// [low-degree test](Self::ldt).
+    ///
+    /// This choice might influence the soundness of the proof system.
+    /// It is recommended to use the [default](ProximityRegime::default), but
+    /// you [can change it](Self::with_soundness) if you know what you're doing.
+    pub soundness: ProximityRegime,
+}
+
+/// The choice of a supported [low-degree tests](LowDegreeTest).
+///
+/// Supported are [STIR](Stir) and [FRI](Fri).
+///
+/// In order to help choose between the two options: Use [FRI](Self::Fri) if all
+/// the following apply:
+///
+/// - the generated [trace](crate::vm::VM::trace_execution) is
+///   of small [height](AlgebraicExecutionTrace::height) (less than 2¹⁶ for a
+///   [security level](Stark::security_level) of 160 bits)
+/// - the generated proof artifact requires no follow-up treatment like
+///   batching (because only STIR proofs can be used there)
+/// - prover speed is of the utmost importance, and
+/// - the resulting proof will not be verified recursively (because STIR proofs
+///   are faster in that context).
+///
+/// Otherwise, use [STIR](Self::Stir).
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Arbitrary)]
+pub enum LdtChoice {
+    /// Use [STIR](Stir) as the [low-degree test](LowDegreeTest).
+    Stir,
+
+    /// Use [FRI](Fri) as the [low-degree test](LowDegreeTest).
+    Fri,
 }
 
 /// The prover for Triton VM's [zk-STARK](Stark). The core method is
@@ -165,7 +215,7 @@ pub(crate) struct ProverDomains {
     /// [LDE step](MasterTable::maybe_low_degree_extend_all_columns) and,
     /// consequently, all committed codewords are defined over this domain.
     ///
-    /// See also [Stark::stir] and [Stir::initial_domain].
+    /// See also [Stark::ldt] and [LowDegreeTest::initial_domain].
     pub ldt: ArithmeticDomain,
 }
 
@@ -250,15 +300,15 @@ impl Prover {
 
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
-        let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
+        let ldt = self.parameters.ldt(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
         let max_degree = self
             .parameters
             .max_degree(padded_height, num_trace_randomizers);
         let domains = ProverDomains::derive(
             padded_height,
             num_trace_randomizers,
-            stir.initial_domain(),
+            ldt.initial_domain(),
             max_degree,
         );
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
@@ -487,7 +537,7 @@ impl Prover {
         profiler!(stop "combined DEEP polynomial");
 
         profiler!(start "low-degree test");
-        let revealed_current_row_indices = stir.prove(&combination_codeword, &mut proof_stream)?;
+        let revealed_current_row_indices = ldt.prove(&combination_codeword, &mut proof_stream)?;
         profiler!(stop "low-degree test");
 
         profiler!(start "open trace leafs");
@@ -1157,9 +1207,9 @@ impl Verifier {
         };
 
         let padded_height = 1 << log2_padded_height;
-        let stir = self.parameters.stir(padded_height)?;
-        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
-        let merkle_tree_height = stir.initial_domain().len().ilog2();
+        let ldt = self.parameters.ldt(padded_height)?;
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
+        let merkle_tree_height = ldt.initial_domain().len().ilog2();
 
         // The trace domain used by the prover is not necessarily of length
         // `padded_height`. Concretely, this is the case if the number of trace
@@ -1304,9 +1354,9 @@ impl Verifier {
 
         // verify low degree of combination polynomial
         profiler!(start "low-degree test");
-        let stir_postscript = stir.verify(&mut proof_stream)?;
-        let revealed_current_row_indices = stir_postscript.first_round_indices();
-        let revealed_ldt_values = &stir_postscript.partial_first_codeword;
+        let ldt_transcript = ldt.verify(&mut proof_stream)?;
+        let revealed_current_row_indices = ldt_transcript.first_round_indices();
+        let revealed_ldt_values = ldt_transcript.partial_first_codeword();
         profiler!(stop "low-degree test");
 
         profiler!(start "check leafs");
@@ -1387,7 +1437,7 @@ impl Verifier {
         profiler!(stop "check leafs");
 
         profiler!(start "linear combination");
-        let num_revealed_elements = stir.num_first_round_queries();
+        let num_revealed_elements = ldt.num_first_round_queries();
         if num_revealed_elements != revealed_current_row_indices.len() {
             return Err(VerificationError::IncorrectNumberOfRowIndices);
         };
@@ -1413,7 +1463,7 @@ impl Verifier {
         ) {
             let main_row = Array1::from(main_row.to_vec());
             let aux_row = Array1::from(aux_row.to_vec());
-            let current_ldt_domain_value = stir.initial_domain().value(row_idx as u32);
+            let current_ldt_domain_value = ldt.initial_domain().value(row_idx as u32);
 
             profiler!(start "main & aux elements" ("CC"));
             let main_and_aux_curr_row_element = Self::linearly_sum_main_and_aux_row(
@@ -1490,7 +1540,9 @@ impl Verifier {
 impl Stark {
     /// Create a new STARK instance.
     ///
-    /// The defining parameters are the `security_level`
+    /// The defining parameters are the [`security_level`](Self::security_level)
+    /// and the log₂ of the [low-degree test's](LowDegreeTest)
+    /// [expansion factor](Self::log2_ldt_expansion_factor).
     ///
     /// # Panics
     ///
@@ -1504,7 +1556,21 @@ impl Stark {
         Stark {
             security_level,
             log2_ldt_expansion_factor,
+            ldt_choice: None,
+            soundness: ProximityRegime::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_ldt_choice(mut self, ldt_choice: LdtChoice) -> Self {
+        self.ldt_choice = Some(ldt_choice);
+        self
+    }
+
+    #[must_use]
+    pub fn with_soundness(mut self, soundness: ProximityRegime) -> Self {
+        self.soundness = soundness;
+        self
     }
 
     /// Prove the correctness of the given [Claim] using the given
@@ -1582,8 +1648,8 @@ impl Stark {
     ///
     /// The length of the [low-degree test domain](ArithmeticDomain) has a major
     /// influence on [proving](Prover::prove) time. It is influenced by the
-    /// length of the [execution trace](AlgebraicExecutionTrace) and the STIR
-    /// expansion factor, a parameter.
+    /// length of the [execution trace](AlgebraicExecutionTrace) and the
+    /// [expansion factor](Self::log2_ldt_expansion_factor), a parameter.
     ///
     /// In principle, the low-degree test domain length is also influenced by
     /// the AIR's degree (see [`air::TARGET_DEGREE`]) as well as the number of
@@ -1602,7 +1668,72 @@ impl Stark {
     /// # Panics
     ///
     /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
-    pub fn stir(&self, padded_height: usize) -> Result<Stir, StirParameterError> {
+    pub fn ldt(&self, padded_height: usize) -> Result<Box<dyn LowDegreeTest>, LdtParameterError> {
+        // see benchmark `proof_size`
+        let heuristic_choice = match (self.soundness, padded_height.ilog2()) {
+            (ProximityRegime::Proven, ph) if ph < 16 => LdtChoice::Fri,
+            (ProximityRegime::Proven, _) => LdtChoice::Stir,
+            (ProximityRegime::Conjectured, ph) if ph < 17 => LdtChoice::Fri,
+            (ProximityRegime::Conjectured, _) => LdtChoice::Stir,
+        };
+
+        let ldt_choice = self.ldt_choice.unwrap_or(heuristic_choice);
+        let ldt = match ldt_choice {
+            LdtChoice::Fri => Box::new(self.fri(padded_height)?) as Box<dyn LowDegreeTest>,
+            LdtChoice::Stir => Box::new(self.stir(padded_height)?) as Box<dyn LowDegreeTest>,
+        };
+
+        Ok(ldt)
+    }
+
+    /// Derive an instance of [FRI](Fri) that's usable for the parameters of
+    /// this STARK.
+    ///
+    /// The parameter `padded_height` must be a power of 2. To ensure proper
+    /// operation of this method, the parameter is
+    /// [rounded](usize::next_power_of_two) before use.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
+    //
+    // This method is similar to [Stark::stir]; see there for further comments.
+    pub fn fri(&self, padded_height: usize) -> Result<Fri, LdtParameterError> {
+        let padded_height = padded_height
+            .checked_next_power_of_two()
+            .expect("padded height drastically exceeds assumed maximum");
+        let log2_padded_height = usize::try_from(padded_height.ilog2()).expect(U32_TO_USIZE_ERR);
+
+        let mut fri_parameters = FriParameters {
+            security_level: self.security_level,
+            soundness: self.soundness,
+            log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
+            log2_high_degree_bound: log2_padded_height,
+        };
+
+        for _ in 0..=ArithmeticDomain::LOG2_MAX_LEN {
+            fri_parameters.log2_high_degree_bound += 1;
+            let fri = Fri::try_from(fri_parameters)?;
+
+            let expansion_factor = fri_parameters.expansion_factor();
+            if Self::is_ldt_initial_domain_large_enough(&fri, padded_height, expansion_factor) {
+                return Ok(fri);
+            }
+        }
+        panic!("internal error: no suitable FRI parameters found; this should be unreachable");
+    }
+
+    /// Derive an instance of [STIR](Stir) that's usable for the parameters of
+    /// this STARK.
+    ///
+    /// The parameter `padded_height` must be a power of 2. To ensure proper
+    /// operation of this method, the parameter is
+    /// [rounded](usize::next_power_of_two) before use.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `padded_height` exceeds `1 << (`[`usize::BITS`]` - 1)`.
+    pub fn stir(&self, padded_height: usize) -> Result<Stir, LdtParameterError> {
         let padded_height = padded_height
             .checked_next_power_of_two()
             .expect("padded height drastically exceeds assumed maximum");
@@ -1617,7 +1748,7 @@ impl Stark {
         let log2_high_degree_bound = log2_padded_height;
         let mut stir_parameters = StirParameters {
             security_level: self.security_level,
-            soundness: ProximityRegime::Proven,
+            soundness: self.soundness,
             log2_folding_factor: 2,
             log2_initial_expansion_factor: self.log2_ldt_expansion_factor,
             log2_high_degree_bound,
@@ -1646,21 +1777,25 @@ impl Stark {
             stir_parameters.log2_high_degree_bound += 1;
             let stir = Stir::try_from(stir_parameters)?;
 
-            let num_trace_randomizers = Self::num_trace_randomizers(&stir);
-            let randomized_trace_len =
-                Self::randomized_trace_len(padded_height, num_trace_randomizers);
             let expansion_factor = stir_parameters.expansion_factor();
-            if stir.initial_domain().len() >= randomized_trace_len * expansion_factor {
+            if Self::is_ldt_initial_domain_large_enough(&stir, padded_height, expansion_factor) {
                 return Ok(stir);
             }
         }
+        panic!("internal error: no suitable STIR parameters found; this should be unreachable");
+    }
 
-        // if no candidate worked, that's a problem we can't recover from…
-        let max_domain_len = ArithmeticDomain::LOG2_MAX_LEN
-            .try_into()
-            .expect(USIZE_TO_U64_ERR);
+    /// Check whether the initial domain of the given low-degree test is large
+    /// enough for the given parameters.
+    fn is_ldt_initial_domain_large_enough(
+        ldt: &dyn LowDegreeTest,
+        padded_height: usize,
+        expansion_factor: usize,
+    ) -> bool {
+        let num_trace_randomizers = Self::num_trace_randomizers(ldt);
+        let randomized_trace_len = Self::randomized_trace_len(padded_height, num_trace_randomizers);
 
-        Err(StirParameterError::InitialDomainTooBig(max_domain_len))
+        ldt.initial_domain().len() >= randomized_trace_len * expansion_factor
     }
 
     /// The number of trace randomizers to use.
@@ -1671,11 +1806,11 @@ impl Stark {
     ///
     /// The type of the trace randomizers must be of the table's corresponding
     /// field, _i.e._, [base field](BFieldElement) elements for the main table
-    /// and [extension field](XFieldElement) elements for the auxiliary table).
-    pub(crate) fn num_trace_randomizers(stir: &Stir) -> usize {
+    /// and [extension field](XFieldElement) elements for the auxiliary table.
+    pub(crate) fn num_trace_randomizers(ldt: &dyn LowDegreeTest) -> usize {
         let num_out_of_domain_rows = 2;
 
-        stir.num_first_round_queries()
+        ldt.num_first_round_queries()
             + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
             + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE
     }
@@ -1709,9 +1844,14 @@ impl Default for Prover {
 
 impl<'a> Arbitrary<'a> for Stark {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let security_level = u.int_in_range(1..=490)?;
-        let log2_expansion_factor = u.int_in_range(1..=8)?;
-        Ok(Self::new(security_level, log2_expansion_factor))
+        let stark = Stark {
+            security_level: u.int_in_range(1..=490)?,
+            log2_ldt_expansion_factor: u.int_in_range(1..=8)?,
+            ldt_choice: Some(LdtChoice::arbitrary(u)?),
+            soundness: ProximityRegime::arbitrary(u)?,
+        };
+
+        Ok(stark)
     }
 }
 
@@ -1764,6 +1904,7 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::fmt::Formatter;
+    use std::ops::RangeInclusive;
 
     use air::AIR;
     use air::challenge_id::ChallengeId::StandardInputIndeterminate;
@@ -1813,6 +1954,7 @@ pub(crate) mod tests {
     use crate::PublicInput;
     use crate::config::CacheDecision;
     use crate::error::InstructionError;
+    use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::TestableProgram;
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
@@ -1902,9 +2044,9 @@ pub(crate) mod tests {
         let mut aux = artifacts.master_aux_table;
         let ch = artifacts.challenges;
         let padded_height = main.trace_table().nrows();
-        let stir = stark.stir(padded_height).unwrap();
-        let num_trace_randos = Stark::num_trace_randomizers(&stir);
-        let ldt_dom = stir.initial_domain();
+        let ldt = stark.ldt(padded_height).unwrap();
+        let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
+        let ldt_dom = ldt.initial_domain();
         let max_degree = stark.max_degree(padded_height, num_trace_randos);
         let domains = ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
         let quot_dom = domains.quotient;
@@ -1949,9 +2091,9 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             let padded_height = main.trace_table().nrows();
-            let stir = stark.stir(padded_height).unwrap();
-            let ldt_dom = stir.initial_domain();
-            let num_trace_randos = Stark::num_trace_randomizers(&stir);
+            let ldt = stark.ldt(padded_height).unwrap();
+            let ldt_dom = ldt.initial_domain();
+            let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
             let max_degree = stark.max_degree(padded_height, num_trace_randos);
             let domains =
                 ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
@@ -1999,11 +2141,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"14428865015799898120,\
-              14868542598403314151,\
-              03444580805507157155,\
-              10914412567008792448,\
-              15160499444300110189",
+            @"00966712734099213509,\
+              04471063432217919059,\
+              10676364812233310601,\
+              12339529344586307741,\
+              10898088727121018963",
         );
     }
 
@@ -2977,6 +3119,15 @@ pub(crate) mod tests {
         test_program_for_halt().use_stark(stark).prove_and_verify();
     }
 
+    #[proptest(cases = 10)]
+    fn prove_and_verify_program_with_every_instruction_with_different_stark_parameters(
+        #[strategy(arb())] stark: Stark,
+    ) {
+        program_executing_every_instruction()
+            .use_stark(stark)
+            .prove_and_verify();
+    }
+
     #[test]
     fn prove_and_verify_fibonacci_100() {
         TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
@@ -3464,5 +3615,124 @@ pub(crate) mod tests {
               13456916676490887543,\
               03342244920869747600",
         );
+    }
+
+    #[test]
+    fn different_ldts_are_mutually_incompatible() {
+        let program = || triton_program!(halt);
+        let claim = Claim::about_program(&program());
+        let non_determinism = || NonDeterminism::default();
+
+        let stark_fri = Stark::low_security().with_ldt_choice(LdtChoice::Fri);
+        let proof_fri = crate::prove(stark_fri, &claim, program(), non_determinism()).unwrap();
+        assert!(crate::verify(stark_fri, &claim, &proof_fri)); // sanity check
+
+        let stark_stir = Stark::low_security().with_ldt_choice(LdtChoice::Stir);
+        let proof_stir = crate::prove(stark_stir, &claim, program(), non_determinism()).unwrap();
+        assert!(crate::verify(stark_stir, &claim, &proof_stir)); // sanity check
+
+        assert!(!crate::verify(stark_fri, &claim, &proof_stir));
+        assert!(!crate::verify(stark_stir, &claim, &proof_fri));
+    }
+
+    #[test]
+    fn different_proximty_regimes_are_mutually_incompatible() {
+        let program = || triton_program!(halt);
+        let claim = Claim::about_program(&program());
+        let non_determinism = || NonDeterminism::default();
+
+        let stark_conjectured = Stark::low_security().with_soundness(ProximityRegime::Conjectured);
+        let proof_conjectured =
+            crate::prove(stark_conjectured, &claim, program(), non_determinism()).unwrap();
+        assert!(crate::verify(stark_conjectured, &claim, &proof_conjectured)); // sanity check
+
+        let stark_proven = Stark::low_security().with_soundness(ProximityRegime::Proven);
+        let proof_proven =
+            crate::prove(stark_proven, &claim, program(), non_determinism()).unwrap();
+        assert!(crate::verify(stark_proven, &claim, &proof_proven)); // sanity check
+
+        assert!(!crate::verify(stark_conjectured, &claim, &proof_proven));
+        assert!(!crate::verify(stark_proven, &claim, &proof_conjectured));
+    }
+
+    #[test]
+    fn different_ldts_are_used_for_different_padded_heights() {
+        let mut stark = Stark::low_security();
+        stark.ldt_choice = None;
+        let stark = stark;
+
+        let mut used_fri = false;
+        let mut used_stir = false;
+        for log2_padded_height in 0..30 {
+            let ldt = stark.ldt(1 << log2_padded_height).unwrap();
+            if ldt.as_any().is::<Fri>() {
+                used_fri = true;
+            } else if ldt.as_any().is::<Stir>() {
+                used_stir = true;
+            } else {
+                unreachable!();
+            }
+        }
+        assert!(used_fri);
+        assert!(used_stir);
+    }
+
+    #[test]
+    fn print_various_ldt_parameters() {
+        const LOG2_PADDED_HEIGHTS: RangeInclusive<usize> = 8..=29;
+
+        let mut fris = ProximityRegime::iter()
+            .map(|s| (s, HashMap::new()))
+            .collect::<HashMap<_, _>>();
+        let mut stirs = ProximityRegime::iter()
+            .map(|s| (s, HashMap::new()))
+            .collect::<HashMap<_, _>>();
+        for (soundness, h) in ProximityRegime::iter().cartesian_product(LOG2_PADDED_HEIGHTS) {
+            let stark = Stark::default().with_soundness(soundness);
+            let fri = stark.fri(1 << h).unwrap();
+            let stir = stark.stir(1 << h).unwrap();
+            fris.get_mut(&soundness).unwrap().insert(h, fri);
+            stirs.get_mut(&soundness).unwrap().insert(h, stir);
+        }
+
+        let print_table = |title: &str,
+                           rows: RangeInclusive<usize>,
+                           accessor: &dyn Fn(&dyn LdtStats) -> usize| {
+            println!(
+                "## {title}\n| log₂(padded height) | {0} {2} | {0} {3} | {1} {2} | {1} {3} |",
+                "FRI", "STIR", "(proven)", "(conjectured)",
+            );
+            println!(
+                "|-{:->19}:|-{:->12}:|-{:->17}:|-{:->13}:|-{:->18}:|",
+                "", "", "", "", ""
+            );
+            for r in rows {
+                println!(
+                    "| {r:>19} | {:>12} | {:>17} | {:>13} | {:>18} |",
+                    accessor(&fris[&ProximityRegime::Proven][&r]).to_string(),
+                    accessor(&fris[&ProximityRegime::Conjectured][&r]).to_string(),
+                    accessor(&stirs[&ProximityRegime::Proven][&r]).to_string(),
+                    accessor(&stirs[&ProximityRegime::Conjectured][&r]).to_string(),
+                );
+            }
+            println!("\n");
+        };
+
+        print_table("Number of Rounds", LOG2_PADDED_HEIGHTS, &|s| s.num_rounds());
+        print_table(
+            "Number of Queries (first round)",
+            LOG2_PADDED_HEIGHTS,
+            &|s| s.num_first_round_queries(),
+        );
+        print_table("Number of Queries (total)", LOG2_PADDED_HEIGHTS, &|s| {
+            s.num_total_queries()
+        });
+        print_table("log₂(initial domain len)", LOG2_PADDED_HEIGHTS, &|s| {
+            s.log2_initial_domain_len()
+        });
+        print_table("log₂(final degree + 1)", LOG2_PADDED_HEIGHTS, &|s| {
+            s.log2_final_degree_plus_1()
+        });
+        print_table("proof size [KiB]", 8..=20, &|s| s.proof_size());
     }
 }

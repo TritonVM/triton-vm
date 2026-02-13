@@ -173,8 +173,8 @@ impl ArithmeticDomain {
     /// codeword for the given target domain.
     ///
     /// This is usually done to increase the amount of “redundancy” contained
-    /// in the resulting codeword. This, in turn, enables modern low-degree
-    /// tests.
+    /// in the resulting codeword. This, in turn, enables modern
+    /// [low-degree tests](crate::low_degree_test::LowDegreeTest).
     /// However, the target domain may (in principle) be shorter than the
     /// source domain. If the target domain is shorter than or equal to the
     /// polynomial’s degree, information will be lost.

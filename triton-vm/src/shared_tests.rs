@@ -15,11 +15,11 @@ use twenty_first::prelude::*;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::VMError;
+use crate::low_degree_test::stir::StirResponse;
 use crate::prelude::*;
 use crate::profiler::profiler;
+use crate::proof_item::AuthenticationStructure;
 use crate::stark::ProverDomains;
-use crate::stir::AuthenticationStructure;
-use crate::stir::StirResponse;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
@@ -193,11 +193,11 @@ impl TestableProgram {
         let_assert!(Ok(padded_height) = proof.padded_height());
         assert!(aet.padded_height() == padded_height);
 
-        let stir = stark.stir(padded_height).unwrap();
+        let ldt = stark.ldt(padded_height).unwrap();
         let profile = profile
             .with_cycle_count(aet.height_of_table(TableId::Processor))
             .with_padded_height(padded_height)
-            .with_ldt_domain_len(stir.initial_domain().len());
+            .with_ldt_domain_len(ldt.initial_domain().len());
         println!("{profile}");
     }
 
@@ -215,9 +215,9 @@ impl TestableProgram {
 
         // construct master main table
         let padded_height = aet.padded_height();
-        let stir = stark.stir(padded_height).unwrap();
-        let num_trace_randomizers = Stark::num_trace_randomizers(&stir);
-        let ldt_domain = stir.initial_domain();
+        let ldt = stark.ldt(padded_height).unwrap();
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
+        let ldt_domain = ldt.initial_domain();
         let max_degree = stark.max_degree(padded_height, num_trace_randomizers);
         let domains =
             ProverDomains::derive(padded_height, num_trace_randomizers, ldt_domain, max_degree);

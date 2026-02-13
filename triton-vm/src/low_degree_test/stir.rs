@@ -17,21 +17,23 @@ use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::error::StirParameterError;
-use crate::error::StirProvingError;
-use crate::error::StirVerificationError;
+use crate::error::LdtParameterError;
+use crate::error::LdtProvingError;
+use crate::error::LdtVerificationError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
+use crate::low_degree_test::LowDegreeTest;
+use crate::low_degree_test::ProverResult;
+use crate::low_degree_test::ProximityRegime;
+use crate::low_degree_test::ReedSolomonCode;
+use crate::low_degree_test::SetupResult;
+use crate::low_degree_test::VerifierPostscript;
+use crate::low_degree_test::VerifierResult;
 use crate::profiler::profiler;
+use crate::proof_item::AuthenticationStructure;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::master_table::BfeSlice;
-
-pub type AuthenticationStructure = Vec<Digest>;
-
-type SetupResult<T> = Result<T, StirParameterError>;
-type ProverResult<T> = Result<T, StirProvingError>;
-type VerifierResult<T> = Result<T, StirVerificationError>;
 
 /// An [`ArithmeticDomain`] can have at most 2^32 elements. Converting a usize
 /// that represents a (valid) domain index to a u32 can never fail.
@@ -58,9 +60,7 @@ const QUOTIENT_SET_LEN_TO_U32_ERR: &str =
 pub struct StirParameters {
     /// The desired security level in bits.
     ///
-    /// Concretely, the system
-    /// - is perfectly complete, and
-    /// - has soundness error 2^(-security_level).
+    /// See also: [`Stark::security_level`](crate::Stark::security_level).
     #[cfg_attr(test, strategy(16_usize..=192))]
     pub security_level: usize,
 
@@ -95,9 +95,9 @@ pub struct StirParameters {
     ///
     /// In other words, the low-degreeness of polynomials with degree
     /// `2^log2_high_degree_bound` (and higher) cannot be [proven](Stir::prove)
-    /// (in a way that the [verifier](Stir::verify) accepts). On the other hand,
-    /// the low-degreeness of polynomials with degree
-    /// `2^log2_high_degree_bound - 1` (and lower) _can_ be proven.
+    /// (in a way that the [verifier](Stir::verify) accepts with high
+    /// probability). On the other hand, the low-degreeness of polynomials with
+    /// degree `2^log2_high_degree_bound - 1` (and lower) _can_ be proven.
     ///
     /// Must be greater than or equal to the (log₂ of the)
     /// [folding factor](Self::log2_folding_factor).
@@ -105,18 +105,10 @@ pub struct StirParameters {
     pub log2_high_degree_bound: usize,
 }
 
-/// The “Shift to Improve Rate” (“[STIR][stir]”) low-degree test (“LDT”).
-///
-/// STIR is an Interactive Oracle Proof of Proximity for Reed-Solomon codes.
-/// When combined with the [BCS] transform and the [Fiat-Shamir] heuristic (as
-/// is done here), the result is a non-interactive system for proving that the
-/// initial input codeword corresponds to a polynomial of low degree.
-///
-/// The central methods are [prove](Self::prove) and [verify](Self::verify).
+/// The “Shift to Improve Rate” (“[STIR][stir]”) low-degree test
+/// (“[LDT](LowDegreeTest)”).
 ///
 /// [stir]: https://eprint.iacr.org/2024/390.pdf
-/// [BCS]: https://eprint.iacr.org/2016/116
-/// [Fiat-Shamir]: https://link.springer.com/chapter/10.1007/3-540-47721-7_12
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Stir {
     /// The domain for the initial codeword of the [prover](Stir::prove).
@@ -153,35 +145,6 @@ pub struct Stir {
     final_degree: usize,
 }
 
-/// The assumption (or lack thereof) you are willing to make about the proximity
-/// gap of Reed-Solomon codes.
-///
-/// This choice might influence the soundness of [STIR](Stir). In particular, it
-/// influences the derivation of additional parameters used in STIR, like the
-/// [number of queries](RoundPostscript::queried_indices) per round (called
-/// “t_i” in the paper). Generally, the more “daring” the assumption, the lower
-/// the runtime cost and proof size, but the higher the risk that the resulting
-/// system is unsound due to as-of-yet undiscovered attacks.
-///
-/// The [`Proven`](Self::Proven) variant is generally recommended.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub enum ProximityRegime {
-    /// Only use proven results.
-    ///
-    /// In particular, assume that the distance of each oracle is within the
-    /// Johnson bound, (1 - √ρ).
-    #[default]
-    Proven,
-
-    /// Use the conjecture that Reed-Solomon codes are list-decodable up to
-    /// capacity and have correlated agreement up to capacity.
-    ///
-    /// In particular, assume that the distance of each oracle is within the
-    /// capacity bound, (1 - ρ).
-    Conjectured,
-}
-
 /// A [STIR](Stir) round's revealed values together with an authentication
 /// structure.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BFieldCodec, Arbitrary)]
@@ -207,29 +170,7 @@ pub struct StirResponse {
 
 /// A postscript of a [STIR verification](Stir::verify).
 ///
-/// Includes the following data used or generated by the verifier:
-/// - the [first (partially revealed) codeword][first_codeword] and the
-///   [corresponding indices][first_queries]
-/// - sampled randomness (any [indices](ProofStream::sample_indices) and
-///   [scalars](ProofStream::sample_scalars))
-/// - [authentication structures][auth_struct]
-///
-/// This postscript serves one main and one secondary purpose.
-/// 1. Primarily, the [partially revealed first codeword][first_codeword] in
-///    combination with the [indices queried in the first round][first_queries]
-///    help link the polynomial of which STIR proves the low degree into a
-///    greater context, like a STARK.
-/// 2. Secondarily, the sampled randomness and used authentication structures
-///    help operate, develop, and test other STIR implementations that try to
-///    mimic this implementation exactly.
-///
-/// Note that the verifier uses and computes additional intermediate artifacts
-/// as part of the verification process. However, since those serve neither the
-/// primary nor the secondary purpose of this type, they are not included here.
-///
-/// [first_codeword]: Self::partial_first_codeword
-/// [first_queries]: Self::first_round_indices
-/// [auth_struct]: MerkleTreeInclusionProof::authentication_structure
+/// For additional details, see [`VerifierPostscript`].
 //
 // Marked `#[non_exhaustive]` because
 // 1. additional fields might be added in the future and I don't want that to be
@@ -453,7 +394,7 @@ struct QuotientingData {
 }
 
 impl TryFrom<StirParameters> for Stir {
-    type Error = StirParameterError;
+    type Error = LdtParameterError;
 
     fn try_from(params: StirParameters) -> SetupResult<Self> {
         params.try_into_stir()
@@ -495,24 +436,24 @@ impl StirParameters {
     /// Create a new STIR instance by deriving the round parameters.
     fn try_into_stir(&self) -> SetupResult<Stir> {
         if self.log2_folding_factor < 2 {
-            return Err(StirParameterError::TooSmallLog2FoldingFactor(
+            return Err(LdtParameterError::TooSmallLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         }
         if self.log2_initial_expansion_factor == 0 {
-            return Err(StirParameterError::TooSmallInitialExpansionFactor);
+            return Err(LdtParameterError::TooSmallInitialExpansionFactor);
         }
         if self.log2_high_degree_bound < self.log2_folding_factor {
-            return Err(StirParameterError::TooLowDegreeOfHighDegreePolynomials);
+            return Err(LdtParameterError::TooLowDegreeOfHighDegreePolynomials);
         }
 
         let Ok(log2_folding_factor) = u32::try_from(self.log2_folding_factor) else {
-            return Err(StirParameterError::TooBigLog2FoldingFactor(
+            return Err(LdtParameterError::TooBigLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         };
         let Some(folding_factor) = 1_usize.checked_shl(log2_folding_factor) else {
-            return Err(StirParameterError::TooBigLog2FoldingFactor(
+            return Err(LdtParameterError::TooBigLog2FoldingFactor(
                 self.log2_folding_factor,
             ));
         };
@@ -631,7 +572,7 @@ impl StirParameters {
     // but hey, better safe than sorry.
     fn initial_domain(&self) -> SetupResult<ArithmeticDomain> {
         let as_u64 = |int| u64::try_from(int).expect(USIZE_TO_U64_ERR);
-        let error = |x| Err(StirParameterError::InitialDomainTooBig(x));
+        let error = |x| Err(LdtParameterError::InitialDomainTooBig(x));
 
         let log2_high_degree_bound = as_u64(self.log2_high_degree_bound);
         let log2_expansion_factor = as_u64(self.log2_initial_expansion_factor);
@@ -647,7 +588,7 @@ impl StirParameters {
         };
 
         let domain = ArithmeticDomain::of_length(domain_len)
-            .map_err(|_| StirParameterError::InitialDomainTooBig(log2_domain_len.into()))?
+            .map_err(|_| LdtParameterError::InitialDomainTooBig(log2_domain_len.into()))?
             .with_offset(BFieldElement::generator());
 
         Ok(domain)
@@ -660,7 +601,7 @@ impl StirParameters {
         &self,
         log2_domain_size: u32,
         log2_expansion_factor: usize,
-    ) -> Result<usize, StirParameterError> {
+    ) -> Result<usize, LdtParameterError> {
         let num_uniques = self.num_unique_in_domain_queries(log2_expansion_factor)?;
 
         // it doesn't make sense to request more unique indices than there are
@@ -686,11 +627,6 @@ impl StirParameters {
     //
     //   (1-δ)^t ⩽ 2^-security_level
     //
-    // Under proven list-decoding bounds, we have δ = 1 - √ρ - η,
-    // under conjectured list-decoding bounds, we have δ = 1 - ρ - η,
-    // where η (the “slackness factor”) is the gap between the chosen bound and
-    // δ (the “proximity parameter”) and is defined in the corresponding method.
-    //
     // With all of these ingredients, we solve for repetition parameter t by
     // taking the log₂ on both sides:
     //   t·log₂(1-δ) ⩽ -security_level
@@ -698,79 +634,14 @@ impl StirParameters {
     // Since 0 < δ < 1, we know that log₂(1 - δ) < 0:
     //             t ⩾ -security_level / log₂(1-δ)
     fn num_unique_in_domain_queries(&self, log2_expansion_factor: usize) -> SetupResult<usize> {
-        let proximity_parameter = self.proximity_parameter(log2_expansion_factor)?;
+        let rs_code = ReedSolomonCode {
+            soundness: self.soundness,
+            log2_expansion_factor,
+        };
+        let proximity_parameter = rs_code.proximity_parameter()?;
         let num_queries = -(self.security_level as f64) / (1.0 - proximity_parameter).log2();
 
         Ok(num_queries.ceil() as usize)
-    }
-
-    /// The proximity parameter of the Reed-Solomon code.
-    ///
-    /// This is the δ in a (δ, ℓ)-list-decodable Reed-Solomon code. It is the
-    /// threshold for which words are considered “far” from the code.
-    ///
-    /// Note that there are a range of valid values for δ. This method makes a
-    /// concrete choice; see also [`Self::log2_slackness_factor`].
-    fn proximity_parameter(&self, log2_expansion_factor: usize) -> SetupResult<f64> {
-        let log2_slackness_factor = self.log2_slackness_factor(log2_expansion_factor);
-        let slackness_factor = 2_f64.powf(log2_slackness_factor);
-
-        let Ok(log2_expansion_factor) = u32::try_from(log2_expansion_factor) else {
-            return Err(StirParameterError::TooBigInitialExpansionFactor);
-        };
-        let Some(expansion_factor) = 1_u32.checked_shl(log2_expansion_factor) else {
-            return Err(StirParameterError::TooBigInitialExpansionFactor);
-        };
-        let rate = 1.0 / f64::from(expansion_factor);
-        let proximity_parameter = match self.soundness {
-            ProximityRegime::Proven => 1.0 - rate.sqrt() - slackness_factor,
-            ProximityRegime::Conjectured => 1.0 - rate - slackness_factor,
-        };
-
-        Ok(proximity_parameter)
-    }
-
-    /// The (log₂ of the) distance between the proximity parameter δ and the
-    /// [chosen bound](ProximityRegime).
-    ///
-    /// This parameter is often called η in the context of Reed-Solomon codes.
-    /// In this implementation, it is not a parameter; the choice has been
-    /// fixed.
-    ///
-    /// No matter the [proximity regime](ProximityRegime), the upper bound on
-    /// the [list size](Self::log2_list_size) only holds for proximity
-    /// parameters δ that are slightly below the bound. This function defines
-    /// just how big the distance between the proximity parameter and the bound
-    /// is.
-    ///
-    /// For example, if the chosen bound is the
-    /// [Johnson bound](ProximityRegime::Proven), then δ ∈ (0, 1 - √ρ),
-    /// and we chose δ = 1 - √ρ - η.
-    /// For the [conjectured bound](ProximityRegime::Conjectured),
-    /// δ ∈ (0, 1 - ρ), and we chose δ = 1 - ρ - η. In either case, η is defined
-    /// in this method.
-    //
-    // Giacomo thinks this can be set in a better way. Maybe it makes more sense
-    // if it's multiplicative? In either case, it's based on some heuristic by
-    // Giacomo that Ferdinand doesn't fully understand. It might be interesting
-    // to explore different things at some point.
-    //
-    // According to Giacomo: “Funnily enough, [η = ρ/10 or η = √ρ/10] avoids
-    // all the new attacks on proximity gaps 😉”. Presumably, division by 20
-    // also works.
-    //
-    // A high-level overview of the new attacks mentioned above:
-    // https://blog.zksecurity.xyz/posts/proximity-conjecture/
-    fn log2_slackness_factor(&self, log2_expansion_factor: usize) -> f64 {
-        let log2_expansion_factor = log2_expansion_factor as f64;
-        let log2_rho_or_sqrt_rho = match self.soundness {
-            ProximityRegime::Proven => 0.5 * -log2_expansion_factor,
-            ProximityRegime::Conjectured => -log2_expansion_factor,
-        };
-
-        // This is where the heuristic kicks in:
-        // log₂(ρ/20) or log₂(√ρ/20)
-        log2_rho_or_sqrt_rho - core::f64::consts::LOG2_10 - 1.0
     }
 
     /// The total amount of in-domain queries to make, including error margin.
@@ -964,41 +835,15 @@ impl StirParameters {
     // Long story short:
     //   s ⩾ (security_level - 1 + 2·log₂(ℓ)) / (log₂(|𝔽|) - log₂(d))
     fn num_ood_queries(&self, log2_poly_degree: usize, log2_expansion_factor: usize) -> usize {
-        let log2_list_size = self.log2_list_size(log2_poly_degree, log2_expansion_factor);
+        let rs_code = ReedSolomonCode {
+            soundness: self.soundness,
+            log2_expansion_factor,
+        };
+        let log2_list_size = rs_code.log2_list_size(log2_poly_degree);
         let num_ood_queries = (self.security_level as f64 - 1.0 + 2.0 * log2_list_size)
             / (Self::LOG2_FIELD_SIZE - log2_poly_degree) as f64;
 
         num_ood_queries.ceil() as usize
-    }
-
-    /// The list size of the Reed-Solomon code.
-    ///
-    /// The Reed-Solomon code in question is defined by the given polynomial
-    /// degree and the given rate. The [proximity
-    /// parameter](Self::proximity_parameter) δ is implied by the [slackness
-    /// factor](Self::log2_slackness_factor) η.
-    ///
-    /// For the [Johnson bound](ProximityRegime::Proven), it is shown that
-    /// the Reed-Solomon codes are (1-√ρ-η, 1/(2·√ρ·η))-list decodable. In
-    /// other words, the list size for δ = 1-√ρ-η is
-    /// ℓ = √(expansion_factor)/(2·η).
-    ///
-    /// For the [conjectured bound](ProximityRegime::Conjectured), it is
-    /// assumed that Reed-Solomon codes are (1-ρ-η, d/(ρ·η))-list decodable. In
-    /// other words, the list size for δ = 1-ρ-η is
-    /// ℓ = degree·expansion_factor/η.
-    /// See also Conjecture 5.6 in the STIR paper.
-    fn log2_list_size(&self, log2_poly_degree: usize, log2_expansion_factor: usize) -> f64 {
-        let log2_slackness_factor = self.log2_slackness_factor(log2_expansion_factor);
-
-        match self.soundness {
-            ProximityRegime::Proven => {
-                log2_expansion_factor as f64 / 2. - 1. - log2_slackness_factor
-            }
-            ProximityRegime::Conjectured => {
-                (log2_poly_degree + log2_expansion_factor) as f64 - log2_slackness_factor
-            }
-        }
     }
 }
 
@@ -1028,46 +873,20 @@ fn log2_binomial_coefficient(a: u64, b: u64) -> f64 {
     log2_binom
 }
 
-impl Stir {
-    /// (Try to) construct a new STIR instance for the given initial parameters.
-    ///
-    /// It is equivalent to use the provided trait implementation of
-    /// [`TryFrom<StirParameters> for Stir`](TryFrom).
-    ///
-    /// # Errors
-    ///
-    /// Errors if any of the pre-conditions documented in the [StirParameters]
-    /// are violated.
-    pub fn new(params: StirParameters) -> SetupResult<Self> {
-        params.try_into()
-    }
+impl super::private::Seal for Stir {}
 
-    /// The domain for the initial codeword of the [prover](Self::prove).
-    pub fn initial_domain(&self) -> ArithmeticDomain {
+impl LowDegreeTest for Stir {
+    fn initial_domain(&self) -> ArithmeticDomain {
         self.initial_domain
     }
 
-    /// The number of in-domain queries made in the first round.
-    ///
-    /// This value is particularly relevant when using STIR as a sub-protocol in
-    /// a Zero-Knowledge protocol: the number of “masking” or “randomizing”
-    /// values must be at least as big as this number to uphold the Zero-
-    /// Knowledge guarantees.
-    pub fn num_first_round_queries(&self) -> usize {
+    fn num_first_round_queries(&self) -> usize {
         self.round_queries
             .first()
             .map_or(self.final_num_in_domain_queries, |query| query.in_domain)
     }
 
-    /// Prove that the given codeword corresponds to a polynomial of
-    /// [low degree](StirParameters::max_degree) and populate the proof stream
-    /// with the generated proof artifacts.
-    ///
-    /// Returns the indices the verifier queried in the first round. If STIR is
-    /// used in a larger context (like a STARK), then these indices can be used
-    /// to prove that the codeword of low degree actually corresponds to some
-    /// codeword of interest, not just any codeword.
-    pub fn prove(
+    fn prove(
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream,
@@ -1075,7 +894,7 @@ impl Stir {
         profiler!(start "initialize");
         let mut domain = self.initial_domain;
         if domain.len() != codeword.len() {
-            return Err(StirProvingError::InitialCodewordMismatch {
+            return Err(LdtProvingError::InitialCodewordMismatch {
                 domain_len: domain.len(),
                 codeword_len: codeword.len(),
             });
@@ -1160,7 +979,7 @@ impl Stir {
         profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
         let poly = Self::fold_polynomial(&poly, folding_factor, folding_randomness);
-        proof_stream.enqueue(ProofItem::StirPolynomial(poly));
+        proof_stream.enqueue(ProofItem::Polynomial(poly));
 
         let folded_domain = domain.pow(folding_factor).unwrap();
         let queried_indices =
@@ -1177,45 +996,7 @@ impl Stir {
         Ok(first_round_queried_indices.unwrap_or(queried_indices))
     }
 
-    /// # Panics
-    ///
-    /// Panics if the folding factor is 0.
-    fn fold_polynomial<FF>(
-        poly: &Polynomial<FF>,
-        folding_factor: usize,
-        folding_randomness: FF,
-    ) -> Polynomial<'static, FF>
-    where
-        FF: FiniteField,
-    {
-        let folded_coefficients = poly
-            .coefficients()
-            .chunks(folding_factor)
-            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(folding_randomness))
-            .collect();
-
-        Polynomial::new(folded_coefficients)
-    }
-
-    fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
-        let next_domain = domain
-            .pow(1 << StirParameters::LOG2_DOMAIN_SHRINKAGE)
-            .unwrap();
-
-        next_domain.with_offset(next_domain.offset() * domain.offset())
-    }
-
-    /// Verify that the polynomial committed to via the proof stream is of low
-    /// degree.
-    ///
-    /// Returns a [postscript](Postscript), from which the
-    /// [partial codeword of the first round][elems] as well as their
-    /// [corresponding indices][idx] can be fetched. These revealed elements
-    /// are relevant when using STIR in a bigger context.
-    ///
-    /// [elems]: Postscript::partial_first_codeword
-    /// [idx]: Postscript::first_round_indices
-    pub fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<Postscript> {
+    fn verify(&self, proof_stream: &mut ProofStream) -> VerifierResult<VerifierPostscript> {
         profiler!(start "initialize");
         let mut partial_first_codeword = None;
         let mut previous_quotienting_data = None;
@@ -1281,14 +1062,14 @@ impl Stir {
 
         profiler!(start "final round");
         let folding_randomness = proof_stream.sample_scalars(1)[0];
-        let poly = proof_stream.dequeue()?.try_into_stir_polynomial()?;
+        let poly = proof_stream.dequeue()?.try_into_polynomial()?;
 
         // for the low, low chance that the final polynomial is the zero
         // polynomial, we treat it as if it was a constant polynomial when
         // checking the degree
         let poly_degree = poly.degree().try_into().unwrap_or(0);
         if poly_degree > self.final_degree {
-            return Err(StirVerificationError::LastRoundPolynomialHasTooHighDegree);
+            return Err(LdtVerificationError::LastRoundPolynomialHasTooHighDegree);
         }
 
         let num_queries = self.final_num_in_domain_queries;
@@ -1307,7 +1088,7 @@ impl Stir {
             .zip(final_evaluations)
             .any(|(answer, evaluation)| answer != evaluation)
         {
-            return Err(StirVerificationError::LastRoundPolynomialEvaluationMismatch);
+            return Err(LdtVerificationError::LastRoundPolynomialEvaluationMismatch);
         }
 
         let final_round_postscript = FinalRoundPostscript {
@@ -1326,7 +1107,55 @@ impl Stir {
         };
         profiler!(stop "final round");
 
-        Ok(postscript)
+        Ok(VerifierPostscript::Stir(postscript))
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl Stir {
+    /// (Try to) construct a new STIR instance for the given initial parameters.
+    ///
+    /// It is equivalent to use the provided trait implementation of
+    /// [`TryFrom<StirParameters> for Stir`](TryFrom).
+    ///
+    /// # Errors
+    ///
+    /// Errors if any of the pre-conditions documented in the [`StirParameters`]
+    /// are violated.
+    pub fn new(params: StirParameters) -> SetupResult<Self> {
+        params.try_into()
+    }
+
+    /// # Panics
+    ///
+    /// Panics if the folding factor is 0.
+    fn fold_polynomial<FF>(
+        poly: &Polynomial<FF>,
+        folding_factor: usize,
+        folding_randomness: FF,
+    ) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField,
+    {
+        let folded_coefficients = poly
+            .coefficients()
+            .chunks(folding_factor)
+            .map(|chunk| Polynomial::new_borrowed(chunk).evaluate(folding_randomness))
+            .collect();
+
+        Polynomial::new(folded_coefficients)
+    }
+
+    fn next_round_domain(domain: ArithmeticDomain) -> ArithmeticDomain {
+        let next_domain = domain
+            .pow(1 << StirParameters::LOG2_DOMAIN_SHRINKAGE)
+            .unwrap();
+
+        next_domain.with_offset(next_domain.offset() * domain.offset())
     }
 
     fn extract_inclusion_proof(
@@ -1347,7 +1176,7 @@ impl Stir {
             .map(|&index| index % folded_domain.len())
             .unique();
         if queried_leafs.len() != folded_indices.clone().count() {
-            return Err(StirVerificationError::IncorrectNumberOfRevealedLeaves);
+            return Err(LdtVerificationError::IncorrectNumberOfRevealedLeaves);
         }
 
         // Because of above length check, we know that the hash map contains
@@ -1634,7 +1463,7 @@ impl FoldingPolynomialQueriesInclusionProof {
         inclusion_proof
             .verify(merkle_root)
             .then_some(self.queries)
-            .ok_or(StirVerificationError::BadMerkleAuthenticationPath)
+            .ok_or(LdtVerificationError::BadMerkleAuthenticationPath)
     }
 
     fn queried_indices(&self) -> impl Iterator<Item = usize> + '_ {
@@ -1651,11 +1480,12 @@ mod tests {
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
 
+    use super::*;
     use crate::arithmetic_domain::tests::arbitrary_domain;
+    use crate::error::U32_TO_USIZE_ERR;
+    use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::DigestCorruptor;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
-
-    use super::*;
 
     /// A type alias exclusive to this test module.
     type XfePoly = Polynomial<'static, XFieldElement>;
@@ -1670,6 +1500,32 @@ mod tests {
         }
 
         type Strategy = BoxedStrategy<Self>;
+    }
+
+    impl LdtStats for Stir {
+        fn num_rounds(&self) -> usize {
+            self.round_queries.len()
+        }
+
+        fn num_total_queries(&self) -> usize {
+            self.round_queries.iter().map(|q| q.total()).sum::<usize>()
+                + self.final_num_in_domain_queries
+        }
+
+        fn log2_initial_domain_len(&self) -> usize {
+            self.initial_domain
+                .len()
+                .ilog2()
+                .try_into()
+                .expect(U32_TO_USIZE_ERR)
+        }
+
+        fn log2_final_degree_plus_1(&self) -> usize {
+            (self.final_degree + 1)
+                .ilog2()
+                .try_into()
+                .expect(U32_TO_USIZE_ERR)
+        }
     }
 
     #[test]
@@ -1846,7 +1702,7 @@ mod tests {
 
         let_assert!(Err(err) = stir.prove(&codeword, &mut proof_stream));
         let_assert!(
-            StirProvingError::InitialCodewordMismatch {
+            LdtProvingError::InitialCodewordMismatch {
                 domain_len,
                 codeword_len
             } = err
@@ -1859,7 +1715,7 @@ mod tests {
     fn invalid_parameter_initial_expansion_factor_1_is_rejected(mut params: StirParameters) {
         params.log2_initial_expansion_factor = 0;
         let_assert!(Err(err) = Stir::try_from(params));
-        prop_assert_eq!(StirParameterError::TooSmallInitialExpansionFactor, err);
+        prop_assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
     #[proptest]
@@ -1869,7 +1725,7 @@ mod tests {
     ) {
         params.log2_initial_expansion_factor = bad_log2_initial_expansion_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
+        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     #[proptest]
@@ -1879,7 +1735,7 @@ mod tests {
     ) {
         params.log2_folding_factor = bad_log2_folding_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::TooSmallLog2FoldingFactor(f) = err);
+        let_assert!(LdtParameterError::TooSmallLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1891,7 +1747,7 @@ mod tests {
         params.log2_folding_factor = bad_log2_folding_factor;
         params.log2_high_degree_bound = bad_log2_folding_factor;
         let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(StirParameterError::TooBigLog2FoldingFactor(f) = err);
+        let_assert!(LdtParameterError::TooBigLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1909,7 +1765,7 @@ mod tests {
             };
             let err = Stir::try_from(params).unwrap_err();
 
-            assert!(StirParameterError::TooBigLog2FoldingFactor(factor) == err);
+            assert!(LdtParameterError::TooBigLog2FoldingFactor(factor) == err);
         }
 
         assert_too_big_folding_factor_is_rejected(u32::MAX as usize);
@@ -1923,7 +1779,7 @@ mod tests {
     ) {
         params.log2_high_degree_bound = bad_log2_high_degree_bound;
         let_assert!(Err(err) = Stir::try_from(params));
-        prop_assert_eq!(StirParameterError::TooLowDegreeOfHighDegreePolynomials, err);
+        prop_assert_eq!(LdtParameterError::TooLowDegreeOfHighDegreePolynomials, err);
     }
 
     #[proptest]
@@ -1933,7 +1789,7 @@ mod tests {
     ) {
         params.log2_high_degree_bound = log2_high_degree_bound;
         let_assert!(Err(err) = params.initial_domain());
-        let_assert!(StirParameterError::InitialDomainTooBig(_) = err);
+        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     /// The proptest [`too_big_initial_domain_doesnt_cause_crash`] does not
@@ -1949,7 +1805,7 @@ mod tests {
             log2_high_degree_bound: two_thirds_u64_max,
         };
         let_assert!(Err(err) = params.initial_domain());
-        assert!(StirParameterError::InitialDomainTooBig(u64::MAX) == err);
+        assert!(LdtParameterError::InitialDomainTooBig(u64::MAX) == err);
     }
 
     #[proptest]
@@ -1985,7 +1841,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         stir.prove(&zero_poly, &mut proof_stream).unwrap();
         proof_stream.reset_sponge();
-        let postscript = stir.verify(&mut proof_stream).unwrap();
+        let_assert!(VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream).unwrap());
 
         // the sanity check
         assert!(postscript.rounds.len() > 0);
@@ -2017,7 +1873,7 @@ mod tests {
         let prover_sponge = proof_stream.sponge.clone();
 
         proof_stream.reset_sponge();
-        let postscript = stir.verify(&mut proof_stream).unwrap();
+        let_assert!(VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream)?);
         let verifier_sponge = proof_stream.sponge;
 
         prop_assert_eq!(prover_sponge, verifier_sponge);
@@ -2071,7 +1927,7 @@ mod tests {
                 (MerkleRoot(p), MerkleRoot(v)) => prop_assert_eq!(p, v),
                 (StirOutOfDomainValues(p), StirOutOfDomainValues(v)) => prop_assert_eq!(p, v),
                 (StirResponse(p), StirResponse(v)) => prop_assert_eq!(p, v),
-                (StirPolynomial(p), StirPolynomial(v)) => prop_assert_eq!(p, v),
+                (Polynomial(p), Polynomial(v)) => prop_assert_eq!(p, v),
                 _ => panic!("Unknown items.\nProver: {prover_item:?}\nVerifier: {verifier_item:?}"),
             }
         }
@@ -2113,7 +1969,7 @@ mod tests {
                     corrupt_slice(list, vec_index / num_lists, random_xfe)?;
                 }
             }
-            ProofItem::StirPolynomial(poly) => {
+            ProofItem::Polynomial(poly) => {
                 let mut coefficients = poly.coefficients().to_vec();
                 corrupt_slice(&mut coefficients, vec_index, random_xfe)?;
                 *poly = Polynomial::new(coefficients);
