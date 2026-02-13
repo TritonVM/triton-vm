@@ -1343,12 +1343,11 @@ mod tests {
     use ndarray::Array2;
     use num_traits::ConstZero;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use strum::EnumCount;
     use strum::EnumIter;
     use strum::IntoEnumIterator;
     use strum::VariantNames;
-    use test_strategy::proptest;
     use twenty_first::math::b_field_element::BFieldElement;
     use twenty_first::math::traits::FiniteField;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
@@ -1361,11 +1360,13 @@ mod tests {
     use crate::shared_tests::TestableProgram;
     use crate::table::degree_lowering::DegreeLoweringAuxColumn;
     use crate::table::degree_lowering::DegreeLoweringMainColumn;
+    use crate::tests::proptest;
+    use crate::tests::test;
     use crate::triton_program;
 
     use super::*;
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn main_table_width_is_correct() {
         let master_main_table = TestableProgram::new(triton_program!(halt))
             .generate_proof_artifacts()
@@ -1409,7 +1410,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn aux_table_width_is_correct() {
         let master_aux_table = TestableProgram::new(triton_program!(halt))
             .generate_proof_artifacts()
@@ -1453,7 +1454,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn trace_tables_are_in_column_major_order() {
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
 
@@ -1464,7 +1465,7 @@ mod tests {
         assert!(aux.column(0).as_slice().is_some());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn fri_domain_table_row_hashing_is_independent_of_fri_table_caching() {
         fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
         where
@@ -1490,8 +1491,8 @@ mod tests {
         row_hashes_are_identical(artifacts.master_aux_table);
     }
 
-    #[proptest]
-    fn revealing_rows_is_independent_of_fri_table_caching(
+    #[macro_rules_attr::apply(proptest)]
+    fn revealing_rows_is_independent_of_table_caching(
         #[filter(!#row_indices.is_empty())] row_indices: Vec<usize>,
     ) {
         fn revealed_rows_are_identical<FF>(
@@ -1526,7 +1527,7 @@ mod tests {
         revealed_rows_are_identical(aux_table, &row_indices);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn zerofiers_are_correct() {
         let big_order = 16;
         let big_offset = BFieldElement::generator();
@@ -1585,6 +1586,8 @@ mod tests {
         pub snippet: String,
     }
 
+    // Don't `#[macro_rules_attr::apply(test)]`:
+    // `wasm32-unknown-unknown` doesn't support opening files.
     #[test]
     fn update_arithmetization_overview() {
         let spec_snippets = [
@@ -2142,7 +2145,7 @@ mod tests {
     }
 
     /// intended use: `cargo t print_all_master_table_indices -- --nocapture`
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_all_master_table_indices() {
         macro_rules! print_columns {
             (main $table:ident for $name:literal) => {{
@@ -2208,7 +2211,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn master_aux_table_mut() {
         let mut master_table = dummy_master_aux_table();
 
@@ -2249,7 +2252,7 @@ mod tests {
         assert_eq!(9, trace_domain_element(AUX_U32_TABLE_START));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn sponge_with_pending_absorb_is_equivalent_to_usual_sponge(
         #[strategy(arb())] elements: Vec<BFieldElement>,
         #[strategy(0_usize..=#elements.len())] substring_index: usize,
@@ -2277,7 +2280,7 @@ mod tests {
     /// This test might fail in the course of CI for a pull request, if in the
     /// meantime the constraints are modified on master. In this case, rebasing
     /// the topic branch on top of master is recommended.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn air_constraints_evaluators_have_not_changed() {
         let mut rng = StdRng::seed_from_u64(3508729174085202315);
 
@@ -2371,7 +2374,7 @@ mod tests {
     /// of columns have large Hamming distances. If this test fails, then the
     /// random number generator is not cryptographically secure or is misused
     /// somehow.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn trace_randomizers_have_large_hamming_distances() {
         let aux_table = dummy_master_aux_table();
 

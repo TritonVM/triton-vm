@@ -619,13 +619,14 @@ pub(crate) mod tests {
 
     use crate::shared_tests::TestableProgram;
     use crate::table::master_table::MasterTable;
+    use crate::tests::test;
     use crate::triton_asm;
     use crate::triton_program;
     use crate::vm::VM;
 
     use super::*;
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn hash_table_mode_discriminant_is_unique() {
         let mut discriminants_and_modes = HashMap::new();
         for mode in HashTableMode::iter() {
@@ -637,7 +638,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn terminal_constraints_hold_for_sponge_init_edge_case() {
         let many_sponge_inits = triton_asm![sponge_init; 23_631];
         let many_squeeze_absorbs = (0..2_100)

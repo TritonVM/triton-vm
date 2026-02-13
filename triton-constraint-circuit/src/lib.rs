@@ -362,7 +362,7 @@ impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
 /// state required to insert new nodes.
 #[derive(Debug, Clone)]
 pub struct ConstraintCircuit<II: InputIndicator> {
-    pub id: usize,
+    pub id: u64,
     pub ref_count: usize,
     pub expression: CircuitExpression<II>,
 }
@@ -437,7 +437,7 @@ impl<II: InputIndicator> ConstraintCircuitIter<II> {
 }
 
 impl<II: InputIndicator> ConstraintCircuit<II> {
-    fn new(id: usize, expression: CircuitExpression<II>) -> Self {
+    fn new(id: u64, expression: CircuitExpression<II>) -> Self {
         Self {
             id,
             ref_count: 0,
@@ -465,7 +465,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     /// # Panics
     ///
     /// Panics if a duplicate ID is found.
-    fn assert_unique_ids_inner(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
+    fn assert_unique_ids_inner(&mut self, ids: &mut HashMap<u64, ConstraintCircuit<II>>) {
         // try to detect duplicate IDs only once for this node
         if self.ref_count == 0 {
             let id = self.id;
@@ -495,7 +495,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         for circuit in constraints.iter_mut() {
             circuit.reset_ref_count_for_tree();
         }
-        let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
+        let mut ids = HashMap::new();
         for circuit in constraints.iter_mut() {
             circuit.assert_unique_ids_inner(&mut ids);
         }
@@ -864,7 +864,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     fn apply_substitution(
         multicircuit: &mut [Self],
         info: DegreeLoweringInfo,
-        chosen_node_id: usize,
+        chosen_node_id: u64,
         new_main_constraints_count: EvolvingMainConstraintsNumber,
         new_aux_constraints_count: EvolvingAuxConstraintsNumber,
     ) -> ConstraintCircuitMonad<II> {
@@ -902,7 +902,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     fn pick_node_to_substitute(
         multicircuit: &[ConstraintCircuitMonad<II>],
         target_degree: isize,
-    ) -> usize {
+    ) -> u64 {
         assert!(!multicircuit.is_empty());
         let multicircuit = multicircuit
             .iter()
@@ -998,8 +998,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 /// operation, get a unique ID.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ConstraintCircuitBuilder<II: InputIndicator> {
-    id_counter: Rc<RefCell<usize>>,
-    all_nodes: Rc<RefCell<HashMap<usize, ConstraintCircuitMonad<II>>>>,
+    id_counter: Rc<RefCell<u64>>,
+    all_nodes: Rc<RefCell<HashMap<u64, ConstraintCircuitMonad<II>>>>,
 }
 
 impl<II: InputIndicator> Default for ConstraintCircuitBuilder<II> {
@@ -1111,7 +1111,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     ///
     /// A circuit's root node cannot be substituted with this method. Manual
     /// care must be taken to update the root node if necessary.
-    fn redirect_all_references_to_node(&self, old_id: usize, new: ConstraintCircuitMonad<II>) {
+    fn redirect_all_references_to_node(&self, old_id: u64, new: ConstraintCircuitMonad<II>) {
         self.all_nodes.borrow_mut().remove(&old_id);
         for node in self.all_nodes.borrow_mut().values_mut() {
             let CircuitExpression::BinOp(_, ref mut left, ref mut right) =
@@ -1181,7 +1181,7 @@ mod tests {
     use proptest::arbitrary::Arbitrary;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use test_strategy::proptest;
 
     use super::*;
@@ -1200,7 +1200,7 @@ mod tests {
         /// Helper function for counting the number of nodes of a specific type.
         fn iter_nodes(
             constraints: &[Self],
-        ) -> std::vec::IntoIter<(usize, ConstraintCircuitMonad<II>)> {
+        ) -> std::vec::IntoIter<(u64, ConstraintCircuitMonad<II>)> {
             let Some(first) = constraints.first() else {
                 return vec![].into_iter();
             };
@@ -1336,7 +1336,7 @@ mod tests {
     fn multi_circuit_hash_is_unchanged_by_meta_data(
         #[strategy(arb())] circuit: ConstraintCircuitMonad<DualRowIndicator>,
         new_ref_count: usize,
-        new_id_counter: usize,
+        new_id_counter: u64,
     ) {
         let original_digest = hash_circuit(&circuit);
 

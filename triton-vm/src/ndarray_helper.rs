@@ -103,12 +103,13 @@ mod tests {
     use proptest::prop_assert;
     use proptest::prop_assert_eq;
     use proptest::strategy::Strategy;
-    use test_strategy::proptest;
     use twenty_first::prelude::XFieldElement;
 
     use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn contiguous_column_slices_generates_valid_partition(
         #[strategy(0usize..100)] start: usize,
         #[strategy(#start+1..=#start+100)] stop: usize,
@@ -118,7 +119,7 @@ mod tests {
         prop_assert_eq!(columns_slice, contiguous_column_slices(&columns));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn can_start_at_non_zero_index_and_stop_before_end() {
         let dimensions = (2, 6);
         let mut array = Array2::<usize>::zeros(dimensions);
@@ -132,7 +133,7 @@ mod tests {
         assert_eq!(array![[0, 0, 2, 0, 0, 0], [0, 0, 2, 0, 0, 0]], array);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn horizontal_multi_slice_works_as_expected() {
         let m = 2;
         let n = 6;
@@ -148,7 +149,7 @@ mod tests {
         assert_eq!(array![[1, 2, 2, 0, 0, 0], [1, 2, 2, 0, 0, 0]], array);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn repeated_index_gives_empty_slice() {
         let m = 2;
         let n = 6;
@@ -171,7 +172,7 @@ mod tests {
             .boxed()
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn horizontal_slice_with_partial_sums(
         #[strategy(strategy_of_widths())] widths: [usize; 10],
         #[strategy(0usize..10)] height: usize,
@@ -199,7 +200,7 @@ mod tests {
         prop_assert_eq!(expected_array, array);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn par_zeros_has_right_dimensions(
         #[strategy(0usize..1000)] height: usize,
         #[strategy(0usize..1000)] width: usize,
@@ -211,7 +212,7 @@ mod tests {
         prop_assert_eq!(width, matrix.ncols());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn par_zeros_row_major_is_standard_layout(
         #[strategy(2usize..1000)] height: usize,
         #[strategy(2usize..1000)] width: usize,
@@ -220,7 +221,7 @@ mod tests {
         prop_assert!(matrix.is_standard_layout());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn par_zeros_column_major_is_not_standard_layout(
         #[strategy(2usize..1000)] height: usize,
         #[strategy(2usize..1000)] width: usize,
@@ -229,7 +230,7 @@ mod tests {
         prop_assert!(!matrix.is_standard_layout());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn par_zeros_is_all_zeros(
         #[strategy(0usize..1000)] height: usize,
         #[strategy(0usize..1000)] width: usize,

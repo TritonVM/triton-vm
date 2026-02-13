@@ -125,6 +125,7 @@ mod tests {
     use crate::challenges::Challenges;
     use crate::prelude::Claim;
     use crate::table::degree_lowering::DegreeLoweringTable;
+    use crate::tests::test;
 
     use super::*;
 
@@ -175,7 +176,7 @@ mod tests {
         challenges: &[XFieldElement],
         main_rows: ArrayView2<BFieldElement>,
         aux_rows: ArrayView2<XFieldElement>,
-        values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
+        values: &mut HashMap<XFieldElement, (u64, ConstraintCircuit<II>)>,
     ) -> XFieldElement {
         let value = match &constraint.expression {
             CircuitExpression::BinOp(binop, lhs, rhs) => {
@@ -204,7 +205,7 @@ mod tests {
         value
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn nodes_are_unique_for_all_constraints() {
         fn build_constraints<II: InputIndicator>(
             multicircuit_builder: &dyn Fn(
@@ -379,7 +380,7 @@ mod tests {
         };
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn degree_lowering_works_correctly_for_all_tables() {
         macro_rules! assert_degree_lowering {
             ($table:ident ($main_end:ident, $aux_end:ident)) => {{
@@ -425,7 +426,7 @@ mod tests {
     /// described method corresponds to an application of the
     /// Schwartz-Zippel lemma to check uniqueness of the substitution rules
     /// generated during degree lowering.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     #[ignore = "(probably) requires normalization of circuit expressions"]
     fn substitution_rules_are_unique() {
         let challenges = Challenges::default();

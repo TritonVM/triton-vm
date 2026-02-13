@@ -4,7 +4,7 @@ use isa::program::Program;
 use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use proptest_arbitrary_interop::arb;
+use proptest_arbitrary_adapter::arb;
 use rand::Rng;
 use rand::SeedableRng;
 use rand::prelude::StdRng;
