@@ -1476,7 +1476,6 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
-    use crate::arithmetic_domain::tests::arbitrary_domain;
     use crate::error::U32_TO_USIZE_ERR;
     use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::DigestCorruptor;
@@ -1612,9 +1611,7 @@ mod tests {
         #[strategy(0..=3)]
         #[map(|x| 1_usize << x)]
         folding_factor: usize,
-        #[strategy(arbitrary_domain())]
-        #[filter(#old_domain.len() >= #folding_factor)]
-        old_domain: ArithmeticDomain,
+        #[filter(#old_domain.len() >= #folding_factor)] old_domain: ArithmeticDomain,
         #[strategy(0..#old_domain.len() as u32)] index: u32,
     ) {
         let new_domain = old_domain.pow(folding_factor)?;
@@ -1651,9 +1648,7 @@ mod tests {
         #[map(|exp| 1_usize << exp)]
         folding_factor: usize,
         #[strategy(arb())] folding_randomness: BFieldElement,
-        #[strategy(arbitrary_domain())]
-        #[filter(#old_domain.len() >= #folding_factor)]
-        old_domain: ArithmeticDomain,
+        #[filter(#old_domain.len() >= #folding_factor)] old_domain: ArithmeticDomain,
         #[strategy(0..#old_domain.len() as u32)] evaluation_index: u32,
     ) {
         // Ideally, the proptest would sample an evaluation index in range
