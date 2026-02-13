@@ -878,7 +878,8 @@ impl LowDegreeTest for Stir {
     fn num_first_round_queries(&self) -> usize {
         self.round_queries
             .first()
-            .map_or(self.final_num_in_domain_queries, |query| query.in_domain)
+            .map(|num_queries| num_queries.in_domain)
+            .unwrap_or(self.final_num_in_domain_queries)
     }
 
     fn prove(
@@ -1328,7 +1329,8 @@ impl Postscript {
     pub fn first_round_indices(&self) -> &[usize] {
         self.rounds
             .first()
-            .map_or(&self.final_round.queried_indices, |r| &r.queried_indices)
+            .map(|round| &round.queried_indices)
+            .unwrap_or(&self.final_round.queried_indices)
     }
 
     /// Helper function for [RoundPostscript::folded_queried_indices] and

@@ -1710,7 +1710,7 @@ mod tests {
         }
         let target_degrees = DEGREE_LOWERING_TARGETS
             .into_iter()
-            .map(|target| target.map_or_else(|| "-".to_string(), |t| t.to_string()))
+            .map(|t| t.map(|t| t.to_string()).unwrap_or_else(|| "-".to_string()))
             .join("/");
         all_table_info.push((
             format!("DegreeLowering ({target_degrees})"),

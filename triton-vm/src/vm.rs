@@ -1281,7 +1281,8 @@ impl Display for VMState {
 
         let instruction = self
             .current_instruction()
-            .map_or_else(|_| "--".to_string(), display_instruction)
+            .map(display_instruction)
+            .unwrap_or_else(|_| "--".to_string())
             .chars()
             .take(54)
             .collect::<String>();
