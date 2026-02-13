@@ -280,12 +280,12 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
 
     use super::*;
+    use crate::tests::proptest;
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(
         #[strategy(arb())] entry: OpStackTableEntry,
     ) {
@@ -294,7 +294,7 @@ pub(crate) mod tests {
         assert!(shrinks_stack ^ grows_stack);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn op_stack_pointer_in_sequence_of_op_stack_table_entries(
         clk: u32,
         #[strategy(OpStackElement::COUNT..1024)] stack_pointer: usize,
@@ -330,7 +330,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_op_stack_pointers, op_stack_pointers);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn clk_stays_same_in_sequence_of_op_stack_table_entries(
         clk: u32,
         #[strategy(OpStackElement::COUNT..1024)] stack_pointer: usize,
@@ -354,7 +354,7 @@ pub(crate) mod tests {
         prop_assert!(all_clk_values_are_clk);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn compare_rows_with_unequal_stack_pointer_and_equal_clk(
         stack_pointer_0: u64,
         stack_pointer_1: u64,
@@ -374,7 +374,7 @@ pub(crate) mod tests {
         prop_assert_eq!(stack_pointer_comparison, row_comparison);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn compare_rows_with_equal_stack_pointer_and_unequal_clk(
         stack_pointer: u64,
         clk_0: u64,

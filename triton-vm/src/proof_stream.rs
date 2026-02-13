@@ -74,19 +74,26 @@ impl ProofStream {
         Ok(item)
     }
 
-    /// Given an `upper_bound` that is a power of 2, produce `num_indices`
-    /// uniform random numbers in the interval `[0; upper_bound)`.
+    /// Produce `num_indices` uniform random numbers in the interval
+    /// `[0; upper_bound)`.
     ///
-    /// - `upper_bound`: The (non-inclusive) upper bound. Must be a power of
-    ///   two.
-    /// - `num_indices`: The number of indices to sample
+    /// # Panics
+    ///
+    /// Panics
+    /// - if the (non-inclusive) `upper_bound` is not a power of 2
+    /// - if the `upper_bound` is equal to or larger than 2³²
     pub fn sample_indices(&mut self, upper_bound: usize, num_indices: usize) -> Vec<usize> {
         assert!(upper_bound.is_power_of_two());
-        assert!(upper_bound <= BFieldElement::MAX as usize);
+
+        let upper_bound = u32::try_from(upper_bound)
+            .expect("the given `upper_bound` should not exceed `u32::MAX`");
+
+        // `as`-casting from `u32` to `usize` is fine because compilation of
+        // this crate is set to fail if the pointer width is 16
         self.sponge
-            .sample_indices(upper_bound as u32, num_indices)
+            .sample_indices(upper_bound, num_indices)
             .into_iter()
-            .map(|i| i as usize)
+            .map(|i: u32| i as usize)
             .collect()
     }
 
@@ -128,8 +135,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;
     use proptest::prelude::Strategy;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
     use twenty_first::math::other::random_elements;
 
     use crate::low_degree_test::stir::StirResponse;
@@ -140,6 +146,8 @@ mod tests {
     use crate::table::QuotientSegments;
 
     use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     impl ProofStream {
         /// Test-only method to prepare this proof stream for verification.
@@ -164,7 +172,7 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_proof_with_fiat_shamir(
         #[strategy(vec(arb(), 2..100))] main_rows: Vec<MainRow<BFieldElement>>,
         #[strategy(vec(arb(), 2..100))] aux_rows: Vec<AuxiliaryRow>,
@@ -246,7 +254,7 @@ mod tests {
         assert!(0 == sponge_states.len());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn enqueue_dequeue_verify_partial_authentication_structure() {
         let tree_height = 8;
         let num_leaves = 1 << tree_height;
@@ -289,13 +297,13 @@ mod tests {
         assert!(inclusion_proof.verify(merkle_tree.root()));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn dequeuing_from_empty_stream_fails() {
         let mut proof_stream = ProofStream::new();
         let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn dequeuing_more_items_than_have_been_enqueued_fails() {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::MerkleRoot(Digest::default()));
@@ -306,7 +314,7 @@ mod tests {
         let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn encoded_length_of_prove_stream_is_not_known_at_compile_time() {
         assert!(ProofStream::static_length().is_none());
     }

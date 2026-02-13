@@ -1942,12 +1942,11 @@ pub(crate) mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::Rng;
     use rand::prelude::*;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
-    use test_strategy::proptest;
     use thiserror::Error;
     use twenty_first::math::other::random_elements;
 
@@ -1960,6 +1959,8 @@ pub(crate) mod tests {
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
+    use crate::tests::proptest;
+    use crate::tests::test;
     use crate::triton_program;
     use crate::vm::NonDeterminism;
     use crate::vm::VM;
@@ -2027,13 +2028,13 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn two_default_provers_have_different_randomness_seeds() {
         let seed = || Prover::default().randomness_seed;
         prop_assert_ne!(seed(), seed());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn quotient_segments_are_independent_of_table_caching() {
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
@@ -2076,7 +2077,7 @@ pub(crate) mod tests {
     /// [`Stark::compute_quotient_segments`] takes mutable references to both,
     /// the main and the auxiliary tables. It is vital that certain
     /// information is _not_ mutated.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn computing_quotient_segments_does_not_change_execution_trace() {
         fn assert_no_trace_mutation(cache_decision: CacheDecision) {
             crate::config::overwrite_lde_trace_caching_to(cache_decision);
@@ -2121,7 +2122,7 @@ pub(crate) mod tests {
         assert_no_trace_mutation(CacheDecision::NoCache);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn supplying_prover_randomness_seed_fully_derandomizes_produced_proof() {
         let TestableProgram {
             program,
@@ -2150,7 +2151,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn too_high_padded_height_results_in_immediate_verification_failure(
         #[strategy(32_u32..)] height: u32,
     ) {
@@ -2173,7 +2174,7 @@ pub(crate) mod tests {
         let_assert!(Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_ram_table_example_for_specification() {
         let program = triton_program!(
             push 20 push 100 write_mem 1 pop 1  // write 20 to address 100
@@ -2251,7 +2252,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_op_stack_table_example_for_specification() {
         let num_interesting_rows = 30;
         let fake_op_stack_size = 4;
@@ -2352,7 +2353,7 @@ pub(crate) mod tests {
     }
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_all_constraint_degrees() {
         let padded_height = 2;
         let num_trace_randomizers = 2;
@@ -2362,7 +2363,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn check_io_terminals() {
         let read_nop_program = triton_program!(
             read_io 3 nop nop write_io 2 push 17 write_io 1 halt
@@ -2390,7 +2391,7 @@ pub(crate) mod tests {
         check!(ptoe == oute);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraint_polynomials_use_right_number_of_variables() {
         let challenges = Challenges::default();
         let main_row = Array1::<BFieldElement>::zeros(MasterMainTable::NUM_COLUMNS);
@@ -2405,7 +2406,7 @@ pub(crate) mod tests {
         MasterAuxTable::evaluate_terminal_constraints(br, er, &challenges);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_number_of_all_constraints_per_table() {
         let table_names = [
             "program table",
@@ -2501,7 +2502,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn number_of_quotient_degree_bounds_match_number_of_constraints() {
         let main_row = Array1::<BFieldElement>::zeros(MasterMainTable::NUM_COLUMNS);
         let aux_row = Array1::zeros(MasterAuxTable::NUM_COLUMNS);
@@ -2703,14 +2704,14 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
         let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
             .with_input(bfe_array![100]);
         triton_constraints_evaluate_to_zero(program)
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_big_mmr_snippet() -> ConstraintResult {
         let program = TestableProgram::new(
             crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
@@ -2718,69 +2719,69 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(program)
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_halt() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_halt())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_hash_nop_nop_lt() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_hash_nop_nop_lt())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_divine() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_divine())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_skiz() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_skiz())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_call_recurse_return() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_call_recurse_return())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_recurse_or_return(
         program: ProgramForRecurseOrReturn,
     ) {
         triton_constraints_evaluate_to_zero(program.assemble())?;
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_hash() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_hash())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_merkle_step_right_sibling() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_right_sibling())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_merkle_step_left_sibling() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_left_sibling())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_right_sibling()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_right_sibling())
@@ -2788,227 +2789,227 @@ pub(crate) mod tests {
 
     // todo: https://github.com/rust-lang/rustfmt/issues/6521
     #[rustfmt::skip]
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_left_sibling()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
         program: ProgramForMerkleTreeUpdate,
     ) {
         triton_constraints_evaluate_to_zero(program.assemble())?;
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_assert_vector() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_eq() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_eq())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_lsb() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_lsb())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_split() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_split())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_0_lt_0() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_0_lt_0())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_lt() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_lt())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_and() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_and())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xor() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_xor())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_log2floor() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_log2floor())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_pow() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_pow())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_div_mod() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_div_mod())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_pop_count() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_pop_count())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xx_add() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_xx_add())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xx_mul() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_xx_mul())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_x_invert() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_x_invert())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xb_mul() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_xb_mul())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_single_sponge_absorb_mem_instructions() -> ConstraintResult {
         let program = triton_program!(sponge_init sponge_absorb_mem halt);
         let program = TestableProgram::new(program);
         triton_constraints_evaluate_to_zero(program)
     }
 
-    #[proptest(cases = 3)]
+    #[macro_rules_attr::apply(proptest(cases = 3))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
         program: ProgramForSpongeAndHashInstructions,
     ) {
         triton_constraints_evaluate_to_zero(program.assemble())?;
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_split())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_eq())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_lt())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_and())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_xor())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_pow())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() -> ConstraintResult
     {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() -> ConstraintResult
     {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_xx_dot_step())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step()
     -> ConstraintResult {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_xb_dot_step())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn can_read_twice_from_same_ram_address_within_one_cycle() -> ConstraintResult {
         for i in 0..x_field_element::EXTENSION_DEGREE {
             // This program reads from the same address twice, even if the stack
@@ -3027,14 +3028,14 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn claim_in_ram_corresponds_to_currently_running_program() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(
             test_program_claim_in_ram_corresponds_to_currently_running_program(),
         )
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn derived_constraints_evaluate_to_zero_on_halt() {
         derived_constraints_evaluate_to_zero(test_program_for_halt());
     }
@@ -3110,17 +3111,17 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn prove_and_verify_simple_program() {
         test_program_hash_nop_nop_lt().prove_and_verify();
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn prove_and_verify_halt_with_different_stark_parameters(#[strategy(arb())] stark: Stark) {
         test_program_for_halt().use_stark(stark).prove_and_verify();
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn prove_and_verify_program_with_every_instruction_with_different_stark_parameters(
         #[strategy(arb())] stark: Stark,
     ) {
@@ -3129,14 +3130,14 @@ pub(crate) mod tests {
             .prove_and_verify();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn prove_and_verify_fibonacci_100() {
         TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
             .with_input(PublicInput::from(bfe_array![100]))
             .prove_and_verify();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn prove_verify_program_using_pick_and_place() {
         let input = bfe_vec![6, 3, 7, 5, 1, 2, 4, 4, 7, 3, 6, 1, 5, 2];
         let program = triton_program! {       // i: 13 12 11 10  9  8  7  6  5  4  3  2  1  0
@@ -3160,7 +3161,7 @@ pub(crate) mod tests {
         program.prove_and_verify();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_many_u32_operations() -> ConstraintResult {
         let many_u32_instructions = TestableProgram::new(
             crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
@@ -3168,13 +3169,13 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(many_u32_instructions)
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn prove_verify_many_u32_operations() {
         TestableProgram::new(crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone())
             .prove_and_verify();
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn verifying_arbitrary_proof_does_not_panic(
         #[strategy(arb())] stark: Stark,
         #[strategy(arb())] claim: Claim,
@@ -3183,7 +3184,7 @@ pub(crate) mod tests {
         let _verdict = stark.verify(&claim, &proof);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn negative_log_2_floor(
         #[strategy(arb())]
         #[filter(#st0.value() > u64::from(u32::MAX))]
@@ -3196,14 +3197,14 @@ pub(crate) mod tests {
         assert!(st0 == element);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
         let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
         let_assert!(InstructionError::LogarithmOfZero = err.source);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn deep_update() {
         let domain_length = 1 << 10;
         let domain = ArithmeticDomain::of_length(domain_length).unwrap();
@@ -3263,7 +3264,7 @@ pub(crate) mod tests {
         assert!(all_degrees_are_small_enough);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn split_polynomial_into_segments_of_unequal_size() {
         let coefficients: [XFieldElement; 211] = rand::rng().random();
         let f = Polynomial::new(coefficients.to_vec());
@@ -3285,7 +3286,7 @@ pub(crate) mod tests {
         assert_polynomial_equals_recomposed_segments(&f, &segments_7, x);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn split_polynomial_into_segments_of_equal_size() {
         let coefficients: [BFieldElement; 2 * 3 * 4 * 7] = rand::rng().random();
         let f = Polynomial::new(coefficients.to_vec());
@@ -3329,7 +3330,7 @@ pub(crate) mod tests {
         random_point: XFieldElement,
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn polynomial_segments_cohere_with_originating_polynomial(test_data: SegmentifyProptestData) {
         fn segmentify_and_assert_coherence<const N: usize>(
             test_data: &SegmentifyProptestData,
@@ -3403,7 +3404,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn linear_combination_weights_samples_correct_number_of_elements(
         #[strategy(arb())] mut proof_stream: ProofStream,
     ) {
@@ -3569,7 +3570,7 @@ pub(crate) mod tests {
             .with_non_determinism(non_determinism)
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn program_executing_every_instruction_actually_executes_every_instruction() {
         let TestableProgram {
             program,
@@ -3598,7 +3599,7 @@ pub(crate) mod tests {
         assert_eq!(all_opcodes, opcodes_of_all_executed_instructions);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_executing_every_instruction() -> ConstraintResult {
         triton_constraints_evaluate_to_zero(program_executing_every_instruction())
     }
@@ -3606,7 +3607,7 @@ pub(crate) mod tests {
     /// Verify that the program-hashing logic has not regressed.
     ///
     /// If a change is intentional, update the expected snapshot.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn program_hash_is_unchanged() {
         insta::assert_snapshot!(
             program_executing_every_instruction().program.hash(),
@@ -3618,7 +3619,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn different_ldts_are_mutually_incompatible() {
         let program = || triton_program!(halt);
         let claim = Claim::about_program(&program());
@@ -3636,7 +3637,7 @@ pub(crate) mod tests {
         assert!(!crate::verify(stark_stir, &claim, &proof_fri));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn different_proximty_regimes_are_mutually_incompatible() {
         let program = || triton_program!(halt);
         let claim = Claim::about_program(&program());
@@ -3656,7 +3657,7 @@ pub(crate) mod tests {
         assert!(!crate::verify(stark_proven, &claim, &proof_conjectured));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn different_ldts_are_used_for_different_padded_heights() {
         let mut stark = Stark::low_security();
         stark.ldt_choice = None;
@@ -3664,7 +3665,7 @@ pub(crate) mod tests {
 
         let mut used_fri = false;
         let mut used_stir = false;
-        for log2_padded_height in 0..30 {
+        for log2_padded_height in 0..=20 {
             let ldt = stark.ldt(1 << log2_padded_height).unwrap();
             if ldt.as_any().is::<Fri>() {
                 used_fri = true;
@@ -3678,6 +3679,8 @@ pub(crate) mod tests {
         assert!(used_stir);
     }
 
+    // Not `#[macro_rules_attr::apply(test)]` because this test is only intended
+    // to inform about internal parameters of the LDTs.
     #[test]
     fn print_various_ldt_parameters() {
         const LOG2_PADDED_HEIGHTS: RangeInclusive<usize> = 8..=29;

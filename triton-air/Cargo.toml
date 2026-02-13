@@ -26,7 +26,7 @@ twenty-first.workspace = true
 ndarray.workspace = true
 num-traits.workspace = true
 proptest.workspace = true
-proptest-arbitrary-interop.workspace = true
+proptest-arbitrary-adapter.workspace = true
 test-strategy.workspace = true
 
 [lints]

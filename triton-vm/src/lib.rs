@@ -174,6 +174,9 @@
 // - https://github.com/rust-lang/rust/issues/84605
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
+#[cfg(not(any(target_pointer_width = "32", target_pointer_width = "64")))]
+compile_error!("Triton VM only supports target pointer widths 32 and 64");
+
 pub use air;
 pub use isa;
 pub use twenty_first;
@@ -302,12 +305,70 @@ mod tests {
     use isa::instruction::LabelledInstruction;
     use isa::instruction::TypeHint;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
+    use twenty_first::prelude::*;
 
     use super::*;
     use crate::low_degree_test::fri;
     use crate::low_degree_test::stir;
+
+    /// A crate-specific replacement of the `#[test]` attribute for tests that
+    /// should also be executed on `wasm` targets (which is almost all tests).
+    ///
+    /// If you specifically want to exclude a test from `wasm` targets, use the
+    /// usual `#[test]` attribute instead.
+    ///
+    /// # Usage
+    ///
+    /// ```
+    /// #[macro_rules_attr::apply(test)]
+    /// fn foo() {
+    ///     assert_eq!(4, 2 + 2);
+    /// }
+    /// ```
+    macro_rules! test {
+        ($item:item) => {
+            #[test]
+            #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+            $item
+        };
+    }
+    pub(crate) use test;
+
+    /// A crate-specific replacement of the `#[test_strategy::proptest]`
+    /// attribute for tests that should also be executed on `wasm` targets
+    /// (which is almost all tests).
+    ///
+    /// If you specifically want to exclude a test from `wasm` targets, use the
+    /// usual `#[test_strategy::proptest]` attribute instead.
+    ///
+    /// # Usage
+    ///
+    /// ```
+    /// # use proptest::prop_assert_eq;
+    /// #[macro_rules_attr::apply(proptest)]
+    /// fn foo(#[strategy(0..=42)] x: i32) {
+    ///     prop_assert_eq!(2 * x, x + x);
+    /// }
+    /// ```
+    ///
+    /// If you want to configure the test, use the usual syntax defined by
+    /// [`test_strategy`]:
+    /// ```
+    /// # use proptest::prop_assert_eq;
+    /// #[macro_rules_attr::apply(proptest(cases = 10, max_local_rejects = 5))]
+    /// fn foo(#[strategy(0..=42)] x: i32) {
+    ///     prop_assert_eq!(2 * x, x + x);
+    /// }
+    /// ```
+    macro_rules! proptest {
+        ($item:item $(($($config:tt)*))?) => {
+            #[test_strategy::proptest $(($($config)*))?]
+            #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+            $item
+        };
+    }
+    pub(crate) use proptest;
 
     /// The compiler automatically adds any applicable auto trait (all of which
     /// are marker traits) to self-defined types. This implies that these
@@ -324,7 +385,7 @@ mod tests {
     /// Inspired by “Rust for Rustaceans” by Jon Gjengset.
     fn implements_auto_traits<T: Sized + Send + Sync + Unpin>() {}
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn public_types_implement_usual_auto_traits() {
         // re-exports
         implements_auto_traits::<BFieldElement>();
@@ -393,7 +454,7 @@ mod tests {
         implements_auto_traits::<vm::CoProcessorCall>();
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn prove_verify_knowledge_of_hash_preimage(
         #[strategy(arb())] hash_preimage: Digest,
         #[strategy(arb())] some_tie_to_an_outer_context: Digest,
@@ -429,7 +490,7 @@ mod tests {
         prop_assert_eq!(public_input.individual_tokens, claim.input);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn lib_use_initial_ram() {
         let program = triton_program!(
             push 51 read_mem 1 pop 1
@@ -448,7 +509,7 @@ mod tests {
         assert!(verdict);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn lib_prove_verify() {
         let program = triton_program!(push 1 assert halt);
         let claim = Claim::about_program(&program);
@@ -459,7 +520,7 @@ mod tests {
         assert!(verdict);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn prove_then_verify_concurrently() {
         let program = crate::example_programs::FIBONACCI_SEQUENCE.clone();
         let input = PublicInput::from(bfe_array![100]);
@@ -471,7 +532,7 @@ mod tests {
         rayon::join(verify, verify);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn lib_prove_with_incorrect_program_digest_gives_appropriate_error() {
         let program = triton_program!(push 1 assert halt);
         let other_program = triton_program!(push 2 assert halt);
@@ -482,7 +543,7 @@ mod tests {
         assert!(let ProvingError::ProgramDigestMismatch = err);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn lib_prove_with_incorrect_public_output_gives_appropriate_error() {
         let program = triton_program! { read_io 1 push 2 mul write_io 1 halt };
         let claim = Claim::about_program(&program)
@@ -494,7 +555,7 @@ mod tests {
         assert!(let ProvingError::PublicOutputMismatch = err);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn nested_triton_asm_interpolation() {
         let double_write = triton_asm![write_io 1; 2];
         let quadruple_write = triton_asm!({&double_write} write_io 2);
@@ -509,7 +570,7 @@ mod tests {
         assert_eq!(expected_output, public_output);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn triton_asm_interpolation_of_many_pops() {
         let push_25 = triton_asm![push 0; 25];
         let pop_25 = triton_asm![pop 5; 5];
@@ -517,13 +578,13 @@ mod tests {
         VM::run(program, [].into(), [].into()).unwrap();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     #[should_panic(expected = "IndexOutOfBounds(0)")]
     fn parsing_pop_with_illegal_argument_fails() {
         triton_instr!(pop 0);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn triton_asm_macro_can_parse_type_hints() {
         let instructions = triton_asm!(
             hint name_0: Type0  = stack[0..8]
@@ -569,7 +630,7 @@ mod tests {
         assert!(expected_type_hint_3 == type_hint_3);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn triton_program_macro_can_parse_type_hints() {
         let program = triton_program! {
             push 3 hint loop_counter = stack[0]

@@ -1472,14 +1472,15 @@ mod tests {
     use assert2::assert;
     use assert2::let_assert;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
+    use proptest_arbitrary_adapter::arb;
 
     use super::*;
     use crate::error::U32_TO_USIZE_ERR;
     use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::DigestCorruptor;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     /// A type alias exclusive to this test module.
     type XfePoly = Polynomial<'static, XFieldElement>;
@@ -1522,7 +1523,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn stacking() {
         let evaluations = xfe_array![0, 1, 2, 3, 4, 5, 6, 7];
         let stacks_4 = StirMerkleTree::stack(&evaluations, 4);
@@ -1536,7 +1537,7 @@ mod tests {
         assert!(expected_2 == stacks_2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn log2_binomial_coefficient_is_close_to_precomputed_result() {
         let assert_are_close = |expected: f64, (a, b)| {
             let log2_bin_coeff = log2_binomial_coefficient(a, b);
@@ -1577,7 +1578,7 @@ mod tests {
         assert_are_close(4446.650, (1 << 13, 0b111 << 10));
     }
 
-    #[proptest(cases = 6)]
+    #[macro_rules_attr::apply(proptest(cases = 6))]
     fn error_margin_is_stochastically_correct(
         params: StirParameters,
         #[strategy(arb().no_shrink())] mut tip5: Tip5,
@@ -1606,7 +1607,7 @@ mod tests {
         );
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn roots_of_domain_points(
         #[strategy(0..=3)]
         #[map(|x| 1_usize << x)]
@@ -1628,7 +1629,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn folding_polynomial_gives_expected_coefficients() {
         let folding_factor = 4;
         let folding_randomness = bfe!(10);
@@ -1641,7 +1642,7 @@ mod tests {
         assert!(expected == actual);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluation_of_folded_polynomial_corresponds_to_folding_of_evaluated_polynomial(
         #[strategy(arb())] poly: Polynomial<'static, BFieldElement>,
         #[strategy(1..=5)]
@@ -1678,7 +1679,7 @@ mod tests {
         prop_assert_eq!(evaluation_of_folded_poly, folding_of_evaluated_poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_initial_codeword_is_rejected(
         stir: Stir,
         mut proof_stream: ProofStream,
@@ -1701,14 +1702,14 @@ mod tests {
         prop_assert_eq!(wrong_length, codeword_len);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_initial_expansion_factor_1_is_rejected(mut params: StirParameters) {
         params.log2_initial_expansion_factor = 0;
         let_assert!(Err(err) = Stir::try_from(params));
         prop_assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_big_initial_expansion_factor_is_rejected(
         mut params: StirParameters,
         #[strategy(32_usize..)] bad_log2_initial_expansion_factor: usize,
@@ -1718,7 +1719,7 @@ mod tests {
         let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_small_folding_factor_is_rejected(
         mut params: StirParameters,
         #[strategy(0_usize..=1)] bad_log2_folding_factor: usize,
@@ -1729,7 +1730,7 @@ mod tests {
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_big_folding_factor_is_rejected(
         mut params: StirParameters,
         #[strategy(64_usize..)] bad_log2_folding_factor: usize,
@@ -1743,7 +1744,7 @@ mod tests {
 
     /// The proptest [`invalid_parameter_big_folding_factor_is_rejected`] does
     /// not cover all failure paths reliably.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn concrete_invalid_big_parameter_folding_factor_are_rejected() {
         fn assert_too_big_folding_factor_is_rejected(factor: usize) {
             let params = StirParameters {
@@ -1762,7 +1763,7 @@ mod tests {
         assert_too_big_folding_factor_is_rejected(usize::MAX);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_small_high_degree_bound_is_rejected(
         mut params: StirParameters,
         #[strategy(..#params.log2_folding_factor)] bad_log2_high_degree_bound: usize,
@@ -1772,7 +1773,7 @@ mod tests {
         prop_assert_eq!(LdtParameterError::TooLowDegreeOfHighDegreePolynomials, err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn too_big_initial_domain_doesnt_cause_crash(
         mut params: StirParameters,
         #[strategy(33 - #params.log2_initial_expansion_factor..=64)] log2_high_degree_bound: usize,
@@ -1784,6 +1785,10 @@ mod tests {
 
     /// The proptest [`too_big_initial_domain_doesnt_cause_crash`] does not
     /// cover all failure paths reliably.
+    //
+    // Don't `#[macro_rules_attr::apply(test)]`:
+    // 32-bit architectures cannot trigger this failure path since `u32` and
+    // `usize` have equal size.
     #[test]
     fn concrete_too_big_initial_domain_doesnt_cause_crash() {
         let two_thirds_u64_max = (u64::MAX as usize / 3) * 2;
@@ -1798,12 +1803,12 @@ mod tests {
         assert!(LdtParameterError::InitialDomainTooBig(u64::MAX) == err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn try_from_and_new_correspond(params: StirParameters) {
         prop_assert_eq!(Stir::try_from(params), Stir::new(params));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn prove_and_verify_zero_polynomial(stir: Stir) {
         let zero_poly = xfe_vec![0; stir.initial_domain.len()];
 
@@ -1817,7 +1822,7 @@ mod tests {
     // It's quite difficult to meaningfully check that the folded query indices
     // are _correct_. (In particular, re-implementing the method is not
     // meaningful.) Hence, this is only a sanity check.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn folded_query_indices_look_sane() {
         let params = StirParameters {
             security_level: 42,
@@ -1849,7 +1854,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn prove_and_verify_low_degree_polynomial(
         params: StirParameters,
         #[strategy(-1..=#params.max_degree() as i64)] _d: i64,
@@ -1878,7 +1883,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         params: StirParameters,
         #[strategy(Just(1 << #params.log2_high_degree_bound))] _too_high_degree: i64,
@@ -1895,7 +1900,7 @@ mod tests {
         prop_assert!(verdict.is_err());
     }
 
-    #[proptest(cases = 100)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn proof_stream_serialization(
         params: StirParameters,
         #[strategy(-1..=#params.max_degree() as i64)] _d: i64,
@@ -1923,12 +1928,12 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn verifying_arbitrary_proof_does_not_panic(stir: Stir, mut proof_stream: ProofStream) {
         let _verdict = stir.verify(&mut proof_stream);
     }
 
-    #[proptest(cases = 100)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn modified_proof_stream_results_in_verification_failure(
         params: StirParameters,
         #[strategy(-1..=#params.max_degree() as i64)] _d: i64,

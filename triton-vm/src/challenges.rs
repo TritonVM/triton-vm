@@ -170,9 +170,11 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use twenty_first::xfe;
+
     use super::*;
     use crate::prelude::Claim;
-    use twenty_first::xfe;
+    use crate::tests::test;
 
     // For testing purposes only.
     impl Default for Challenges {
@@ -193,7 +195,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn various_challenge_indexing_operations_are_possible() {
         let challenges = Challenges::default();
         let _ = challenges[ChallengeId::StackWeight0];

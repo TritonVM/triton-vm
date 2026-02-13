@@ -795,23 +795,23 @@ pub(crate) mod tests {
     use isa::triton_program;
     use ndarray::Array2;
     use proptest::collection::vec;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::distr::Distribution;
     use rand::distr::StandardUniform;
     use strum::IntoEnumIterator;
-    use test_strategy::proptest;
 
+    use super::*;
     use crate::NonDeterminism;
     use crate::error::InstructionError::DivisionByZero;
     use crate::shared_tests::TestableProgram;
     use crate::table::master_table::MasterTable;
-
-    use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     const MAIN_WIDTH: usize = <ProcessorTable as air::AIR>::MainColumn::COUNT;
 
     /// Does printing recurse infinitely?
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_simple_processor_table_row() {
         let program = triton_program!(push 2 sponge_init assert halt);
         let err = TestableProgram::new(program).run().unwrap_err();
@@ -908,7 +908,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn transition_constraints_for_instruction_pop_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program!(push 1 push 2 push 3 push 4 push 5 pop {n} halt);
 
@@ -921,7 +921,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_push() {
         let test_rows = [test_row_from_program(triton_program!(push 1 halt), 0)];
 
@@ -933,7 +933,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn transition_constraints_for_instruction_divine_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! { divine {n} halt };
 
@@ -948,7 +948,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_pick() {
         let set_up_stack = (0..OpStackElement::COUNT)
             .rev()
@@ -967,7 +967,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_place() {
         let test_rows = (0..OpStackElement::COUNT)
             .map(|i| triton_program!(push 42 place {i} dup {i} push 42 eq assert halt))
@@ -982,7 +982,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_dup() {
         let programs = [
             triton_program!(dup  0 halt),
@@ -1012,7 +1012,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_swap() {
         let test_rows = (0..OpStackElement::COUNT)
             .map(|i| triton_program!(swap {i} halt))
@@ -1026,7 +1026,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_skiz() {
         let programs = [
             triton_program!(push 1 skiz halt),        // ST0 is non-zero
@@ -1042,7 +1042,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_call() {
         let programs = [triton_program!(call label label: halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
@@ -1062,7 +1062,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_return() {
         let programs = [triton_program!(call label halt label: return)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
@@ -1080,7 +1080,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_recurse() {
         let programs =
             [triton_program!(push 2 call label halt label: push -1 add dup 0 skiz recurse return)];
@@ -1099,7 +1099,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_recurse_or_return() {
         let program = triton_program! {
             push 2 swap 6
@@ -1133,7 +1133,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_read_mem() {
         let programs = [
             triton_program!(push 1 read_mem 1 push 0 eq assert assert halt),
@@ -1158,7 +1158,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_write_mem() {
         let push_10_elements = triton_asm![push 2; 10];
         let programs = [
@@ -1177,7 +1177,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_merkle_step() {
         let programs = [
             triton_program!(push 2 swap 5 merkle_step halt),
@@ -1198,7 +1198,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_merkle_step_mem() {
         let sibling_digest = bfe_array![1, 2, 3, 4, 5];
         let acc_digest = bfe_array![11, 12, 13, 14, 15];
@@ -1239,7 +1239,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_sponge_init() {
         let programs = [triton_program!(sponge_init halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 0));
@@ -1251,7 +1251,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_sponge_absorb() {
         let push_10_zeros = triton_asm![push 0; 10];
         let push_10_ones = triton_asm![push 1; 10];
@@ -1268,7 +1268,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_sponge_absorb_mem() {
         let programs = [triton_program!(sponge_init push 0 sponge_absorb_mem halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 2));
@@ -1280,7 +1280,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_sponge_squeeze() {
         let programs = [triton_program!(sponge_init sponge_squeeze halt)];
         let test_rows = programs.map(|program| test_row_from_program(program, 1));
@@ -1292,7 +1292,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_eq() {
         let programs = [
             triton_program!(push 3 push 3 eq assert halt),
@@ -1307,7 +1307,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_split() {
         let programs = [
             triton_program!(push -1 split halt),
@@ -1330,7 +1330,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_lt() {
         let programs = [
             triton_program!(push   3 push   3 lt push 0 eq assert halt),
@@ -1347,7 +1347,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_and() {
         let test_rows = [test_row_from_program(
             triton_program!(push 5 push 12 and push 4 eq assert halt),
@@ -1361,7 +1361,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xor() {
         let test_rows = [test_row_from_program(
             triton_program!(push 5 push 12 xor push 9 eq assert halt),
@@ -1375,7 +1375,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_log2floor() {
         let programs = [
             triton_program!(push  1 log_2_floor push  0 eq assert halt),
@@ -1406,7 +1406,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_pow() {
         let programs = [
             triton_program!(push 0 push  0 pow push   1 eq assert halt),
@@ -1440,7 +1440,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_div_mod() {
         let programs = [
             triton_program!(push 2 push 3 div_mod push 1 eq assert push 1 eq assert halt),
@@ -1456,14 +1456,14 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn division_by_zero_is_impossible() {
         let program = TestableProgram::new(triton_program! { div_mod });
         let err = program.run().unwrap_err();
         assert_eq!(DivisionByZero, err.source);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xx_add() {
         let programs = [
             triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt),
@@ -1486,7 +1486,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xx_mul() {
         let programs = [
             triton_program!(push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt),
@@ -1509,7 +1509,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_x_invert() {
         let programs = [
             triton_program!(push 5 push 6 push 7 x_invert halt),
@@ -1525,7 +1525,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xb_mul() {
         let programs = [
             triton_program!(push 5 push 6 push 7 push 2 xb_mul halt),
@@ -1548,7 +1548,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn transition_constraints_for_instruction_read_io_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! {read_io {n} halt};
 
@@ -1564,7 +1564,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn transition_constraints_for_instruction_write_io_n(#[strategy(arb())] n: NumberOfWords) {
         let program = triton_program! {divine 5 write_io {n} halt};
 
@@ -1587,7 +1587,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xb_dot_step() {
         let program = triton_program! {
             push 10 push 20 push 30     // accumulator `[30, 20, 10]`
@@ -1634,7 +1634,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn transition_constraints_for_instruction_xx_dot_step() {
         let operand_0 = xfe!([3, 5, 7]);
         let operand_1 = xfe!([11, 13, 17]);
@@ -1689,7 +1689,7 @@ pub(crate) mod tests {
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn opcode_decomposition_for_skiz_is_unique() {
         let max_value_of_skiz_constraint_for_nia_decomposition =
             (3 << 7) * (3 << 5) * (3 << 3) * (3 << 1) * 2;
@@ -1701,7 +1701,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn constructing_factor_for_op_stack_table_running_product_never_panics(
         #[strategy(vec(arb(), MAIN_WIDTH))] previous_row: Vec<BFieldElement>,
         #[strategy(vec(arb(), MAIN_WIDTH))] current_row: Vec<BFieldElement>,
@@ -1716,7 +1716,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn constructing_factor_for_ram_table_running_product_never_panics(
         #[strategy(vec(arb(), MAIN_WIDTH))] previous_row: Vec<BFieldElement>,
         #[strategy(vec(arb(), MAIN_WIDTH))] current_row: Vec<BFieldElement>,

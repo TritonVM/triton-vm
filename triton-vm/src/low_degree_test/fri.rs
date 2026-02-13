@@ -932,15 +932,16 @@ mod tests {
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::prelude::*;
-    use test_strategy::proptest;
 
     use super::*;
     use crate::error::U32_TO_USIZE_ERR;
     use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::arbitrary_polynomial;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     /// A type alias exclusive to this test module.
     type XfePoly = Polynomial<'static, XFieldElement>;
@@ -982,7 +983,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn num_rounds_are_reasonable(fri: Fri) {
         let expected_last_round_max_degree = fri.max_degree() >> fri.num_rounds();
         prop_assert_eq!(expected_last_round_max_degree, fri.last_round_max_degree());
@@ -992,7 +993,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 20)]
+    #[macro_rules_attr::apply(proptest(cases = 20))]
     fn prove_and_verify_low_degree_of_twice_cubing_plus_one(
         #[filter(#fri.max_degree() >= 3)] fri: Fri,
     ) {
@@ -1006,7 +1007,7 @@ mod tests {
         prop_assert!(verdict.is_ok());
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn prove_and_verify_low_degree_polynomial(
         fri: Fri,
         #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
@@ -1022,7 +1023,7 @@ mod tests {
         prop_assert!(verdict.is_ok());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn fail_to_prove_codeword_of_incorrect_length(
         fri: Fri,
         #[strategy(arb())]
@@ -1041,7 +1042,7 @@ mod tests {
         prop_assert_eq!(fri.domain.len(), domain_len);
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         fri: Fri,
         #[strategy(Just((1 + #fri.max_degree()) as i64))] _too_high_degree: i64,
@@ -1058,12 +1059,12 @@ mod tests {
         prop_assert!(verdict.is_err());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn smallest_possible_fri_has_no_rounds() {
         assert_eq!(0, smallest_fri().num_rounds());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn smallest_possible_fri_can_only_verify_constant_polynomials() {
         assert_eq!(0, smallest_fri().max_degree());
     }
@@ -1079,7 +1080,7 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn too_small_expansion_factor_is_rejected() {
         let parameters = FriParameters {
             security_level: 1,
@@ -1091,7 +1092,7 @@ mod tests {
         assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn too_big_expansion_factor_is_rejected(
         #[strategy(32_usize..)] log2_initial_expansion_factor: usize,
     ) {
@@ -1105,7 +1106,7 @@ mod tests {
         prop_assert_eq!(LdtParameterError::TooBigInitialExpansionFactor, err);
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn serialization(
         fri: Fri,
         #[strategy(-1_i64..=#fri.max_degree() as i64)] _degree: i64,
@@ -1132,7 +1133,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn last_round_codeword_unequal_to_last_round_commitment_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -1176,7 +1177,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn revealing_wrong_number_of_leaves_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -1225,7 +1226,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 50)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn incorrect_authentication_structure_results_in_validation_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial())] polynomial: XfePoly,
@@ -1280,7 +1281,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial().no_shrink())] fri_polynomial: XfePoly,
@@ -1315,7 +1316,7 @@ mod tests {
         ));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(Just(#fri.max_degree() as i64 + 1))] _min_fail_deg: i64,
@@ -1331,7 +1332,7 @@ mod tests {
         assert!(let LdtVerificationError::LastRoundPolynomialHasTooHighDegree = err);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn verifying_arbitrary_proof_does_not_panic(
         fri: Fri,
         #[strategy(arb())] mut proof_stream: ProofStream,
@@ -1339,7 +1340,7 @@ mod tests {
         let _verdict = fri.verify(&mut proof_stream);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn postscript_is_integral(
         fri: Fri,
         #[strategy(arbitrary_polynomial_of_degree(#fri.max_degree() as i64).no_shrink())]

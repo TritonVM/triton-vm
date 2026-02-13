@@ -94,19 +94,19 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use super::*;
     use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;
     use crate::shared_tests::TestableProgram;
+    use crate::tests::test;
 
-    use super::*;
-
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn triton_vm_can_generate_valid_proof_with_just_in_time_lde() {
         overwrite_lde_trace_caching_to(CacheDecision::NoCache);
         prove_and_verify_a_triton_vm_program();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn triton_vm_can_generate_valid_proof_with_cached_lde_trace() {
         overwrite_lde_trace_caching_to(CacheDecision::Cache);
         prove_and_verify_a_triton_vm_program();

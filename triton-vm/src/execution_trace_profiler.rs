@@ -325,8 +325,9 @@ mod tests {
     use crate::prelude::VM;
     use crate::prelude::VMState;
     use crate::prelude::triton_program;
+    use crate::tests::test;
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn profile_can_be_created_and_agrees_with_regular_vm_run() {
         let program =
             crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
@@ -352,7 +353,7 @@ mod tests {
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn program_with_too_many_returns_crashes_vm_but_not_profiler() {
         let program = triton_program! {
             call foo return halt
@@ -362,7 +363,7 @@ mod tests {
         let_assert!(InstructionError::JumpStackIsEmpty = err.source);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn call_instruction_does_not_contribute_to_profile_span() {
         let program = triton_program! { call foo halt foo: return };
         let_assert!(Ok((_, profile)) = VM::profile(program, [].into(), [].into()));

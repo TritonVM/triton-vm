@@ -363,7 +363,6 @@ impl ReedSolomonCode {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use assert2::let_assert;
-    use test_strategy::proptest;
     use twenty_first::prelude::BFieldCodec;
     use twenty_first::prelude::BFieldElement;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
@@ -371,6 +370,8 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::prelude::Proof;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     /// Test-only trait to gather statistics of low-degree tests.
     ///
@@ -394,7 +395,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn log2_extension_field_size_is_correct() {
         let log2_field_size = (BFieldElement::P as f64)
             .powf(EXTENSION_DEGREE as f64)
@@ -402,7 +403,7 @@ pub(crate) mod tests {
         assert!((ReedSolomonCode::LOG2_FIELD_SIZE - log2_field_size).abs() < 0.0001);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn q_ary_entropy_fn_is_correct() {
         const DELTA: f64 = 0.0001;
 
@@ -421,7 +422,7 @@ pub(crate) mod tests {
         assert_are_close(0.004098304720073, entropy_of_log2_expansion_factor(8));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn too_big_expansion_factor_is_rejected(mut code: ReedSolomonCode) {
         type Err = LdtParameterError;
 

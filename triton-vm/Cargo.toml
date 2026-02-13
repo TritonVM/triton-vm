@@ -18,6 +18,9 @@ documentation.workspace = true
 repository.workspace = true
 readme.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 air.workspace = true
 arbitrary.workspace = true
@@ -38,18 +41,30 @@ strum.workspace = true
 thiserror.workspace = true
 twenty-first.workspace = true
 unicode-width.workspace = true
+web-time.workspace = true
 
 [dev-dependencies]
 assert2.workspace = true
 constraint-circuit.workspace = true
-criterion.workspace = true
 fs-err.workspace = true
 insta.workspace = true
+macro_rules_attr.workspace = true
 prettyplease.workspace = true
 proptest.workspace = true
-proptest-arbitrary-interop.workspace = true
+proptest-arbitrary-adapter.workspace = true
 serde_json.workspace = true
 test-strategy.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+criterion = { version = "0.8.1", default-features = false }
+wasm-bindgen-test = "0.3.42"
+
+# Workaround for Rust 1.87.0 (see also: <https://github.com/rust-lang/rust/issues/141048>)
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O4", "--enable-bulk-memory"]
 
 [build-dependencies]
 air.workspace = true

@@ -1,0 +1,9 @@
+[target.wasm32-unknown-unknown]
+# debuginfo and symbols are stripped to decrease size of generated debug binary.
+# Otherwise, the binary would be so huge that the wasm test harness barfs on it.
+rustflags = [
+    "--cfg", "getrandom_backend=\"wasm_js\"",
+    "-C", "debuginfo=0",
+    "-C", "strip=symbols",
+]
+runner = "wasm-bindgen-test-runner"

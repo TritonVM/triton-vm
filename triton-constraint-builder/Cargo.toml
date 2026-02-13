@@ -27,11 +27,16 @@ syn.workspace = true
 twenty-first.workspace = true
 
 [dev-dependencies]
-criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
-proptest-arbitrary-interop.workspace = true
+proptest-arbitrary-adapter.workspace = true
 test-strategy.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+criterion = { version = "0.8.1", default-features = false }
 
 [lints]
 workspace = true

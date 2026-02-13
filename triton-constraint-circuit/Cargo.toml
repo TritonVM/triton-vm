@@ -25,7 +25,7 @@ twenty-first.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-proptest-arbitrary-interop.workspace = true
+proptest-arbitrary-adapter.workspace = true
 rand.workspace = true
 test-strategy.workspace = true
 

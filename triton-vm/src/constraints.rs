@@ -8,9 +8,8 @@ mod tests {
     use ndarray::Array1;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use std::collections::HashMap;
-    use test_strategy::proptest;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
     use twenty_first::prelude::*;
 
@@ -23,6 +22,7 @@ mod tests {
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
     use crate::table::master_table::MasterMainTable;
+    use crate::tests::proptest;
 
     use super::dynamic_air_constraint_evaluation_tasm;
     use super::static_air_constraint_evaluation_tasm;
@@ -186,7 +186,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn triton_constraints_and_assembly_constraints_agree(point: ConstraintEvaluationPoint) {
         let all_constraints_rust = point.evaluate_all_constraints_rust();
         let all_constraints_tasm_static = point.evaluate_all_constraints_tasm_static();
@@ -196,7 +196,7 @@ mod tests {
         prop_assert_eq!(all_constraints_rust, all_constraints_tasm_dynamic);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn triton_assembly_constraint_evaluators_do_not_write_outside_of_dedicated_memory_region(
         point: ConstraintEvaluationPoint,
     ) {
@@ -216,7 +216,7 @@ mod tests {
         prop_assert_eq!(initial_state.ram, terminal_state.ram);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn triton_assembly_constraint_evaluators_declare_no_labels(
         #[strategy(arb())] static_memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
         #[strategy(arb())] dynamic_memory_layout: DynamicTasmConstraintEvaluationMemoryLayout,
@@ -233,7 +233,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn triton_assembly_constraint_evaluators_are_straight_line_and_does_not_halt(
         #[strategy(arb())] static_memory_layout: StaticTasmConstraintEvaluationMemoryLayout,
         #[strategy(arb())] dynamic_memory_layout: DynamicTasmConstraintEvaluationMemoryLayout,

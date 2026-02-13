@@ -58,8 +58,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::ops::AddAssign;
-use std::time::Duration;
-use std::time::Instant;
 use std::vec;
 
 use colored::Color;
@@ -68,6 +66,8 @@ use colored::Colorize;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
+use web_time::Duration;
+use web_time::Instant;
 
 const ENV_VAR_PROFILER_LIVE_UPDATE: &str = "TVM_PROFILER_LIVE_UPDATE";
 
@@ -889,14 +889,22 @@ pub(crate) use profiler;
 
 #[cfg(all(test, any(debug_assertions, not(feature = "no_profile"))))]
 mod tests {
+    #[cfg(not(target_arch = "wasm32"))]
     use std::thread::sleep;
-    use std::time::Duration;
-
-    use test_strategy::proptest;
 
     use super::*;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
-    #[test]
+    /// A replacement of [`std::thread::sleep`] using spinning for systems that
+    /// don't support the relevant system calls.
+    #[cfg(target_arch = "wasm32")]
+    fn sleep(duration: Duration) {
+        let start = Instant::now();
+        while start.elapsed() < duration { /* spin */ }
+    }
+
+    #[macro_rules_attr::apply(test)]
     fn formatting_parts() {
         let (sign, fmt_str, _) = RssContribution::Addition(1_024).formatting_parts();
         assert_eq!('+', sign);
@@ -913,7 +921,7 @@ mod tests {
         assert_eq!("0.1 MiB", fmt_str);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn round_decimal_fraction() {
         assert_eq!(9, RssContribution::round_decimal_fraction::<1>(9));
         assert_eq!(9, RssContribution::round_decimal_fraction::<1>(94));
@@ -930,7 +938,7 @@ mod tests {
         assert_eq!(950, RssContribution::round_decimal_fraction::<3>(95));
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn sanity() {
         let mut profiler = VMPerformanceProfiler::new("Sanity Test");
         profiler.start("Task 0", here!(), None);
@@ -970,7 +978,7 @@ mod tests {
         Dispatch,
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn extensive(mut choices: Vec<DispatchChoice>) {
         fn dispatch(choice: DispatchChoice, remaining_choices: &mut Vec<DispatchChoice>) {
             profiler!(start "dispatcher");
@@ -1028,7 +1036,7 @@ mod tests {
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn clk_freq() {
         crate::profiler::start("Clock Frequency Test");
         profiler!(start "clk_freq_test");
@@ -1054,7 +1062,7 @@ mod tests {
         println!("{profile_with_optionals_set}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn starting_the_profiler_twice_does_not_cause_panic() {
         crate::profiler::start("Double Start Test 0");
         crate::profiler::start("Double Start Test 1");
@@ -1062,27 +1070,27 @@ mod tests {
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn creating_profile_without_starting_profile_does_not_cause_panic() {
         let profile = crate::profiler::finish();
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn profiler_without_any_tasks_can_generate_a_profile_report() {
         crate::profiler::start("Empty Test");
         let profile = crate::profiler::finish();
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn invocation_path_can_be_displayed() {
         let path = InvocationPath::default().extend(here!());
         let path = path.extend(here!());
         println!("{path}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn profiler_with_unfinished_tasks_can_generate_profile_report() {
         crate::profiler::start("Unfinished Tasks Test");
         profiler!(start "unfinished task");
@@ -1090,7 +1098,7 @@ mod tests {
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn loops() {
         crate::profiler::start("Loops");
         for i in 0..5 {
@@ -1102,7 +1110,7 @@ mod tests {
         println!("{profile}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn nested_loops() {
         crate::profiler::start("Nested Loops");
         for i in 0..5 {

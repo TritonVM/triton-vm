@@ -1533,23 +1533,23 @@ pub(crate) mod tests {
     use itertools::izip;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::Rng;
     use rand::RngCore;
     use rand::rngs::ThreadRng;
     use strum::EnumCount;
     use strum::EnumIter;
-    use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
+    use super::*;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::TestableProgram;
     use crate::stark::Stark;
     use crate::stark::tests::program_executing_every_instruction;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
-    use super::*;
-
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instructions_act_on_op_stack_as_indicated() {
         for test_instruction in ALL_INSTRUCTIONS {
             let (program, stack_size_before_test_instruction) =
@@ -1596,7 +1596,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn from_various_types_to_public_input(#[strategy(arb())] tokens: Vec<BFieldElement>) {
         let public_input = PublicInput::new(tokens.clone());
 
@@ -1609,7 +1609,7 @@ pub(crate) mod tests {
         assert!(PublicInput::new(vec![]) == [].into());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn from_various_types_to_non_determinism(#[strategy(arb())] tokens: Vec<BFieldElement>) {
         let non_determinism = NonDeterminism::new(tokens.clone());
 
@@ -1620,7 +1620,7 @@ pub(crate) mod tests {
         assert!(NonDeterminism::new(vec![]) == [].into());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn initialise_table() {
         let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
@@ -1628,7 +1628,7 @@ pub(crate) mod tests {
         VM::trace_execution(program, stdin, secret_in).unwrap();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_gcd() {
         let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
@@ -1641,14 +1641,14 @@ pub(crate) mod tests {
         assert!(bfe!(14) == stdout[0]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn crash_triton_vm_and_print_vm_error() {
         let crashing_program = triton_program!(push 2 assert halt);
         let_assert!(Err(err) = VM::run(crashing_program, [].into(), [].into()));
         println!("{err}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn crash_triton_vm_with_non_empty_jump_stack_and_print_vm_error() {
         let crashing_program = triton_program! {
             call foo halt
@@ -1665,7 +1665,7 @@ pub(crate) mod tests {
         println!("{err_str}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_various_vm_states() {
         let TestableProgram {
             program,
@@ -1680,7 +1680,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn print_vm_state_with_long_jump_stack() {
         let labels = [
             "astraldropper_",
@@ -1840,12 +1840,12 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn property_based_recurse_or_return_program_sanity_check(program: ProgramForRecurseOrReturn) {
         program.assemble().run()?;
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn vm_crashes_when_executing_recurse_or_return_with_empty_jump_stack() {
         let program = triton_program!(recurse_or_return halt);
         let_assert!(Err(err) = VM::run(program, PublicInput::default(), NonDeterminism::default()));
@@ -2200,7 +2200,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn property_based_sponge_and_hash_instructions_program_sanity_check(
         program: ProgramForSpongeAndHashInstructions,
     ) {
@@ -2545,13 +2545,13 @@ pub(crate) mod tests {
 
     /// Sanity check for the relatively complex property-based test for random
     /// RAM access.
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let program = property_based_test_program_for_random_ram_access();
         program.run().unwrap();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn can_compute_dot_product_from_uninitialized_ram() {
         let program = triton_program!(xx_dot_step xb_dot_step halt);
         VM::run(program, PublicInput::default(), NonDeterminism::default()).unwrap();
@@ -2616,7 +2616,7 @@ pub(crate) mod tests {
     }
 
     /// Sanity check
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_dont_prove_property_based_test_program_for_xx_dot_step() {
         let program = property_based_test_program_for_xx_dot_step();
         program.run().unwrap();
@@ -2690,13 +2690,13 @@ pub(crate) mod tests {
     }
 
     /// Sanity check
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_dont_prove_property_based_test_program_for_xb_dot_step() {
         let program = property_based_test_program_for_xb_dot_step();
         program.run().unwrap();
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn negative_property_is_u32(
         #[strategy(arb())]
         #[filter(#st0.value() > u64::from(u32::MAX))]
@@ -2774,7 +2774,7 @@ pub(crate) mod tests {
         TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xx_add(
         #[strategy(arb())] left_operand: XFieldElement,
         #[strategy(arb())] right_operand: XFieldElement,
@@ -2795,7 +2795,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xx_mul(
         #[strategy(arb())] left_operand: XFieldElement,
         #[strategy(arb())] right_operand: XFieldElement,
@@ -2816,7 +2816,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xinv(
         #[strategy(arb())]
         #[filter(!#operand.is_zero())]
@@ -2835,7 +2835,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xb_mul(#[strategy(arb())] scalar: BFieldElement, #[strategy(arb())] operand: XFieldElement) {
         let program = triton_program!(
             push {operand.coefficients[2]}
@@ -2851,7 +2851,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn pseudo_sub(
         #[strategy(arb())] minuend: BFieldElement,
         #[strategy(arb())] subtrahend: BFieldElement,
@@ -2870,7 +2870,7 @@ pub(crate) mod tests {
     // compile-time assertion
     const _OP_STACK_IS_BIG_ENOUGH: () = std::assert!(2 * Digest::LEN <= OpStackElement::COUNT);
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_hello_world() {
         let program = triton_program!(
             push  10 // \n
@@ -2895,31 +2895,31 @@ pub(crate) mod tests {
         assert!(BFieldElement::ZERO == vm_state.op_stack[0]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_merkle_step_right_sibling() {
         let program = test_program_for_merkle_step_right_sibling();
         let_assert!(Ok(_) = program.run());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_merkle_step_left_sibling() {
         let program = test_program_for_merkle_step_left_sibling();
         let_assert!(Ok(_) = program.run());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_merkle_step_mem_right_sibling() {
         let program = test_program_for_merkle_step_mem_right_sibling();
         let_assert!(Ok(_) = program.run());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_merkle_step_mem_left_sibling() {
         let program = test_program_for_merkle_step_mem_left_sibling();
         let_assert!(Ok(_) = program.run());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
         let_assert!(Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
@@ -2934,7 +2934,7 @@ pub(crate) mod tests {
         println!("{last_processor_row}");
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_basic_ram_read_write() {
         let program = triton_program!(
             push  8 push  5 write_mem 1 pop 1   // write  8 to address  5
@@ -2955,7 +2955,7 @@ pub(crate) mod tests {
         assert!(18 == vm_state.op_stack[3].value());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_edgy_ram_writes() {
         let program = triton_program!(
                         //       ┌ stack cannot shrink beyond this point
@@ -2987,7 +2987,7 @@ pub(crate) mod tests {
         assert!(5_u64 == vm_state.op_stack[2].value());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn triton_assembly_merkle_tree_authentication_path_verification(
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
@@ -3013,14 +3013,14 @@ pub(crate) mod tests {
         assert!(let Ok(_) = VM::run(program, public_input.into(), non_determinism));
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn merkle_tree_updating_program_correctly_updates_a_merkle_tree(
         program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
     ) {
         prop_assert!(program_for_merkle_tree_update.is_integral());
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn prove_verify_merkle_tree_update(
         program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
         #[strategy(1_usize..=4)] log2_expansion_factor: usize,
@@ -3032,7 +3032,7 @@ pub(crate) mod tests {
             .prove_and_verify();
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn run_tvm_get_collinear_y(
         #[strategy(arb())] p0: (BFieldElement, BFieldElement),
         #[strategy(arb())]
@@ -3057,7 +3057,7 @@ pub(crate) mod tests {
         prop_assert_eq!(p2_y, output[0]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_countdown_from_10() {
         let countdown_program = triton_program!(
             push 10
@@ -3080,7 +3080,7 @@ pub(crate) mod tests {
         assert!(expected == standard_out);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_fibonacci() {
         for (input, expected_output) in [(0, 1), (7, 21), (11, 144)] {
             let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
@@ -3091,28 +3091,28 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
         let_assert!(Ok(standard_out) = VM::run(program, [].into(), [].into()));
         assert!(bfe!(2) == standard_out[0]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn swap_st0_is_like_no_op() {
         let program = triton_program!(push 42 swap 0 write_io 1 halt);
         let_assert!(Ok(standard_out) = VM::run(program, [].into(), [].into()));
         assert!(bfe!(42) == standard_out[0]);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn read_mem_uninitialized() {
         let program = triton_program!(read_mem 3 halt);
         let_assert!(Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
         assert!(2 == aet.processor_trace.nrows());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn read_non_deterministically_initialized_ram_at_address_0() {
         let program = triton_program!(push 0 read_mem 1 pop 1 write_io 1 halt);
 
@@ -3128,7 +3128,7 @@ pub(crate) mod tests {
         program.prove_and_verify();
     }
 
-    #[proptest(cases = 10)]
+    #[macro_rules_attr::apply(proptest(cases = 10))]
     fn read_non_deterministically_initialized_ram_at_random_address(
         #[strategy(arb())] uninitialized_address: BFieldElement,
         #[strategy(arb())]
@@ -3155,14 +3155,14 @@ pub(crate) mod tests {
         program.prove_and_verify();
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn program_without_halt() {
         let program = triton_program!(nop);
         let_assert!(Err(err) = VM::trace_execution(program, [].into(), [].into()));
         let_assert!(InstructionError::InstructionPointerOverflow = err.source);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn verify_sudoku() {
         let program = crate::example_programs::VERIFY_SUDOKU.clone();
         let sudoku = [
@@ -3220,25 +3220,25 @@ pub(crate) mod tests {
         assert!(pre_crash_state == vm_state);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_pop_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 pop 2 halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_divine_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { divine 1 halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_assert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 assert halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} swap 5 merkle_step halt };
@@ -3247,7 +3247,7 @@ pub(crate) mod tests {
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_merkle_step_does_not_change_vm_state_when_crashing_vm_no_nd_digests() {
         let valid_u32 = u64::from(u32::MAX);
         let program = triton_program! { push {valid_u32} swap 5 merkle_step halt };
@@ -3255,7 +3255,7 @@ pub(crate) mod tests {
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_merkle_step_mem_does_not_change_vm_state_when_crashing_vm_invalid_node_index() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} swap 5 merkle_step_mem halt };
@@ -3263,117 +3263,117 @@ pub(crate) mod tests {
         instruction_does_not_change_vm_state_when_crashing_vm(program, 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_assert_vector_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 push 0 push 0 push 0 assert_vector halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 5);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
         let ten_pushes = triton_asm![push 0; 10];
         let program = triton_program! { {&ten_pushes} sponge_absorb halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 10);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_sponge_absorb_does_not_change_vm_state_when_crashing_vm_stack_too_small() {
         let program = triton_program! { sponge_init sponge_absorb halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_sponge_absorb_mem_does_not_change_vm_state_when_crashing_vm_sponge_uninit() {
         let program = triton_program! { sponge_absorb_mem halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_sponge_squeeze_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { sponge_squeeze halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 invert halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_lt_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} lt halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_and_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} and halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_xor_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} xor halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_log_2_floor_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} log_2_floor halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_log_2_floor_on_operand_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 log_2_floor halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_pow_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 pow halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_div_mod_on_non_u32_operand_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} push 0 div_mod halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_div_mod_on_denominator_0_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { push 0 push 1 div_mod halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 2);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_pop_count_does_not_change_vm_state_when_crashing_vm() {
         let non_u32 = u64::from(u32::MAX) + 1;
         let program = triton_program! { push {non_u32} pop_count halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 1);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_x_invert_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { x_invert halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn instruction_read_io_does_not_change_vm_state_when_crashing_vm() {
         let program = triton_program! { read_io 1 halt };
         instruction_does_not_change_vm_state_when_crashing_vm(TestableProgram::new(program), 0);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_deserialize_vm_state_to_and_from_json_is_identity(
         #[strategy(arb())] vm_state: VMState,
     ) {
@@ -3382,7 +3382,7 @@ pub(crate) mod tests {
         prop_assert_eq!(vm_state, deserialized);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xx_dot_step(
         #[strategy(0_usize..=25)] n: usize,
         #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
@@ -3441,7 +3441,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_dot_product, observed_dot_product);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn xb_dot_step(
         #[strategy(0_usize..=25)] n: usize,
         #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
@@ -3501,7 +3501,7 @@ pub(crate) mod tests {
         prop_assert_eq!(expected_dot_product, observed_dot_product);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn iterating_over_public_inputs_individual_tokens_is_easy() {
         let public_input = PublicInput::from(bfe_vec![1, 2, 3]);
         let actual = public_input.iter().join(", ");

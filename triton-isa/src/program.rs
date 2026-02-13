@@ -439,7 +439,7 @@ mod tests {
     use assert2::assert;
     use assert2::let_assert;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
+    use proptest_arbitrary_adapter::arb;
     use rand::Rng;
     use test_strategy::proptest;
 

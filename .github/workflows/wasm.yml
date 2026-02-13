@@ -1,0 +1,40 @@
+name: WASM
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  wasm:
+    name: Build, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build with wasm-pack
+        working-directory: triton-vm
+        run: wasm-pack build --release --target nodejs
+
+      - name: Run wasm-pack tests
+        working-directory: triton-vm
+        run: wasm-pack test --node

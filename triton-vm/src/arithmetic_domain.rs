@@ -32,7 +32,7 @@ type Result<T> = std::result::Result<T, ArithmeticDomainError>;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct ArithmeticDomain {
-    #[cfg_attr(test, strategy(proptest_arbitrary_interop::arb()))]
+    #[cfg_attr(test, strategy(proptest_arbitrary_adapter::arb()))]
     #[cfg_attr(test, filter(!#offset.is_zero()))]
     offset: BFieldElement,
 
@@ -302,15 +302,15 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest_arbitrary_interop::arb;
-    use test_strategy::proptest;
-
-    use crate::shared_tests::arbitrary_polynomial;
-    use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use proptest_arbitrary_adapter::arb;
 
     use super::*;
+    use crate::shared_tests::arbitrary_polynomial;
+    use crate::shared_tests::arbitrary_polynomial_of_degree;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn max_domain_length_is_actually_the_max() {
         let max_len = 1 << ArithmeticDomain::LOG2_MAX_LEN;
         assert!(ArithmeticDomain::of_length(max_len).is_ok());
@@ -325,7 +325,7 @@ pub(crate) mod tests {
         assert!(ArithmeticDomain::of_length(too_long).is_err());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_empty_polynomial(
         domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(-1))] poly: Polynomial<'static, XFieldElement>,
@@ -333,7 +333,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_constant_polynomial(
         domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(0))] poly: Polynomial<'static, XFieldElement>,
@@ -341,7 +341,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_linear_polynomial(
         domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial_of_degree(1))] poly: Polynomial<'static, XFieldElement>,
@@ -349,7 +349,7 @@ pub(crate) mod tests {
         domain.evaluate(&poly);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn evaluate_polynomial(
         domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,
@@ -357,7 +357,7 @@ pub(crate) mod tests {
         domain.evaluate(&polynomial);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn domain_values() {
         let poly = Polynomial::<BFieldElement>::x_to_the(3);
         let x_cubed_coefficients = poly.clone().into_coefficients();
@@ -392,7 +392,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn low_degree_extension() {
         let short_domain_len = 32;
         let long_domain_len = 128;
@@ -414,7 +414,7 @@ pub(crate) mod tests {
         assert_eq!(short_codeword, long_codeword_sub_view);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn domain_to_the_pow_contains_points_to_the_pow(
         big_domain: ArithmeticDomain,
         #[strategy(0..=4)]
@@ -438,7 +438,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn pow_converges_on_domain_of_len_1(
         domain: ArithmeticDomain,
         #[strategy(0..=4)]
@@ -454,7 +454,7 @@ pub(crate) mod tests {
         prop_assert_eq!(1, domain.length);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn can_evaluate_polynomial_larger_than_domain(
         #[strategy(1_usize..10)] _log_domain_length: usize,
         #[strategy(1_usize..5)] _expansion_factor: usize,
@@ -472,13 +472,13 @@ pub(crate) mod tests {
         assert_eq!(values0, values1);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn zerofier_is_actually_zerofier(domain: ArithmeticDomain) {
         let actual_zerofier = Polynomial::zerofier(&domain.values());
         prop_assert_eq!(actual_zerofier, domain.zerofier());
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn multiplication_with_zerofier_is_identical_to_method_mul_with_zerofier(
         domain: ArithmeticDomain,
         #[strategy(arbitrary_polynomial())] polynomial: Polynomial<'static, XFieldElement>,

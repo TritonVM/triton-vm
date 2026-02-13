@@ -39,17 +39,17 @@ pub trait Codegen {
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct RustBackend {
     /// All [circuit][ConstraintCircuit] IDs known to be in scope.
-    scope: HashSet<usize>,
+    scope: HashSet<u64>,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct TasmBackend {
     /// All [circuit][ConstraintCircuit] IDs known to be processed and stored to
     /// memory.
-    scope: HashSet<usize>,
+    scope: HashSet<u64>,
 
     /// The number of elements written to the output list.
-    elements_written: usize,
+    elements_written: u64,
 
     /// Whether the code that is to be generated can assume statically provided
     /// addresses for the various input arrays.
@@ -367,17 +367,19 @@ impl RustBackend {
 }
 
 /// The minimal required size of a memory page in [`BFieldElement`]s.
-pub const MEM_PAGE_SIZE: usize = 1 << 32;
+pub const MEM_PAGE_SIZE: u64 = 1 << 32;
 
 /// An offset from the memory layout's `free_mem_page_ptr`, in number of
 /// [`XFieldElement`]s. Indicates the start of the to-be-returned array.
 ///
 /// See `IntegralMemoryLayout` in crate triton-vm for more context.
-const OUT_ARRAY_OFFSET: usize = {
+const OUT_ARRAY_OFFSET: u64 = {
     let max_num_words_for_evaluated_constraints = 1 << 16; // magic!
     let out_array_offset_in_words = MEM_PAGE_SIZE - max_num_words_for_evaluated_constraints;
-    assert!(out_array_offset_in_words.is_multiple_of(EXTENSION_DEGREE));
-    out_array_offset_in_words / EXTENSION_DEGREE
+    let extension_degree = EXTENSION_DEGREE as u64;
+    assert!(out_array_offset_in_words.is_multiple_of(extension_degree));
+
+    out_array_offset_in_words / extension_degree
 };
 
 /// Convenience macro to get raw opcodes of any [`Instruction`] variant,
@@ -800,7 +802,7 @@ impl TasmBackend {
                 [c2, c1, c0].concat()
             }
             CircuitExpression::Input(input) => self.load_input(input),
-            CircuitExpression::Challenge(challenge_idx) => Self::load_challenge(challenge_idx),
+            CircuitExpression::Challenge(idx) => Self::load_challenge(idx.try_into().unwrap()),
             CircuitExpression::BinOp(_, _, _) => Self::load_evaluated_bin_op(circuit.id),
         }
     }
@@ -812,22 +814,24 @@ impl TasmBackend {
             (false, true) => IOList::NextMainRow,
             (false, false) => IOList::NextAuxRow,
         };
+        let element_index = input.column().try_into().unwrap();
+
         if self.input_location_is_static {
-            Self::load_ext_field_element_from_list(list, input.column())
+            Self::load_ext_field_element_from_list(list, element_index)
         } else {
-            Self::load_ext_field_element_from_pointed_to_list(list, input.column())
+            Self::load_ext_field_element_from_pointed_to_list(list, element_index)
         }
     }
 
-    fn load_challenge(challenge_idx: usize) -> Vec<TokenStream> {
+    fn load_challenge(challenge_idx: u64) -> Vec<TokenStream> {
         Self::load_ext_field_element_from_list(IOList::Challenges, challenge_idx)
     }
 
-    fn load_evaluated_bin_op(node_id: usize) -> Vec<TokenStream> {
+    fn load_evaluated_bin_op(node_id: u64) -> Vec<TokenStream> {
         Self::load_ext_field_element_from_list(IOList::FreeMemPage, node_id)
     }
 
-    fn load_ext_field_element_from_list(list: IOList, element_index: usize) -> Vec<TokenStream> {
+    fn load_ext_field_element_from_list(list: IOList, element_index: u64) -> Vec<TokenStream> {
         let word_index = Self::element_index_to_word_index_for_reading(element_index);
 
         [
@@ -840,7 +844,7 @@ impl TasmBackend {
 
     fn load_ext_field_element_from_pointed_to_list(
         list: IOList,
-        element_index: usize,
+        element_index: u64,
     ) -> Vec<TokenStream> {
         let word_index = Self::element_index_to_word_index_for_reading(element_index);
 
@@ -855,19 +859,19 @@ impl TasmBackend {
         .concat()
     }
 
-    fn element_index_to_word_index_for_reading(element_index: usize) -> BFieldElement {
-        let word_offset = element_index * EXTENSION_DEGREE;
-        let start_to_read_offset = EXTENSION_DEGREE - 1;
+    fn element_index_to_word_index_for_reading(element_index: u64) -> BFieldElement {
+        let extension_degree = u64::try_from(EXTENSION_DEGREE).unwrap();
+        let word_offset = element_index * extension_degree;
+        let start_to_read_offset = extension_degree - 1;
         let word_index = word_offset + start_to_read_offset;
-        bfe!(u64::try_from(word_index).unwrap())
+
+        bfe!(word_index)
     }
 
-    fn store_ext_field_element(element_index: usize) -> Vec<TokenStream> {
+    fn store_ext_field_element(element_index: u64) -> Vec<TokenStream> {
         let free_mem_page = IOList::FreeMemPage;
 
-        let word_offset = element_index * EXTENSION_DEGREE;
-        let word_index = u64::try_from(word_offset).unwrap();
-
+        let word_index = element_index * u64::try_from(EXTENSION_DEGREE).unwrap();
         let push_address = push!(free_mem_page + word_index);
         let write_mem = instr!(WriteMem(NumberOfWords::N3));
         let pop = instr!(Pop(NumberOfWords::N1));
@@ -877,9 +881,8 @@ impl TasmBackend {
 
     fn prepare_return_values() -> Vec<TokenStream> {
         let free_mem_page = IOList::FreeMemPage;
-        let out_array_offset_in_num_bfes = OUT_ARRAY_OFFSET * EXTENSION_DEGREE;
-        let out_array_offset = u64::try_from(out_array_offset_in_num_bfes).unwrap();
-        push!(free_mem_page + out_array_offset)
+        let out_array_offset_in_num_bfes = OUT_ARRAY_OFFSET * EXTENSION_DEGREE as u64;
+        push!(free_mem_page + out_array_offset_in_num_bfes)
     }
 }
 

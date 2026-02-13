@@ -154,15 +154,16 @@ pub(crate) mod tests {
     use assert2::let_assert;
     use proptest::prelude::*;
     use strum::IntoEnumIterator;
-    use test_strategy::proptest;
 
     use crate::proof::Proof;
     use crate::proof_stream::ProofStream;
     use crate::shared_tests::LeavedMerkleTreeTestData;
+    use crate::tests::proptest;
+    use crate::tests::test;
 
     use super::*;
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_stir_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
         let response = leaved_merkle_tree.into_stir_response();
         let encoding = response.encode();
@@ -170,7 +171,7 @@ pub(crate) mod tests {
         prop_assert_eq!(response, *decoding);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_stir_response_in_proof_stream(leaved_merkle_tree: LeavedMerkleTreeTestData) {
         let response = leaved_merkle_tree.into_stir_response();
         let mut proof_stream = ProofStream::new();
@@ -183,7 +184,7 @@ pub(crate) mod tests {
         prop_assert_eq!(response, response_);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_authentication_structure_in_isolation(
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
@@ -193,7 +194,7 @@ pub(crate) mod tests {
         prop_assert_eq!(auth_structure, *decoding);
     }
 
-    #[proptest]
+    #[macro_rules_attr::apply(proptest)]
     fn serialize_authentication_structure_in_proof_stream(
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
@@ -208,7 +209,7 @@ pub(crate) mod tests {
         prop_assert_eq!(auth_structure, auth_structure_);
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn interpreting_a_merkle_root_as_anything_else_gives_appropriate_error() {
         let fake_root = Digest::default();
         let item = ProofItem::MerkleRoot(fake_root);
@@ -225,14 +226,14 @@ pub(crate) mod tests {
         assert!(let Err(UnexpectedItem{..}) = item.try_into_polynomial());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn proof_item_payload_static_length_is_as_expected() {
         assert!(let Some(_) =  ProofItemVariant::MerkleRoot.payload_static_length());
         assert!(let Some(_) =  ProofItemVariant::Log2PaddedHeight.payload_static_length());
         assert_eq!(None, ProofItemVariant::StirResponse.payload_static_length());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn can_loop_over_proof_item_variants() {
         let all_discriminants: HashSet<_> = ProofItemVariant::iter()
             .map(|variant| variant.bfield_codec_discriminant())
@@ -240,7 +241,7 @@ pub(crate) mod tests {
         assert_eq!(ProofItem::COUNT, all_discriminants.len());
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn proof_item_and_its_variant_have_same_bfield_codec_discriminant() {
         assert_eq!(
             ProofItem::MerkleRoot(Digest::default()).bfield_codec_discriminant(),
@@ -256,7 +257,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
+    #[macro_rules_attr::apply(test)]
     fn proof_item_variants_payload_type_has_expected_format() {
         assert_eq!("Digest", ProofItemVariant::MerkleRoot.payload_type());
     }
