@@ -2704,6 +2704,57 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_for_legal_initial_instructions() -> ConstraintResult {
+        fn is_legal_initial_instruction(instruction: Instruction) -> bool {
+            match instruction {
+                _ if instruction.op_stack_size_influence() < 0 => false, // op-stack too small
+                Instruction::Recurse | Instruction::Return => false,     // empty jump-stack
+                Instruction::RecurseOrReturn => false,                   // empty jump-stack
+                Instruction::SpongeAbsorbMem => false,                   // uninitialized Sponge
+                Instruction::SpongeSqueeze => false,                     // uninitialized Sponge
+                Instruction::Invert => false,                            // inverse of 0
+                Instruction::Log2Floor => false,                         // log of 0
+                Instruction::DivMod => false,                            // division by 0
+                Instruction::XInvert => false,                           // inverse of 0
+                _ => true,
+            }
+        }
+
+        for instruction in Instruction::iter() {
+            dbg!(instruction);
+            let instruction = instruction.map_call_address(|_| bfe!(2)); // hack: `call foo`
+            let program = triton_program!( {instruction} halt foo: return );
+
+            let non_determinism =
+                NonDeterminism::new(bfe_vec![42; 5]).with_digests([Digest::new(bfe_array![42; 5])]);
+            let program_and_input = TestableProgram::new(program)
+                .with_input(bfe_vec![42; 5])
+                .with_non_determinism(non_determinism);
+            let constraint_check_result = triton_constraints_evaluate_to_zero(program_and_input);
+
+            if is_legal_initial_instruction(instruction) {
+                constraint_check_result?;
+                continue;
+            }
+
+            let Err(ConstraintErrorCollection { table, errors }) = constraint_check_result else {
+                panic!("initial {instruction} must fail at least one constraint");
+            };
+            if table != "ProcessorTable" {
+                panic!("expected failed processor constraint for {instruction}, found {table}");
+            }
+            let some_initial_constraint_failed = errors
+                .into_iter()
+                .any(|err| matches!(err, ConstraintError::Initial { .. }));
+            if !some_initial_constraint_failed {
+                panic!("initial {instruction} must fail some initial constraint");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
         let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
             .with_input(bfe_array![100]);

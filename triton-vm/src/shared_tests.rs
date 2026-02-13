@@ -210,6 +210,12 @@ impl TestableProgram {
         } = self;
 
         let claim = Claim::about_program(&program).with_input(public_input.clone());
+        // todo: the problem is that this `unwrap` does not work if the initial
+        //  instruction that is under test is an illegal initial instruction.
+        //  It's unclear what to do about this. I _want_ an execution trace, so
+        //  returning an error is not an option. Generally, I don't want to
+        //  produce an execution trace if the program is not valid – except,
+        //  here, I need it!
         let (aet, stdout) = VM::trace_execution(program, public_input, non_determinism).unwrap();
         let claim = claim.with_output(stdout);
 
