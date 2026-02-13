@@ -153,10 +153,10 @@ impl ArithmeticDomain {
         let mut indexed_chunks = (0..).zip(polynomial.coefficients().chunks(length));
 
         // only allocate a bunch of zeros if there are no chunks
-        let mut values = indexed_chunks.next().map_or_else(
-            || vec![FF::ZERO; length],
-            |(_, first_chunk)| evaluate_from(first_chunk),
-        );
+        let mut values = indexed_chunks
+            .next()
+            .map(|(_, first_chunk)| evaluate_from(first_chunk))
+            .unwrap_or_else(|| vec![FF::ZERO; length]);
         for (chunk_index, chunk) in indexed_chunks {
             let coefficient_index = chunk_index * u64::try_from(length).unwrap();
             let scaled_offset = offset.mod_pow(coefficient_index);

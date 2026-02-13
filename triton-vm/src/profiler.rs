@@ -384,7 +384,7 @@ impl VMPerformanceProfiler {
             let weight =
                 Weight::weigh(task.total_duration.as_secs_f64() / total_time.as_secs_f64());
 
-            let num_invocations = std::cmp::max(task.num_invocations, 1);
+            let num_invocations = max(task.num_invocations, 1);
             let mean_start_rss = task.start_rss.map(|rss| rss / num_invocations);
             let mean_stop_rss = task.stop_rss.map(|rss| rss / num_invocations);
             let rss_contribution = RssContribution::from_diff(mean_start_rss, mean_stop_rss);
@@ -447,11 +447,13 @@ impl VMPerformanceProfiler {
         category: Option<String>,
     ) {
         let rss = resident_set_size();
-        self.max_rss = std::cmp::max(self.max_rss, rss);
+        self.max_rss = max(self.max_rss, rss);
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             let name = name.clone().into();
-            let rss = rss.map_or_else(|| "unknown".to_string(), |r| r.to_string());
+            let rss = rss
+                .map(|rss| rss.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
             println!("start: {name} (at {location}) current memory usage: {rss} bytes");
         }
 
@@ -508,7 +510,7 @@ impl VMPerformanceProfiler {
         task.total_duration += duration;
 
         let rss = resident_set_size();
-        self.max_rss = std::cmp::max(self.max_rss, rss);
+        self.max_rss = max(self.max_rss, rss);
         task.stop_rss =
             if let (Some(_), Some(acc), Some(rss)) = (task.start_rss, task.stop_rss, rss) {
                 acc.checked_add(rss)
@@ -518,7 +520,9 @@ impl VMPerformanceProfiler {
 
         if env_var(ENV_VAR_PROFILER_LIVE_UPDATE).is_ok() {
             let name = &task.name;
-            let rss = rss.map_or_else(|| "unknown".to_string(), |r| r.to_string());
+            let rss = rss
+                .map(|rss| rss.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
             println!("stop:  {name} – took {duration:.2?} current memory usage: {rss} bytes");
         }
     }
@@ -730,7 +734,8 @@ impl Display for VMPerformanceProfile {
 
             let relative_category_color = task
                 .relative_category_time
-                .map_or(Color::White, |t| Weight::weigh(t).color());
+                .map(|time| Weight::weigh(time).color())
+                .unwrap_or(Color::White);
             let category_and_relative_time = task
                 .category
                 .as_ref()
