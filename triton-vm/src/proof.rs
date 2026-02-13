@@ -30,7 +30,7 @@ use crate::proof_stream::ProofStream;
 ///
 /// This version is separate from the crate's semantic version to allow software
 /// upgrades with no semantic changes to both, the ISA and the proof system.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
@@ -41,7 +41,7 @@ impl Proof {
     /// Get the height of the trace used during proof generation.
     /// This is an upper bound on the length of the computation this proof is
     /// for. It is one of the main contributing factors to the length of the
-    /// FRI domain.
+    /// low-degree test domain.
     pub fn padded_height(&self) -> Result<usize, ProofStreamError> {
         let mut log_2_padded_heights = ProofStream::try_from(self)?
             .items
@@ -216,11 +216,11 @@ mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"03679712315797441546,\
-              11839395418856928549,\
-              03557811864671638150,\
-              07068928384145787880,\
-              05899970860911282282",
+            @"08801068644637147819,\
+              04446744568100798063,\
+              07080533028227141276,\
+              08300657324530294965,\
+              00360429145755361985",
         );
     }
 }

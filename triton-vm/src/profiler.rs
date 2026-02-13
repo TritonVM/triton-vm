@@ -435,7 +435,7 @@ impl VMPerformanceProfiler {
             category_times,
             cycle_count: None,
             padded_height: None,
-            fri_domain_len: None,
+            ldt_domain_len: None,
         }
     }
 
@@ -595,7 +595,9 @@ pub struct VMPerformanceProfile {
     category_times: HashMap<String, Duration>,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
-    fri_domain_len: Option<usize>,
+
+    /// The length of the domain for the low-degree test.
+    ldt_domain_len: Option<usize>,
 }
 
 impl VMPerformanceProfile {
@@ -611,9 +613,12 @@ impl VMPerformanceProfile {
         self
     }
 
+    /// The length of the low-degree test's initial domain.
+    ///
+    /// Adds additional information when set.
     #[must_use]
-    pub fn with_fri_domain_len(mut self, fri_domain_len: usize) -> Self {
-        self.fri_domain_len = Some(fri_domain_len);
+    pub fn with_ldt_domain_len(mut self, ldt_domain_len: usize) -> Self {
+        self.ldt_domain_len = Some(ldt_domain_len);
         self
     }
 
@@ -644,7 +649,7 @@ impl Default for VMPerformanceProfile {
             category_times: HashMap::default(),
             cycle_count: None,
             padded_height: None,
-            fri_domain_len: None,
+            ldt_domain_len: None,
         }
     }
 }
@@ -767,7 +772,7 @@ impl Display for VMPerformanceProfile {
             writeln!(f, "{category}   {category_time} {category_relative_time}")?;
         }
 
-        let optionals = [self.cycle_count, self.padded_height, self.fri_domain_len];
+        let optionals = [self.cycle_count, self.padded_height, self.ldt_domain_len];
         if optionals.iter().all(Option::is_none) {
             return Ok(());
         }
@@ -800,9 +805,9 @@ impl Display for VMPerformanceProfile {
             writeln!(f, "/ {num_iters} iterations))")?;
         }
 
-        if let Some(fri_domain_length) = self.fri_domain_len {
-            let log_2_fri_domain_length = fri_domain_length.checked_ilog2().unwrap_or(0);
-            writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
+        if let Some(ldt_domain_len) = self.ldt_domain_len {
+            let log2_dom_len = ldt_domain_len.checked_ilog2().unwrap_or(0);
+            writeln!(f, "Low-degree test domain length is 2^{log2_dom_len}")?;
         }
 
         Ok(())
@@ -1038,14 +1043,14 @@ mod tests {
             .clone()
             .with_cycle_count(0)
             .with_padded_height(0)
-            .with_fri_domain_len(0);
+            .with_ldt_domain_len(0);
         println!("{profile_with_optionals_set_to_0}");
 
         let profile_with_optionals_set = profile
             .clone()
             .with_cycle_count(10)
             .with_padded_height(12)
-            .with_fri_domain_len(32);
+            .with_ldt_domain_len(32);
         println!("{profile_with_optionals_set}");
     }
 

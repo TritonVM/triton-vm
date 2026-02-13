@@ -18,12 +18,11 @@ type Result<T> = std::result::Result<T, ArithmeticDomainError>;
 ///
 /// ArithmeticDomain’s are structured in a way that makes
 /// [evaluation](Self::evaluate) and [interpolation](Self::interpolate) of
-/// [polynomials](twenty_first::prelude::Polynomial) on all the domain’s
-/// [values](Self::values) efficient.
+/// [polynomials](Polynomial) on all the domain’s [values](Self::values)
+/// efficient.
 ///
-/// Since the multiplicative subgroup of [p](BFieldElement::P) factors into
-/// 2^32·other_factors, where the other_factors are not divisible by 2, the
-/// longest [ArithmeticDomain] has [length](Self::len) 2^32.
+/// Domains cannot have arbitrary [length](Self::len); see
+/// [`ArithmeticDomain::LOG2_MAX_LEN`].
 ///
 /// The exact co-domain can be specified by setting an
 /// [offset](Self::with_offset).
@@ -38,6 +37,13 @@ pub struct ArithmeticDomain {
 }
 
 impl ArithmeticDomain {
+    /// The (log₂ of the) maximum possible length of an arithmetic domain.
+    ///
+    /// Since the multiplicative subgroup of [p](BFieldElement::P) factors into
+    /// 2³²·`other_factors`, where the `other_factors` are not divisible by 2,
+    /// the longest [ArithmeticDomain] has [length](Self::len) 2³².
+    pub const LOG2_MAX_LEN: usize = 32;
+
     /// Create a new domain with the given length.
     /// No offset is applied, but can be added through
     /// [`with_offset()`](Self::with_offset).
@@ -167,8 +173,8 @@ impl ArithmeticDomain {
     /// codeword for the given target domain.
     ///
     /// This is usually done to increase the amount of “redundancy” contained
-    /// in the resulting codeword. This, in turn, enables modern low-degree
-    /// tests like [FRI](crate::fri::Fri).
+    /// in the resulting codeword. This, in turn, enables modern
+    /// [low-degree tests](crate::low_degree_test::LowDegreeTest).
     /// However, the target domain may (in principle) be shorter than the
     /// source domain. If the target domain is shorter than or equal to the
     /// polynomial’s degree, information will be lost.

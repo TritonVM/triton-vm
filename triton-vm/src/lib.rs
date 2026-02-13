@@ -191,7 +191,7 @@ pub mod constraints;
 pub mod error;
 pub mod example_programs;
 pub mod execution_trace_profiler;
-pub mod fri;
+pub mod low_degree_test;
 pub mod memory_layout;
 mod ndarray_helper;
 pub mod prelude;
@@ -304,11 +304,10 @@ mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
-    use twenty_first::prelude::*;
-
-    use crate::prelude::*;
 
     use super::*;
+    use crate::low_degree_test::fri;
+    use crate::low_degree_test::stir;
 
     /// The compiler automatically adds any applicable auto trait (all of which
     /// are marker traits) to self-defined types. This implies that these
@@ -350,9 +349,9 @@ mod tests {
         implements_auto_traits::<error::VMError>();
         implements_auto_traits::<error::ArithmeticDomainError>();
         implements_auto_traits::<error::ProofStreamError>();
-        implements_auto_traits::<error::FriSetupError>();
-        implements_auto_traits::<error::FriProvingError>();
-        implements_auto_traits::<error::FriValidationError>();
+        implements_auto_traits::<error::LdtParameterError>();
+        implements_auto_traits::<error::LdtProvingError>();
+        implements_auto_traits::<error::LdtVerificationError>();
         implements_auto_traits::<error::ProvingError>();
         implements_auto_traits::<error::VerificationError>();
 
@@ -374,12 +373,20 @@ mod tests {
         implements_auto_traits::<execution_trace_profiler::ExecutionTraceProfile>();
         implements_auto_traits::<execution_trace_profiler::ProfileLine>();
         implements_auto_traits::<execution_trace_profiler::VMTableHeights>();
+        implements_auto_traits::<low_degree_test::ProximityRegime>();
+        implements_auto_traits::<low_degree_test::VerifierPostscript>();
         implements_auto_traits::<fri::Fri>();
+        implements_auto_traits::<fri::FriParameters>();
+        implements_auto_traits::<fri::FriResponse>();
+        implements_auto_traits::<fri::Postscript>();
+        implements_auto_traits::<stir::Stir>();
+        implements_auto_traits::<stir::StirParameters>();
+        implements_auto_traits::<stir::StirResponse>();
+        implements_auto_traits::<stir::Postscript>();
         implements_auto_traits::<memory_layout::DynamicTasmConstraintEvaluationMemoryLayout>();
         implements_auto_traits::<memory_layout::MemoryRegion>();
         implements_auto_traits::<memory_layout::StaticTasmConstraintEvaluationMemoryLayout>();
         implements_auto_traits::<profiler::VMPerformanceProfile>();
-        implements_auto_traits::<proof_item::FriResponse>();
         implements_auto_traits::<proof_item::ProofItem>();
         implements_auto_traits::<proof_stream::ProofStream>();
         implements_auto_traits::<TypeHint>();

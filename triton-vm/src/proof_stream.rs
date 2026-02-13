@@ -126,11 +126,13 @@ mod tests {
     use assert2::let_assert;
     use itertools::Itertools;
     use proptest::collection::vec;
+    use proptest::prelude::BoxedStrategy;
+    use proptest::prelude::Strategy;
     use proptest_arbitrary_interop::arb;
     use test_strategy::proptest;
     use twenty_first::math::other::random_elements;
 
-    use crate::proof_item::FriResponse;
+    use crate::low_degree_test::stir::StirResponse;
     use crate::proof_item::ProofItem;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::table::AuxiliaryRow;
@@ -138,6 +140,29 @@ mod tests {
     use crate::table::QuotientSegments;
 
     use super::*;
+
+    impl ProofStream {
+        /// Test-only method to prepare this proof stream for verification.
+        ///
+        /// In production, prover and verifier don’t use the same proof
+        /// stream. Instead, the prover's proof stream is serialized, sent to
+        /// the verifier, and then deserialized. This implicitly resets the
+        /// Sponge state.
+        pub(crate) fn reset_sponge(&mut self) {
+            self.items_index = 0;
+            self.sponge = Tip5::init();
+        }
+    }
+
+    impl proptest::arbitrary::Arbitrary for ProofStream {
+        type Parameters = ();
+
+        fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+            arb().boxed()
+        }
+
+        type Strategy = BoxedStrategy<Self>;
+    }
 
     #[proptest]
     fn serialize_proof_with_fiat_shamir(
@@ -150,8 +175,8 @@ mod tests {
     ) {
         let auth_structure = leaved_merkle_tree.auth_structure.clone();
         let root = leaved_merkle_tree.root();
-        let fri_codeword = leaved_merkle_tree.leaves().to_owned();
-        let fri_response = leaved_merkle_tree.into_fri_response();
+        let poly = leaved_merkle_tree.interpolated_leaves();
+        let response = leaved_merkle_tree.into_stir_response();
 
         let mut sponge_states = VecDeque::new();
         let mut proof_stream = ProofStream::new();
@@ -171,9 +196,9 @@ mod tests {
         sponge_states.push_back(proof_stream.sponge.state);
         proof_stream.enqueue(ProofItem::QuotientSegmentsElements(quot_elements.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::FriCodeword(fri_codeword.clone()));
+        proof_stream.enqueue(ProofItem::StirResponse(response.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
-        proof_stream.enqueue(ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(ProofItem::Polynomial(poly.clone()));
         sponge_states.push_back(proof_stream.sponge.state);
 
         let proof = proof_stream.into();
@@ -210,12 +235,12 @@ mod tests {
         assert!(quot_elements == quot_elements_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::FriCodeword(fri_codeword_)) = proof_stream.dequeue());
-        assert!(fri_codeword == fri_codeword_);
+        let_assert!(Ok(ProofItem::StirResponse(response_)) = proof_stream.dequeue());
+        assert!(response == response_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::FriResponse(fri_response_)) = proof_stream.dequeue());
-        assert!(fri_response == fri_response_);
+        let_assert!(Ok(ProofItem::Polynomial(poly_)) = proof_stream.dequeue());
+        assert!(poly == poly_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
         assert!(0 == sponge_states.len());
@@ -232,27 +257,25 @@ mod tests {
         let auth_structure = merkle_tree
             .authentication_structure(&indices_to_check)
             .unwrap();
-        let revealed_leaves = indices_to_check
+        let queried_leafs = indices_to_check
             .iter()
-            .map(|&idx| leaf_values[idx])
-            .collect_vec();
-        let fri_response = FriResponse {
+            .map(|&idx| vec![leaf_values[idx]])
+            .collect();
+        let response = StirResponse {
+            queried_leafs,
             auth_structure,
-            revealed_leaves,
         };
 
         let mut proof_stream = ProofStream::new();
-        proof_stream.enqueue(ProofItem::FriResponse(fri_response));
-
-        // TODO: Also check that deserializing from Proof works here.
+        proof_stream.enqueue(ProofItem::StirResponse(response));
 
         let proof_item = proof_stream.dequeue().unwrap();
-        let maybe_same_fri_response = proof_item.try_into_fri_response().unwrap();
-        let FriResponse {
+        let maybe_same_response = proof_item.try_into_stir_response().unwrap();
+        let StirResponse {
+            queried_leafs,
             auth_structure,
-            revealed_leaves,
-        } = maybe_same_fri_response;
-        let maybe_same_leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
+        } = maybe_same_response;
+        let maybe_same_leaf_digests = queried_leafs.iter().map(|xfe_vec| xfe_vec[0].into());
         let indexed_leafs = indices_to_check
             .into_iter()
             .zip_eq(maybe_same_leaf_digests)
@@ -275,7 +298,7 @@ mod tests {
     #[test]
     fn dequeuing_more_items_than_have_been_enqueued_fails() {
         let mut proof_stream = ProofStream::new();
-        proof_stream.enqueue(ProofItem::FriCodeword(vec![]));
+        proof_stream.enqueue(ProofItem::MerkleRoot(Digest::default()));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
 
         let_assert!(Ok(_) = proof_stream.dequeue());
