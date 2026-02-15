@@ -163,6 +163,9 @@ pub enum ProvingError {
         actual_len: usize,
     },
 
+    #[error("the verifier-supplied randomness causes a violation of the Zero-Knowledge property")]
+    ZeroKnowledgeViolation,
+
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 

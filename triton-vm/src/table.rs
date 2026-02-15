@@ -9,6 +9,7 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
+pub use crate::stark::NUM_RANDOMIZED_QUOTIENT_SEGMENTS;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
@@ -72,10 +73,19 @@ pub type MainRow<T> = [T; MasterMainTable::NUM_COLUMNS];
 /// A single row of a [`MasterAuxTable`].
 pub type AuxiliaryRow = [XFieldElement; MasterAuxTable::NUM_COLUMNS];
 
-/// An element of the split-up quotient polynomial.
+/// An element of the randomized, split-up quotient polynomial.
 ///
-/// See also [`NUM_QUOTIENT_SEGMENTS`].
-pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
+/// See also [`NUM_RANDOMIZED_QUOTIENT_SEGMENTS`].
+pub type RandQuotientSegments = [XFieldElement; NUM_RANDOMIZED_QUOTIENT_SEGMENTS];
+
+/// An out-of-domain row of the randomized, split-up quotient polynomial.
+///
+/// Due to the used construction for quotient table randomization, out-of-domain
+/// rows of the randomized quotient table do not reveal
+/// [`NUM_RANDOMIZED_QUOTIENT_SEGMENTS`] many elements, but only
+/// [`NUM_QUOTIENT_SEGMENTS`] many. For further details, see the chapter
+/// “Zero-Knowledge” in the specification.
+pub type OodQuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
