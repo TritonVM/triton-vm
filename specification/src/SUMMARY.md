@@ -27,6 +27,7 @@
     + [Clock Jump Differences and Inner Sorting](clock-jump-differences-and-inner-sorting.md)
     + [Proof of Memory Consistency](proof-of-memory-consistency.md)
 - [Program Attestation](program-attestation.md)
+- [Zero-Knowledge](zero-knowledge.md)
 
 ---
 
