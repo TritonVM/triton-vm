@@ -10,7 +10,8 @@ use crate::error::ProofStreamError::UnexpectedItem;
 use crate::fri::AuthenticationStructure;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
-use crate::table::QuotientSegments;
+use crate::table::OodQuotientSegments;
+use crate::table::RandQuotientSegments;
 
 /// A `FriResponse` is an `AuthenticationStructure` together with the values of
 /// the revealed leaves of the Merkle tree. Together, they correspond to the
@@ -106,7 +107,7 @@ proof_items!(
     Log2PaddedHeight(u32) => true, try_into_log2_padded_height,
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
-    OutOfDomainQuotientSegments(QuotientSegments) => true, try_into_out_of_domain_quot_segments,
+    OutOfDomainQuotientSegments(OodQuotientSegments) => true, try_into_out_of_domain_quot_segments,
     FriPolynomial(Polynomial<'static, XFieldElement>) => true, try_into_fri_polynomial,
 
     // For performance reasons (only!), the following items are not included in
@@ -140,7 +141,7 @@ proof_items!(
     // 4. The verifier dictates which rows to reveal.
     MasterMainTableRows(Vec<MainRow<BFieldElement>>) => false, try_into_master_main_table_rows,
     MasterAuxTableRows(Vec<AuxiliaryRow>) => false, try_into_master_aux_table_rows,
-    QuotientSegmentsElements(Vec<QuotientSegments>) => false, try_into_quot_segments_elements,
+    QuotientSegmentsElements(Vec<RandQuotientSegments>) => false, try_into_quot_segments_elements,
 
     // 1. The Merkle root of the tree of the codeword is integrated into the
     //    proof stream before the codeword is sent.
