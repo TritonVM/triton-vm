@@ -130,8 +130,8 @@ use ndarray::Zip;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
+use num_traits::ConstOne;
 use num_traits::ConstZero;
-use num_traits::One;
 use num_traits::ToBytes;
 use num_traits::Zero;
 use rand::distr::StandardUniform;
@@ -662,18 +662,17 @@ impl SpongeWithPendingAbsorb {
     }
 
     pub fn finalize(mut self) -> Digest {
-        // apply padding
-        self.pending_input[self.num_symbols_pending] = BFieldElement::one();
-        for i in self.num_symbols_pending + 1..RATE {
-            self.pending_input[i] = BFieldElement::zero();
+        let mut padding = self.pending_input[self.num_symbols_pending..].iter_mut();
+        *padding.next().unwrap() = BFieldElement::ONE;
+        for to_zero in padding {
+            *to_zero = BFieldElement::ZERO;
         }
-        self.sponge.absorb(self.pending_input);
         self.num_symbols_pending = 0;
 
-        self.sponge.squeeze()[0..Digest::LEN]
-            .to_vec()
-            .try_into()
-            .unwrap()
+        self.sponge.absorb(self.pending_input);
+        let digest = self.sponge.state[0..Digest::LEN].try_into().unwrap();
+
+        Digest::new(digest)
     }
 }
 
