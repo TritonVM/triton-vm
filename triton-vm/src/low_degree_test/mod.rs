@@ -362,7 +362,7 @@ impl ReedSolomonCode {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
-    use assert2::let_assert;
+    use assert2::assert;
     use twenty_first::prelude::BFieldCodec;
     use twenty_first::prelude::BFieldElement;
     use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
@@ -427,9 +427,9 @@ pub(crate) mod tests {
         type Err = LdtParameterError;
 
         code.log2_expansion_factor = usize::MAX;
-        let_assert!(Err(Err::TooBigInitialExpansionFactor) = code.proximity_parameter());
+        assert!(let Err(Err::TooBigInitialExpansionFactor) = code.proximity_parameter());
 
         code.log2_expansion_factor = 32;
-        let_assert!(Err(Err::TooBigInitialExpansionFactor) = code.proximity_parameter());
+        assert!(let Err(Err::TooBigInitialExpansionFactor) = code.proximity_parameter());
     }
 }

@@ -130,7 +130,6 @@ mod tests {
     use std::collections::VecDeque;
 
     use assert2::assert;
-    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;
@@ -213,41 +212,41 @@ mod tests {
         let mut proof_stream = ProofStream::try_from(&proof).unwrap();
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(proof_item) = proof_stream.dequeue());
-        let_assert!(ProofItem::AuthenticationStructure(auth_structure_) = proof_item);
+        assert!(let Ok(proof_item) = proof_stream.dequeue());
+        assert!(let ProofItem::AuthenticationStructure(auth_structure_) = proof_item);
         assert!(auth_structure == auth_structure_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::MasterMainTableRows(main_rows_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::MasterMainTableRows(main_rows_)) = proof_stream.dequeue());
         assert!(main_rows == main_rows_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::MasterAuxTableRows(aux_rows_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::MasterAuxTableRows(aux_rows_)) = proof_stream.dequeue());
         assert!(aux_rows == aux_rows_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::OutOfDomainMainRow(ood_main_row_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::OutOfDomainMainRow(ood_main_row_)) = proof_stream.dequeue());
         assert!(ood_main_row == ood_main_row_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::OutOfDomainAuxRow(ood_aux_row_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::OutOfDomainAuxRow(ood_aux_row_)) = proof_stream.dequeue());
         assert!(ood_aux_row == ood_aux_row_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::MerkleRoot(root_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::MerkleRoot(root_)) = proof_stream.dequeue());
         assert!(root == root_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(proof_item) = proof_stream.dequeue());
-        let_assert!(ProofItem::QuotientSegmentsElements(quot_elements_) = proof_item);
+        assert!(let Ok(proof_item) = proof_stream.dequeue());
+        assert!(let ProofItem::QuotientSegmentsElements(quot_elements_) = proof_item);
         assert!(quot_elements == quot_elements_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::StirResponse(response_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::StirResponse(response_)) = proof_stream.dequeue());
         assert!(response == response_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
-        let_assert!(Ok(ProofItem::Polynomial(poly_)) = proof_stream.dequeue());
+        assert!(let Ok(ProofItem::Polynomial(poly_)) = proof_stream.dequeue());
         assert!(poly == poly_);
 
         assert!(sponge_states.pop_front() == Some(proof_stream.sponge.state));
@@ -300,7 +299,7 @@ mod tests {
     #[macro_rules_attr::apply(test)]
     fn dequeuing_from_empty_stream_fails() {
         let mut proof_stream = ProofStream::new();
-        let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
+        assert!(let Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
     #[macro_rules_attr::apply(test)]
@@ -309,9 +308,9 @@ mod tests {
         proof_stream.enqueue(ProofItem::MerkleRoot(Digest::default()));
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(7));
 
-        let_assert!(Ok(_) = proof_stream.dequeue());
-        let_assert!(Ok(_) = proof_stream.dequeue());
-        let_assert!(Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
+        assert!(let Ok(_) = proof_stream.dequeue());
+        assert!(let Ok(_) = proof_stream.dequeue());
+        assert!(let Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue());
     }
 
     #[macro_rules_attr::apply(test)]

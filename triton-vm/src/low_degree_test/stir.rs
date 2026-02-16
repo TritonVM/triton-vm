@@ -1472,7 +1472,6 @@ impl FoldingPolynomialQueriesInclusionProof {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
 
@@ -1693,8 +1692,8 @@ mod tests {
         let wrong_length = (domain_length + length_difference) as usize;
         let codeword = xfe_vec![1; wrong_length];
 
-        let_assert!(Err(err) = stir.prove(&codeword, &mut proof_stream));
-        let_assert!(
+        assert!(let Err(err) = stir.prove(&codeword, &mut proof_stream));
+        assert!(let
             LdtProvingError::InitialCodewordMismatch {
                 domain_len,
                 codeword_len
@@ -1707,7 +1706,7 @@ mod tests {
     #[macro_rules_attr::apply(proptest)]
     fn invalid_parameter_initial_expansion_factor_1_is_rejected(mut params: StirParameters) {
         params.log2_initial_expansion_factor = 0;
-        let_assert!(Err(err) = Stir::try_from(params));
+        assert!(let Err(err) = Stir::try_from(params));
         prop_assert_eq!(LdtParameterError::TooSmallInitialExpansionFactor, err);
     }
 
@@ -1717,8 +1716,8 @@ mod tests {
         #[strategy(32_usize..)] bad_log2_initial_expansion_factor: usize,
     ) {
         params.log2_initial_expansion_factor = bad_log2_initial_expansion_factor;
-        let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
+        assert!(let Err(err) = Stir::try_from(params));
+        assert!(let LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     #[macro_rules_attr::apply(proptest)]
@@ -1727,8 +1726,8 @@ mod tests {
         #[strategy(0_usize..=1)] bad_log2_folding_factor: usize,
     ) {
         params.log2_folding_factor = bad_log2_folding_factor;
-        let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(LdtParameterError::TooSmallLog2FoldingFactor(f) = err);
+        assert!(let Err(err) = Stir::try_from(params));
+        assert!(let LdtParameterError::TooSmallLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1739,8 +1738,8 @@ mod tests {
     ) {
         params.log2_folding_factor = bad_log2_folding_factor;
         params.log2_high_degree_bound = bad_log2_folding_factor;
-        let_assert!(Err(err) = Stir::try_from(params));
-        let_assert!(LdtParameterError::TooBigLog2FoldingFactor(f) = err);
+        assert!(let Err(err) = Stir::try_from(params));
+        assert!(let LdtParameterError::TooBigLog2FoldingFactor(f) = err);
         prop_assert_eq!(bad_log2_folding_factor, f);
     }
 
@@ -1771,7 +1770,7 @@ mod tests {
         #[strategy(..#params.log2_folding_factor)] bad_log2_high_degree_bound: usize,
     ) {
         params.log2_high_degree_bound = bad_log2_high_degree_bound;
-        let_assert!(Err(err) = Stir::try_from(params));
+        assert!(let Err(err) = Stir::try_from(params));
         prop_assert_eq!(LdtParameterError::TooLowDegreeOfHighDegreePolynomials, err);
     }
 
@@ -1781,8 +1780,8 @@ mod tests {
         #[strategy(33 - #params.log2_initial_expansion_factor..=64)] log2_high_degree_bound: usize,
     ) {
         params.log2_high_degree_bound = log2_high_degree_bound;
-        let_assert!(Err(err) = params.initial_domain());
-        let_assert!(LdtParameterError::InitialDomainTooBig(_) = err);
+        assert!(let Err(err) = params.initial_domain());
+        assert!(let LdtParameterError::InitialDomainTooBig(_) = err);
     }
 
     /// The proptest [`too_big_initial_domain_doesnt_cause_crash`] does not
@@ -1801,7 +1800,7 @@ mod tests {
             log2_initial_expansion_factor: two_thirds_u64_max,
             log2_high_degree_bound: two_thirds_u64_max,
         };
-        let_assert!(Err(err) = params.initial_domain());
+        assert!(let Err(err) = params.initial_domain());
         assert!(LdtParameterError::InitialDomainTooBig(u64::MAX) == err);
     }
 
@@ -1838,7 +1837,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         stir.prove(&zero_poly, &mut proof_stream).unwrap();
         proof_stream.reset_sponge();
-        let_assert!(VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream).unwrap());
+        assert!(let VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream).unwrap());
 
         // the sanity check
         assert!(postscript.rounds.len() > 0);
@@ -1870,7 +1869,7 @@ mod tests {
         let prover_sponge = proof_stream.sponge.clone();
 
         proof_stream.reset_sponge();
-        let_assert!(VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream)?);
+        assert!(let VerifierPostscript::Stir(postscript) = stir.verify(&mut proof_stream)?);
         let verifier_sponge = proof_stream.sponge;
 
         prop_assert_eq!(prover_sponge, verifier_sponge);

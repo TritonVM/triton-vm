@@ -437,7 +437,6 @@ pub enum ProgramDecodingError {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
     use rand::Rng;
@@ -463,8 +462,8 @@ mod tests {
         let mut encoded = encoded[0..encoded.len() - 1].to_vec();
         encoded[0] = bfe!(program_length - 1);
 
-        let_assert!(Err(err) = Program::decode(&encoded));
-        let_assert!(ProgramDecodingError::MissingArgument(6, _) = err);
+        assert!(let Err(err) = Program::decode(&encoded));
+        assert!(let ProgramDecodingError::MissingArgument(6, _) = err);
     }
 
     #[test]
@@ -472,8 +471,8 @@ mod tests {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
         encoded[0] += bfe!(1);
-        let_assert!(Err(err) = Program::decode(&encoded));
-        let_assert!(ProgramDecodingError::SequenceTooShort = err);
+        assert!(let Err(err) = Program::decode(&encoded));
+        assert!(let ProgramDecodingError::SequenceTooShort = err);
     }
 
     #[test]
@@ -481,15 +480,15 @@ mod tests {
         let program = triton_program!(nop nop hash push 0 skiz end: halt call end);
         let mut encoded = program.encode();
         encoded[0] -= bfe!(1);
-        let_assert!(Err(err) = Program::decode(&encoded));
-        let_assert!(ProgramDecodingError::SequenceTooLong = err);
+        assert!(let Err(err) = Program::decode(&encoded));
+        assert!(let ProgramDecodingError::SequenceTooLong = err);
     }
 
     #[test]
     fn decode_program_from_empty_sequence() {
         let encoded = vec![];
-        let_assert!(Err(err) = Program::decode(&encoded));
-        let_assert!(ProgramDecodingError::EmptySequence = err);
+        assert!(let Err(err) = Program::decode(&encoded));
+        assert!(let ProgramDecodingError::EmptySequence = err);
     }
 
     #[test]
@@ -710,7 +709,7 @@ mod tests {
 
         let assertion_contexts = program.debug_information.assertion_context;
         assert!(1 == assertion_contexts.len());
-        let_assert!(AssertionContext::ID(error_id) = &assertion_contexts[&2]);
+        assert!(let AssertionContext::ID(error_id) = &assertion_contexts[&2]);
         assert!(17 == *error_id);
     }
 

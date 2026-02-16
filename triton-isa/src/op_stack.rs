@@ -685,7 +685,6 @@ impl TryFrom<&BFieldElement> for NumberOfWords {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
@@ -785,7 +784,7 @@ mod tests {
     fn conversion_from_stack_element_to_u32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
             let stack_index = u32::from(stack_element);
-            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
+            assert!(let Ok(stack_element_again) = OpStackElement::try_from(stack_index));
             assert!(stack_element == stack_element_again);
         }
     }
@@ -794,7 +793,7 @@ mod tests {
     fn conversion_from_stack_element_to_i32_and_back_is_identity() {
         for stack_element in OpStackElement::iter() {
             let stack_index = i32::from(stack_element);
-            let_assert!(Ok(stack_element_again) = OpStackElement::try_from(stack_index));
+            assert!(let Ok(stack_element_again) = OpStackElement::try_from(stack_index));
             assert!(stack_element == stack_element_again);
         }
     }
@@ -868,7 +867,7 @@ mod tests {
     fn conversion_from_number_of_words_to_usize_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
             let stack_index = usize::from(num_words);
-            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
+            assert!(let Ok(num_words_again) = NumberOfWords::try_from(stack_index));
             assert!(num_words == num_words_again);
         }
     }
@@ -877,7 +876,7 @@ mod tests {
     fn conversion_from_number_of_words_to_u64_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
             let stack_index = u64::from(num_words);
-            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_index));
+            assert!(let Ok(num_words_again) = NumberOfWords::try_from(stack_index));
             assert!(num_words == num_words_again);
         }
     }
@@ -886,7 +885,7 @@ mod tests {
     fn conversion_from_number_of_words_to_op_stack_element_and_back_is_identity() {
         for num_words in NumberOfWords::iter() {
             let stack_element = OpStackElement::from(num_words);
-            let_assert!(Ok(num_words_again) = NumberOfWords::try_from(stack_element));
+            assert!(let Ok(num_words_again) = NumberOfWords::try_from(stack_element));
             assert!(num_words == num_words_again);
         }
     }
@@ -1001,7 +1000,7 @@ mod tests {
         op_stack[st] = valid_u32.into();
 
         assert!(let Ok(()) = op_stack.is_u32(st));
-        let_assert!(Ok(some_u32) = op_stack.get_u32(st));
+        assert!(let Ok(some_u32) = op_stack.get_u32(st));
         assert!(valid_u32 == some_u32);
     }
 

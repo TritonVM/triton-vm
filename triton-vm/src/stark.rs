@@ -1933,7 +1933,6 @@ pub(crate) mod tests {
     use air::table_column::RamMainColumn;
     use assert2::assert;
     use assert2::check;
-    use assert2::let_assert;
     use constraint_circuit::ConstraintCircuitBuilder;
     use isa::error::OpStackError;
     use isa::instruction::Instruction;
@@ -2171,7 +2170,7 @@ pub(crate) mod tests {
         let proof = Proof::from(proof_stream);
 
         let verdict = stark.verify(&claim, &proof);
-        let_assert!(Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
+        assert!(let Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3191,17 +3190,17 @@ pub(crate) mod tests {
         st0: BFieldElement,
     ) {
         let program = triton_program!(push {st0} log_2_floor halt);
-        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
-        let_assert!(InstructionError::OpStackError(err) = err.source);
-        let_assert!(OpStackError::FailedU32Conversion(element) = err);
+        assert!(let Err(err) = VM::run(program, [].into(), [].into()));
+        assert!(let InstructionError::OpStackError(err) = err.source);
+        assert!(let OpStackError::FailedU32Conversion(element) = err);
         assert!(st0 == element);
     }
 
     #[macro_rules_attr::apply(test)]
     fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
-        let_assert!(Err(err) = VM::run(program, [].into(), [].into()));
-        let_assert!(InstructionError::LogarithmOfZero = err.source);
+        assert!(let Err(err) = VM::run(program, [].into(), [].into()));
+        assert!(let InstructionError::LogarithmOfZero = err.source);
     }
 
     #[macro_rules_attr::apply(test)]

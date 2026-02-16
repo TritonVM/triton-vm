@@ -151,7 +151,6 @@ pub(crate) mod tests {
     use std::collections::HashSet;
 
     use assert2::assert;
-    use assert2::let_assert;
     use proptest::prelude::*;
     use strum::IntoEnumIterator;
 
@@ -167,7 +166,7 @@ pub(crate) mod tests {
     fn serialize_stir_response_in_isolation(leaved_merkle_tree: LeavedMerkleTreeTestData) {
         let response = leaved_merkle_tree.into_stir_response();
         let encoding = response.encode();
-        let_assert!(Ok(decoding) = StirResponse::decode(&encoding));
+        assert!(let Ok(decoding) = StirResponse::decode(&encoding));
         prop_assert_eq!(response, *decoding);
     }
 
@@ -178,9 +177,9 @@ pub(crate) mod tests {
         proof_stream.enqueue(ProofItem::StirResponse(response.clone()));
         let proof: Proof = proof_stream.into();
 
-        let_assert!(Ok(mut proof_stream) = ProofStream::try_from(&proof));
-        let_assert!(Ok(proof_item) = proof_stream.dequeue());
-        let_assert!(Ok(response_) = proof_item.try_into_stir_response());
+        assert!(let Ok(mut proof_stream) = ProofStream::try_from(&proof));
+        assert!(let Ok(proof_item) = proof_stream.dequeue());
+        assert!(let Ok(response_) = proof_item.try_into_stir_response());
         prop_assert_eq!(response, response_);
     }
 
@@ -190,7 +189,7 @@ pub(crate) mod tests {
     ) {
         let auth_structure = leaved_merkle_tree.auth_structure;
         let encoding = auth_structure.encode();
-        let_assert!(Ok(decoding) = AuthenticationStructure::decode(&encoding));
+        assert!(let Ok(decoding) = AuthenticationStructure::decode(&encoding));
         prop_assert_eq!(auth_structure, *decoding);
     }
 
@@ -203,9 +202,9 @@ pub(crate) mod tests {
         proof_stream.enqueue(ProofItem::AuthenticationStructure(auth_structure.clone()));
         let proof: Proof = proof_stream.into();
 
-        let_assert!(Ok(mut proof_stream) = ProofStream::try_from(&proof));
-        let_assert!(Ok(proof_item) = proof_stream.dequeue());
-        let_assert!(Ok(auth_structure_) = proof_item.try_into_authentication_structure());
+        assert!(let Ok(mut proof_stream) = ProofStream::try_from(&proof));
+        assert!(let Ok(proof_item) = proof_stream.dequeue());
+        assert!(let Ok(auth_structure_) = proof_item.try_into_authentication_structure());
         prop_assert_eq!(auth_structure, auth_structure_);
     }
 
