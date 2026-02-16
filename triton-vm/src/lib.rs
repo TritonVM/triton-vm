@@ -301,7 +301,6 @@ pub fn verify(stark: Stark, claim: &Claim, proof: &Proof) -> bool {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use isa::instruction::LabelledInstruction;
     use isa::instruction::TypeHint;
     use proptest::prelude::*;
@@ -539,7 +538,7 @@ mod tests {
         let claim = Claim::about_program(&other_program);
 
         let stark = Stark::default();
-        let_assert!(Err(err) = prove(stark, &claim, program, [].into()));
+        assert!(let Err(err) = prove(stark, &claim, program, [].into()));
         assert!(let ProvingError::ProgramDigestMismatch = err);
     }
 
@@ -551,7 +550,7 @@ mod tests {
             .with_output(bfe_vec![5]);
 
         let stark = Stark::default();
-        let_assert!(Err(err) = prove(stark, &claim, program, [].into()));
+        assert!(let Err(err) = prove(stark, &claim, program, [].into()));
         assert!(let ProvingError::PublicOutputMismatch = err);
     }
 
@@ -594,10 +593,10 @@ mod tests {
         );
 
         assert!(4 == instructions.len());
-        let_assert!(LabelledInstruction::TypeHint(type_hint_0) = instructions[0].clone());
-        let_assert!(LabelledInstruction::TypeHint(type_hint_1) = instructions[1].clone());
-        let_assert!(LabelledInstruction::TypeHint(type_hint_2) = instructions[2].clone());
-        let_assert!(LabelledInstruction::TypeHint(type_hint_3) = instructions[3].clone());
+        assert!(let LabelledInstruction::TypeHint(type_hint_0) = instructions[0].clone());
+        assert!(let LabelledInstruction::TypeHint(type_hint_1) = instructions[1].clone());
+        assert!(let LabelledInstruction::TypeHint(type_hint_2) = instructions[2].clone());
+        assert!(let LabelledInstruction::TypeHint(type_hint_3) = instructions[3].clone());
 
         let expected_type_hint_0 = TypeHint {
             starting_index: 0,

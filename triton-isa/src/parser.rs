@@ -897,7 +897,6 @@ pub(crate) fn turn_labels_into_addresses(
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
@@ -933,7 +932,7 @@ pub(crate) mod tests {
         fn run(&self) {
             let message = self.message;
             let parse_result = parse(self.input).map_err(|err| format!("{message}:\n{err}"));
-            let_assert!(Ok(actual) = parse_result);
+            assert!(let Ok(actual) = parse_result);
 
             let labelled_instructions = to_labelled_instructions(&actual);
             let label_to_address = build_label_to_address_map(&labelled_instructions);
@@ -1571,7 +1570,7 @@ pub(crate) mod tests {
         let labelled_instructions = to_labelled_instructions(&instruction_tokens);
         prop_assert_eq!(1, labelled_instructions.len());
         let first_labelled_instruction = labelled_instructions[0].clone();
-        let_assert!(LabelledInstruction::TypeHint(parsed_type_hint) = first_labelled_instruction);
+        assert!(let LabelledInstruction::TypeHint(parsed_type_hint) = first_labelled_instruction);
         prop_assert_eq!(type_hint, parsed_type_hint);
     }
 
@@ -1584,7 +1583,7 @@ pub(crate) mod tests {
             parse(&assert_with_context).map_err(|err| TestCaseError::fail(err.to_string()))?;
         let labelled_instructions = to_labelled_instructions(&instruction_tokens);
         prop_assert_eq!(2, labelled_instructions.len());
-        let_assert!(LabelledInstruction::AssertionContext(parsed) = &labelled_instructions[1]);
+        assert!(let LabelledInstruction::AssertionContext(parsed) = &labelled_instructions[1]);
         prop_assert_eq!(&context, parsed);
     }
 
@@ -1600,7 +1599,7 @@ pub(crate) mod tests {
                 }
                 return assert!(parse_result.is_err());
             };
-            let_assert!(Ok((rest, Some(ty))) = parse_result);
+            assert!(let Ok((rest, Some(ty))) = parse_result);
             dbg!(rest);
             assert!(expected == ty);
         }

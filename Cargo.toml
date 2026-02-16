@@ -63,7 +63,7 @@ features = ["html_reports"]
 
 [workspace.dependencies]
 arbitrary = { version = "1", features = ["derive"] }
-assert2 = "0.3"
+assert2 = "0.3.17"
 colored = "3.0"
 fs-err = "3.1"
 get-size2 = { version = "0.7", features = ["derive"] }

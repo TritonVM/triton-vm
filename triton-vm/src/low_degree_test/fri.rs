@@ -928,7 +928,6 @@ fn codeword_as_digests(codeword: &[XFieldElement]) -> Vec<Digest> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
@@ -1031,8 +1030,8 @@ mod tests {
         codeword: Vec<XFieldElement>,
     ) {
         let mut proof_stream = ProofStream::new();
-        let_assert!(Err(err) = fri.prove(&codeword, &mut proof_stream));
-        let_assert!(
+        assert!(let Err(err) = fri.prove(&codeword, &mut proof_stream));
+        assert!(let
             LdtProvingError::InitialCodewordMismatch {
                 domain_len,
                 codeword_len
@@ -1247,7 +1246,7 @@ mod tests {
             modify_some_auth_structure_in_proof_stream_using_seed(proof_stream, rng_seed);
 
         let verdict = fri.verify(&mut proof_stream);
-        let_assert!(Err(err) = verdict);
+        assert!(let Err(err) = verdict);
         assert!(let LdtVerificationError::BadMerkleAuthenticationPath = err);
     }
 
@@ -1299,7 +1298,7 @@ mod tests {
             }
         }
 
-        let_assert!(Err(err) = fri.verify(&mut proof_stream));
+        assert!(let Err(err) = fri.verify(&mut proof_stream));
 
         // In some cases, the same authentication path is valid even for
         // differing indices. The simplest such case is if the `fri_polynomial`
@@ -1328,7 +1327,7 @@ mod tests {
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
         proof_stream.reset_sponge();
-        let_assert!(Err(err) = fri.verify(&mut proof_stream));
+        assert!(let Err(err) = fri.verify(&mut proof_stream));
         assert!(let LdtVerificationError::LastRoundPolynomialHasTooHighDegree = err);
     }
 
@@ -1350,7 +1349,7 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream)?;
         proof_stream.reset_sponge();
-        let_assert!(VerifierPostscript::Fri(postscript) = fri.verify(&mut proof_stream)?);
+        assert!(let VerifierPostscript::Fri(postscript) = fri.verify(&mut proof_stream)?);
 
         // folding challenge is only `None` in last round
         for round in postscript.rounds.iter().dropping_back(1) {

@@ -1,5 +1,4 @@
 use assert2::assert;
-use assert2::let_assert;
 use isa::program::Program;
 use itertools::Itertools;
 use num_traits::Zero;
@@ -190,7 +189,7 @@ impl TestableProgram {
         profiler!(stop "Verify");
         let profile = crate::profiler::finish();
 
-        let_assert!(Ok(padded_height) = proof.padded_height());
+        assert!(let Ok(padded_height) = proof.padded_height());
         assert!(aet.padded_height() == padded_height);
 
         let ldt = stark.ldt(padded_height).unwrap();

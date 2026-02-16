@@ -318,7 +318,6 @@ impl Display for ExecutionTraceProfile {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
-    use assert2::let_assert;
 
     use crate::prelude::InstructionError;
     use crate::prelude::TableId;
@@ -333,11 +332,11 @@ mod tests {
             crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
         let (profile_output, profile) = VM::profile(program.clone(), [].into(), [].into()).unwrap();
         let mut vm_state = VMState::new(program.clone(), [].into(), [].into());
-        let_assert!(Ok(()) = vm_state.run());
+        assert!(let Ok(()) = vm_state.run());
         assert!(profile_output == vm_state.public_output);
         assert!(profile.total.processor == vm_state.cycle_count);
 
-        let_assert!(Ok((aet, trace_output)) = VM::trace_execution(program, [].into(), [].into()));
+        assert!(let Ok((aet, trace_output)) = VM::trace_execution(program, [].into(), [].into()));
         assert!(profile_output == trace_output);
 
         let height = |id| u32::try_from(aet.height_of_table(id)).unwrap();
@@ -359,14 +358,14 @@ mod tests {
             call foo return halt
             foo: return
         };
-        let_assert!(Err(err) = VM::profile(program, [].into(), [].into()));
-        let_assert!(InstructionError::JumpStackIsEmpty = err.source);
+        assert!(let Err(err) = VM::profile(program, [].into(), [].into()));
+        assert!(let InstructionError::JumpStackIsEmpty = err.source);
     }
 
     #[macro_rules_attr::apply(test)]
     fn call_instruction_does_not_contribute_to_profile_span() {
         let program = triton_program! { call foo halt foo: return };
-        let_assert!(Ok((_, profile)) = VM::profile(program, [].into(), [].into()));
+        assert!(let Ok((_, profile)) = VM::profile(program, [].into(), [].into()));
 
         let [foo_span] = &profile.profile[..] else {
             panic!("span `foo` must be present")
