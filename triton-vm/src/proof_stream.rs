@@ -142,7 +142,7 @@ mod tests {
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::table::AuxiliaryRow;
     use crate::table::MainRow;
-    use crate::table::QuotientSegments;
+    use crate::table::RandQuotientSegments;
 
     use super::*;
     use crate::tests::proptest;
@@ -177,7 +177,7 @@ mod tests {
         #[strategy(vec(arb(), 2..100))] aux_rows: Vec<AuxiliaryRow>,
         #[strategy(arb())] ood_main_row: Box<MainRow<XFieldElement>>,
         #[strategy(arb())] ood_aux_row: Box<AuxiliaryRow>,
-        #[strategy(arb())] quot_elements: Vec<QuotientSegments>,
+        #[strategy(arb())] quot_elements: Vec<RandQuotientSegments>,
         leaved_merkle_tree: LeavedMerkleTreeTestData,
     ) {
         let auth_structure = leaved_merkle_tree.auth_structure.clone();
