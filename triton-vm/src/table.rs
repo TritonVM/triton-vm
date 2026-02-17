@@ -9,6 +9,7 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
 pub use crate::stark::NUM_QUOTIENT_SEGMENTS;
+pub use crate::stark::NUM_RANDOMIZED_QUOTIENT_SEGMENTS;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 
@@ -72,10 +73,10 @@ pub type MainRow<T> = [T; MasterMainTable::NUM_COLUMNS];
 /// A single row of a [`MasterAuxTable`].
 pub type AuxiliaryRow = [XFieldElement; MasterAuxTable::NUM_COLUMNS];
 
-/// An element of the split-up quotient polynomial.
+/// An element of the randomized, split-up quotient polynomial.
 ///
-/// See also [`NUM_QUOTIENT_SEGMENTS`].
-pub type QuotientSegments = [XFieldElement; NUM_QUOTIENT_SEGMENTS];
+/// See also [`NUM_RANDOMIZED_QUOTIENT_SEGMENTS`].
+pub type RandQuotientSegments = [XFieldElement; NUM_RANDOMIZED_QUOTIENT_SEGMENTS];
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
