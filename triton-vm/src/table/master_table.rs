@@ -611,15 +611,16 @@ where
 /// to use an offset that has not been used before. Here is an overview of the
 /// offsets in use, as well as their respective purpose:
 ///
-/// | offset                                | purpose                      |
-/// |:--------------------------------------|:-----------------------------|
-/// | 0..[num_main_columns]                 | trace randomizers main table |
-/// | [num_main_columns]..[num_aux_columns] | trace randomizers aux table  |
-/// | [num_main_columns]+[num_aux_columns]  | batch randomizer             |
+/// | offset                                   | purpose                      |
+/// |:-----------------------------------------|:-----------------------------|
+/// | 0..[num_main_columns]                    | trace randomizers main table |
+/// | [num_main_columns]..[num_aux_columns]    | trace randomizers aux table  |
+/// | [num_main_columns]+[num_aux_columns]     | batch randomizer             |
+/// | [num_main_columns]+[num_aux_columns] + 1 | quotient table randomizer    |
 ///
 /// [num_main_columns]: MasterMainTable::NUM_COLUMNS
 /// [num_aux_columns]: MasterAuxTable::NUM_COLUMNS
-fn offset_rng_seed<B>(
+pub(crate) fn offset_rng_seed<B>(
     mut seed: <StdRng as SeedableRng>::Seed,
     offset: B,
 ) -> <StdRng as SeedableRng>::Seed

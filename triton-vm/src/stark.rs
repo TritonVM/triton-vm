@@ -1,3 +1,4 @@
+use std::ops::AddAssign;
 use std::ops::Mul;
 
 use arbitrary::Arbitrary;
@@ -28,6 +29,7 @@ use crate::challenges::Challenges;
 use crate::error::LdtParameterError;
 use crate::error::ProvingError;
 use crate::error::U32_TO_USIZE_ERR;
+use crate::error::USIZE_TO_U64_ERR;
 use crate::error::VerificationError;
 use crate::low_degree_test::LowDegreeTest;
 use crate::low_degree_test::ProximityRegime;
@@ -43,7 +45,7 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::table::QuotientSegments;
+use crate::table::RandQuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
 use crate::table::master_table::BfeSlice;
 use crate::table::master_table::MasterAuxTable;
@@ -51,10 +53,20 @@ use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
 use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::max_degree_with_origin;
+use crate::table::master_table::offset_rng_seed;
 
 /// The number of segments the quotient polynomial is split into.
+///
 /// Helps keeping the low-degree test domain small.
+///
+/// The prover only sends, and the verifier only receives, randomized quotient
+/// segments, of which there are [`NUM_RANDOMIZED_QUOTIENT_SEGMENTS`].
 pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
+
+/// The number of randomized segments the quotient polynomial is split into.
+///
+/// See also [`NUM_QUOTIENT_SEGMENTS`].
+pub const NUM_RANDOMIZED_QUOTIENT_SEGMENTS: usize = NUM_QUOTIENT_SEGMENTS + 1;
 
 /// The number of batch randomizers over the [extension field](XFieldElement)
 /// used in the [`STARK`](Stark).
@@ -63,7 +75,7 @@ pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 /// [low-degree test](LowDegreeTest).
 pub const NUM_BATCH_RANDOMIZERS: usize = 1;
 
-const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
+const NUM_DEEP_CODEWORD_COMPONENTS: usize = 4;
 
 /// Parameters for the Zero-Knowledge
 /// [Scalable Transparent ARgument of Knowledge (STARK)][stark] for Triton VM.
@@ -368,20 +380,37 @@ impl Prover {
                 &quotient_combination_weights,
             );
 
-        profiler!(start "hash rows of quotient segments" ("hash"));
-        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
-        let hash_row = |row: ArrayView1<_>| {
-            let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-            Tip5::hash_varlen(&row_as_bfes)
+        profiler!(start "randomize quotient segments");
+        let (
+            ldt_domain_randomized_quotient_segment_codewords,
+            randomized_quotient_segment_polynomials,
+        ) = self.randomize_quotient_segments(
+            domains.ldt,
+            num_trace_randomizers,
+            ldt_domain_quotient_segment_codewords,
+            quotient_segment_polynomials,
+        );
+        profiler!(stop "randomize quotient segments");
+
+        profiler!(start "hash rows of randomized quotient segments" ("hash"));
+        // for column-major matrices, `XFieldElement::bfe_slice` does not work
+        let xfe_row_as_bfes = |row: ArrayView1<XFieldElement>| {
+            let mut bfes = Vec::with_capacity(row.len() * x_field_element::EXTENSION_DEGREE);
+            for xfe in row {
+                bfes.extend_from_slice(&xfe.coefficients);
+            }
+            bfes
         };
-        let quotient_segments_rows = ldt_domain_quotient_segment_codewords
-            .axis_iter(ROW_AXIS)
-            .into_par_iter();
-        let ldt_domain_quotient_segment_codewords_digests =
-            quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
-        profiler!(stop "hash rows of quotient segments");
+        let ldt_domain_randomized_quotient_segment_codewords_digests =
+            ldt_domain_randomized_quotient_segment_codewords
+                .axis_iter(ROW_AXIS)
+                .into_par_iter()
+                .map(|row| Tip5::hash_varlen(&xfe_row_as_bfes(row)))
+                .collect::<Vec<_>>();
+        profiler!(stop "hash rows of randomized quotient segments");
         profiler!(start "Merkle tree" ("hash"));
-        let quot_merkle_tree = MerkleTree::par_new(&ldt_domain_quotient_segment_codewords_digests)?;
+        let quot_merkle_tree =
+            MerkleTree::par_new(&ldt_domain_randomized_quotient_segment_codewords_digests)?;
         let quot_merkle_tree_root = quot_merkle_tree.root();
         proof_stream.enqueue(ProofItem::MerkleRoot(quot_merkle_tree_root));
         profiler!(stop "Merkle tree");
@@ -409,15 +438,26 @@ impl Prover {
         let ood_next_aux_row = MasterAuxTable::try_to_aux_row(ood_next_aux_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainAuxRow(Box::new(ood_next_aux_row)));
 
-        let out_of_domain_point_curr_row_pow_num_segments =
+        // The following two out-of-domain points help achieve zero-knowledge
+        // for the quotient table. The mentioned ξ is implicitly 1.
+        let ood_point_curr_row_over_xi_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-        let out_of_domain_curr_row_quot_segments = quotient_segment_polynomials
-            .map(|poly| poly.evaluate(out_of_domain_point_curr_row_pow_num_segments))
-            .to_vec()
-            .try_into()
-            .unwrap();
+        let ood_point_curr_row_over_zeta_pow_num_segments = (out_of_domain_point_curr_row
+            / Stark::ZETA.lift())
+        .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+
+        let evaluate_rand_quot_segment_polys_in = |point| {
+            randomized_quotient_segment_polynomials
+                .map(|poly| poly.evaluate(point))
+                .to_vec()
+                .try_into()
+                .unwrap()
+        };
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
-            out_of_domain_curr_row_quot_segments,
+            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_over_xi_pow_num_segments),
+        ));
+        proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
+            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_over_zeta_pow_num_segments),
         ));
         profiler!(stop "out-of-domain rows");
 
@@ -444,12 +484,13 @@ impl Prover {
         let main_and_aux_codeword = short_domain.evaluate(&main_and_aux_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
-        let quotient_segments_combination_polynomial = quotient_segment_polynomials
-            .into_iter()
-            .zip_eq(weights.quot_segments)
-            .fold(Polynomial::zero(), |acc, (poly, w)| acc + poly * w);
-        let quotient_segments_combination_codeword =
-            short_domain.evaluate(&quotient_segments_combination_polynomial);
+        let randomized_quotient_segments_combination_polynomial =
+            randomized_quotient_segment_polynomials
+                .into_iter()
+                .zip_eq(weights.quot_segments)
+                .fold(Polynomial::zero(), |acc, (poly, w)| acc + poly * w);
+        let randomized_quotient_segments_combination_codeword =
+            short_domain.evaluate(&randomized_quotient_segments_combination_polynomial);
         profiler!(stop "quotient");
 
         profiler!(stop "linear combination");
@@ -497,16 +538,27 @@ impl Prover {
         );
         profiler!(stop "main&aux next row");
 
-        profiler!(start "segmented quotient");
-        let out_of_domain_curr_row_quot_segments_value = quotient_segments_combination_polynomial
-            .evaluate(out_of_domain_point_curr_row_pow_num_segments);
-        let quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
-            &quotient_segments_combination_codeword,
+        profiler!(start "randomized segmented quotient");
+        let out_of_domain_curr_row_over_xi_pow_num_segments_rand_quot_segments_value =
+            randomized_quotient_segments_combination_polynomial
+                .evaluate(ood_point_curr_row_over_xi_pow_num_segments);
+        let randomized_quotient_segments_curr_row_over_xi_deep_codeword = Self::deep_codeword(
+            &randomized_quotient_segments_combination_codeword,
             short_domain,
-            out_of_domain_point_curr_row_pow_num_segments,
-            out_of_domain_curr_row_quot_segments_value,
+            ood_point_curr_row_over_xi_pow_num_segments,
+            out_of_domain_curr_row_over_xi_pow_num_segments_rand_quot_segments_value,
         );
-        profiler!(stop "segmented quotient");
+
+        let out_of_domain_curr_row_over_zeta_pow_num_segments_rand_quot_segments_value =
+            randomized_quotient_segments_combination_polynomial
+                .evaluate(ood_point_curr_row_over_zeta_pow_num_segments);
+        let randomized_quotient_segments_curr_row_over_zeta_deep_codeword = Self::deep_codeword(
+            &randomized_quotient_segments_combination_codeword,
+            short_domain,
+            ood_point_curr_row_over_zeta_pow_num_segments,
+            out_of_domain_curr_row_over_zeta_pow_num_segments_rand_quot_segments_value,
+        );
+        profiler!(stop "randomized segmented quotient");
         profiler!(stop "DEEP");
 
         profiler!(start "combined DEEP polynomial");
@@ -514,7 +566,8 @@ impl Prover {
         let deep_codeword = [
             main_and_aux_curr_row_deep_codeword,
             main_and_aux_next_row_deep_codeword,
-            quotient_segments_curr_row_deep_codeword,
+            randomized_quotient_segments_curr_row_over_xi_deep_codeword,
+            randomized_quotient_segments_curr_row_over_zeta_deep_codeword,
         ]
         .into_par_iter()
         .zip_eq(weights.deep.as_slice().unwrap())
@@ -523,8 +576,8 @@ impl Prover {
             || vec![XFieldElement::ZERO; short_domain.len()],
             |left, right| left.into_iter().zip(right).map(|(l, r)| l + r).collect(),
         );
-
         profiler!(stop "sum");
+
         let combination_codeword = if ldt_domain_is_short_domain {
             deep_codeword
         } else {
@@ -579,10 +632,10 @@ impl Prover {
         // Open quotient & combination codewords at the same positions as
         // main & aux codewords.
         let into_fixed_width_row =
-            |row: ArrayView1<_>| -> QuotientSegments { row.to_vec().try_into().unwrap() };
+            |row: ArrayView1<_>| -> RandQuotientSegments { row.to_vec().try_into().unwrap() };
         let revealed_quotient_segments_rows = revealed_current_row_indices
             .iter()
-            .map(|&i| ldt_domain_quotient_segment_codewords.row(i))
+            .map(|&i| ldt_domain_randomized_quotient_segment_codewords.row(i))
             .map(into_fixed_width_row)
             .collect_vec();
         let revealed_quotient_authentication_structure =
@@ -1142,7 +1195,7 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    /// Th segment polynomials evaluated over the low-degree test domain.
+    /// The segment polynomials evaluated over the low-degree test domain.
     fn ldt_domain_segment_polynomials(
         quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
         ldt_domain: ArithmeticDomain,
@@ -1152,15 +1205,100 @@ impl Prover {
             .flat_map(|segment| ldt_domain.evaluate(segment))
             .collect();
 
-        // While later steps would benefit from row majority (“`C`”), the
-        // required `.to_standard_layout().to_owned()` is prohibitively
-        // expensive. Should we decide to chase small gains at some point,
-        // then a parallel transpose could be considered.
+        // Constructing the result in column-major form is easier here.
+        // Additionally, the next step, quotient randomization, adds a column,
+        // which only has good performance if the array is column-major.
         Array2::from_shape_vec(
             [ldt_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
             ldt_domain_codewords,
         )
         .unwrap()
+    }
+
+    /// Construct the randomized segmented quotient table, as well as the
+    /// polynomials corresponding to each of its columns.
+    ///
+    /// For an extended explanation of what's happening, see the specification's
+    /// chapter on Zero Knowledge, section “Quotient Table Randomization”.
+    ///
+    /// The relevant constants ξ and [ζ](Stark::ZETA) are chosen such that the
+    /// involved computations become as simple as possible. Concretely, with
+    /// ξ = 1, the (unrandomized) quotient segments can be used as-is and don't
+    /// have to be re-evaluated during the randomization step performed in this
+    /// function:
+    ///
+    /// ```text
+    ///   s_i(ξ^(-k)x) := ξ^i·(q_i(x)     - ζ^(-i)·s_(i+1)(ζ^(-k)·x))
+    ///         s_i(x)  = ξ^i·(q_i(ξ^k·x) - ζ^(-i)·s_(i+1)(ξ^k·ζ^(-k)·x)) | ξ=1
+    ///         s_i(x)  =      q_i(x)     - ζ^(-i)·s_(i+1)(ζ^(-k)·x)
+    ///                        ╰─┬──╯       ╰───────────┬──────────╯
+    ///                   can use as is     only need to compute this
+    /// ```
+    ///
+    /// The various s_i still have to be present in both value and coefficient
+    /// form in order to apply the necessary scaling by ξ^k·ζ^(-k) = ζ^(-k).
+    /// They are also part of the result computed by this function.
+    fn randomize_quotient_segments(
+        &self,
+        ldt_domain: ArithmeticDomain,
+        num_trace_randomizers: usize,
+        segment_codewords: Array2<XFieldElement>,
+        segment_polynomials: Array1<Polynomial<'static, XFieldElement>>,
+    ) -> (
+        Array2<XFieldElement>,
+        Array1<Polynomial<'static, XFieldElement>>,
+    ) {
+        debug_assert_eq!(ldt_domain.len(), segment_codewords.nrows());
+        debug_assert_eq!(NUM_QUOTIENT_SEGMENTS, segment_codewords.ncols());
+        debug_assert_eq!(NUM_QUOTIENT_SEGMENTS, segment_polynomials.len());
+
+        // use an offset for the RNG seed that is not used for any other purpose
+        let rng_seed_offset = MasterMainTable::NUM_COLUMNS + MasterAuxTable::NUM_COLUMNS + 1;
+        let rng_seed = offset_rng_seed(self.randomness_seed, rng_seed_offset);
+        let mut rng = StdRng::from_seed(rng_seed);
+
+        let num_coefficients = Stark::num_quotient_table_randomizers(num_trace_randomizers);
+        let random_coefficients = (0..num_coefficients).map(|_| rng.random()).collect();
+        let quotient_segment_randomizer = Polynomial::new(random_coefficients);
+
+        // Set up the randomized quotient table and corresponding polynomials
+        // “from the right”, that is, highest index first.
+        let quotient_segment_randomizer_codeword =
+            ldt_domain.evaluate(&quotient_segment_randomizer);
+        let mut randomized_segment_codewords = segment_codewords;
+        randomized_segment_codewords
+            .push_column(Array1::from(quotient_segment_randomizer_codeword).view())
+            .unwrap();
+
+        let quotient_segment_randomizer = Array0::from_elem((), quotient_segment_randomizer);
+        let mut randomized_segment_polynomials = segment_polynomials;
+        randomized_segment_polynomials
+            .push(ROW_AXIS, quotient_segment_randomizer.view())
+            .unwrap();
+
+        let one_over_zeta = Stark::ZETA.inverse();
+        let zeta_to_the_minus_k =
+            one_over_zeta.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
+        for (i, mut s_i_codeword) in randomized_segment_codewords
+            .columns_mut()
+            .into_iter()
+            .enumerate()
+            .dropping_back(1)
+            .rev()
+        {
+            let zeta_to_the_minus_i =
+                one_over_zeta.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
+            let s_i_plus_1_poly = randomized_segment_polynomials.get(i + 1).unwrap();
+            let s_i_addend_poly = -zeta_to_the_minus_i * s_i_plus_1_poly.scale(zeta_to_the_minus_k);
+            let s_i_addend_codeword = ldt_domain.evaluate(&s_i_addend_poly);
+            s_i_codeword.add_assign(&Array1::from(s_i_addend_codeword));
+            randomized_segment_polynomials
+                .get_mut(i)
+                .unwrap()
+                .add_assign(s_i_addend_poly);
+        }
+
+        (randomized_segment_codewords, randomized_segment_polynomials)
     }
 
     /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value
@@ -1242,8 +1380,11 @@ impl Verifier {
             ArithmeticDomain::generator_for_length(trace_domain_len as u64)?;
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
-        let out_of_domain_point_curr_row_pow_num_segments =
+        let ood_point_curr_row_over_xi_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let ood_point_curr_row_over_zeta_pow_num_segments = (out_of_domain_point_curr_row
+            / Stark::ZETA.lift())
+        .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
 
         let out_of_domain_curr_main_row =
             proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
@@ -1253,16 +1394,18 @@ impl Verifier {
             proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
         let out_of_domain_next_aux_row =
             proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
-        let out_of_domain_curr_row_quot_segments = proof_stream
+        let out_of_domain_curr_row_over_xi_pow_num_segments_randomized_quot_segments = proof_stream
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
+        let out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments =
+            proof_stream
+                .dequeue()?
+                .try_into_out_of_domain_quot_segments()?;
 
         let out_of_domain_curr_main_row = Array1::from(out_of_domain_curr_main_row.to_vec());
         let out_of_domain_curr_aux_row = Array1::from(out_of_domain_curr_aux_row.to_vec());
         let out_of_domain_next_main_row = Array1::from(out_of_domain_next_main_row.to_vec());
         let out_of_domain_next_aux_row = Array1::from(out_of_domain_next_aux_row.to_vec());
-        let out_of_domain_curr_row_quot_segments =
-            Array1::from(out_of_domain_curr_row_quot_segments.to_vec());
         profiler!(stop "dequeue ood point and rows");
 
         profiler!(start "out-of-domain quotient element");
@@ -1323,12 +1466,30 @@ impl Verifier {
         profiler!(stop "out-of-domain quotient element");
 
         profiler!(start "verify quotient's segments");
-        let powers_of_out_of_domain_point_curr_row = (0..NUM_QUOTIENT_SEGMENTS as u32)
-            .map(|exponent| out_of_domain_point_curr_row.mod_pow_u32(exponent))
-            .collect::<Array1<_>>();
-        let sum_of_evaluated_out_of_domain_quotient_segments =
-            powers_of_out_of_domain_point_curr_row.dot(&out_of_domain_curr_row_quot_segments);
-        if out_of_domain_quotient_value != sum_of_evaluated_out_of_domain_quotient_segments {
+        let ood_point_curr_row_over_xi = out_of_domain_point_curr_row; // ξ is implicitly 1
+        let relevant_ood_rand_quot_segments_for_curr_row_over_xi =
+            out_of_domain_curr_row_over_xi_pow_num_segments_randomized_quot_segments
+                .into_iter()
+                .dropping_back(1);
+        let derandomized_out_of_domain_quotient_value_part_xi = (0..NUM_QUOTIENT_SEGMENTS as u32)
+            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row_over_xi)
+            .map(|(i, x)| ood_point_curr_row_over_xi.mod_pow_u32(i) * x)
+            .sum::<XFieldElement>();
+
+        let ood_point_curr_row_over_zeta = out_of_domain_point_curr_row / Stark::ZETA.lift();
+        let relevant_ood_rand_quot_segments_for_curr_row_over_zeta =
+            out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments
+                .into_iter()
+                .skip(1);
+        let derandomized_out_of_domain_quotient_value_part_zeta = (0..NUM_QUOTIENT_SEGMENTS as u32)
+            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row_over_zeta)
+            .map(|(i, x)| ood_point_curr_row_over_zeta.mod_pow_u32(i) * x)
+            .sum::<XFieldElement>();
+
+        let derandomized_out_of_domain_quotient_value =
+            derandomized_out_of_domain_quotient_value_part_xi
+                + derandomized_out_of_domain_quotient_value_part_zeta;
+        if out_of_domain_quotient_value != derandomized_out_of_domain_quotient_value {
             return Err(VerificationError::OutOfDomainQuotientValueMismatch);
         };
         profiler!(stop "verify quotient's segments");
@@ -1349,9 +1510,15 @@ impl Verifier {
             out_of_domain_next_aux_row.view(),
             main_and_aux_codeword_weights.view(),
         );
-        let out_of_domain_curr_row_quotient_segment_value = weights
-            .quot_segments
-            .dot(&out_of_domain_curr_row_quot_segments);
+
+        let out_of_domain_curr_row_over_xi_pow_num_segments_randomized_quotient_segment_value =
+            weights.quot_segments.dot(&Array1::from(
+                out_of_domain_curr_row_over_xi_pow_num_segments_randomized_quot_segments.to_vec(),
+            ));
+        let out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quotient_segment_value =
+            weights.quot_segments.dot(&Array1::from(
+                out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments.to_vec(),
+            ));
         profiler!(stop "sum out-of-domain values");
 
         // verify low degree of combination polynomial
@@ -1491,11 +1658,17 @@ impl Verifier {
                 out_of_domain_point_next_row,
                 out_of_domain_next_row_main_and_aux_value,
             );
-            let quot_curr_row_deep_value = Stark::deep_update(
+            let quot_curr_row_over_xi_pow_num_segments_deep_value = Stark::deep_update(
                 current_ldt_domain_value,
                 quotient_segments_curr_row_element,
-                out_of_domain_point_curr_row_pow_num_segments,
-                out_of_domain_curr_row_quotient_segment_value,
+                ood_point_curr_row_over_xi_pow_num_segments,
+                out_of_domain_curr_row_over_xi_pow_num_segments_randomized_quotient_segment_value,
+            );
+            let quot_curr_row_over_zeta_pow_num_segments_deep_value = Stark::deep_update(
+                current_ldt_domain_value,
+                quotient_segments_curr_row_element,
+                ood_point_curr_row_over_zeta_pow_num_segments,
+                out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quotient_segment_value,
             );
             profiler!(stop "DEEP update");
 
@@ -1503,7 +1676,8 @@ impl Verifier {
             let deep_value_components = Array1::from(vec![
                 main_and_aux_curr_row_deep_value,
                 main_and_aux_next_row_deep_value,
-                quot_curr_row_deep_value,
+                quot_curr_row_over_xi_pow_num_segments_deep_value,
+                quot_curr_row_over_zeta_pow_num_segments_deep_value,
             ]);
             if revealed_value != weights.deep.dot(&deep_value_components) {
                 return Err(VerificationError::CombinationCodewordMismatch);
@@ -1540,6 +1714,18 @@ impl Verifier {
 }
 
 impl Stark {
+    /// One of the two constants to help achieve Zero-Knowledge for the quotient
+    /// table.
+    ///
+    /// The other constant, ξ, is defined as 1 and only used implicitly.
+    ///
+    /// The constant is publicly accessible but hidden from the documentation
+    /// as using it requires intimate familiarity with the internals of
+    /// Triton VM. ξ and ζ are probably only useful when re-implementing the
+    /// [prover](Self::prove) or the [verifier](Self::verify).
+    #[doc(hidden)]
+    pub const ZETA: BFieldElement = BFieldElement::new(2);
+
     /// Create a new STARK instance.
     ///
     /// The defining parameters are the [`security_level`](Self::security_level)
@@ -1603,8 +1789,8 @@ impl Stark {
     ///
     /// Guaranteed to be a power of two.
     //
-    // There are two lower bounds on the required length of the randomized
-    // trace, both of which have to be met:
+    // There are several lower bounds on the required length of the randomized
+    // trace, all of which have to be met:
     //
     // 1. The randomized trace domain must be long enough to include both, all
     //    elements of the padded trace and all trace randomizers.
@@ -1615,15 +1801,24 @@ impl Stark {
     //       trace column must be less than the length of the randomized trace
     //       domain.
     //    These two conditions imply:
-    //
     //       len > degree(randomized_trace_column_interpolant)
     //     ⟺ len > num_trace_randomizers + degree(zerofier(trace_domain))
     //     ⟺ len > num_trace_randomizers + (len / 2)
     //     ⟺ len > 2·num_trace_randomizers
+    // 3. Due to the way we randomize the segmented quotient table, the
+    //    randomized trace length must equal or exceed the number of randomizers
+    //    used for the (segmented) quotient table.
     fn randomized_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
         (padded_height + num_trace_randomizers)
             .max(2 * num_trace_randomizers + 1)
+            .max(Self::num_quotient_table_randomizers(num_trace_randomizers))
             .next_power_of_two()
+    }
+
+    // For more details on this formula, see the specification's chapter on
+    // Zero Knowledge, section “Quotient Table Randomization”.
+    fn num_quotient_table_randomizers(num_trace_randomizers: usize) -> usize {
+        (num_trace_randomizers + 1) * NUM_RANDOMIZED_QUOTIENT_SEGMENTS
     }
 
     fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
@@ -1810,11 +2005,14 @@ impl Stark {
     /// field, _i.e._, [base field](BFieldElement) elements for the main table
     /// and [extension field](XFieldElement) elements for the auxiliary table.
     pub(crate) fn num_trace_randomizers(ldt: &dyn LowDegreeTest) -> usize {
-        let num_out_of_domain_rows = 2;
+        /// The maximum number of rows an AIR constraint can access.
+        const AIR_FAN_IN: usize = 2;
 
+        // For a detailed explanation of this formula, see the specification's
+        // chapter on Zero Knowledge, section “Randomized Trace Polynomials”.
         ldt.num_first_round_queries()
-            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE
-            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE
+            + x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
+            + 2 * NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
@@ -1866,7 +2064,7 @@ struct LinearCombinationWeights {
     /// of length [`MasterAuxTable::NUM_COLUMNS`]
     aux: Array1<XFieldElement>,
 
-    /// of length [`NUM_QUOTIENT_SEGMENTS`]
+    /// of length [`NUM_RANDOMIZED_QUOTIENT_SEGMENTS`]
     quot_segments: Array1<XFieldElement>,
 
     /// of length [`NUM_DEEP_CODEWORD_COMPONENTS`]
@@ -1876,13 +2074,13 @@ struct LinearCombinationWeights {
 impl LinearCombinationWeights {
     const NUM: usize = MasterMainTable::NUM_COLUMNS
         + MasterAuxTable::NUM_COLUMNS
-        + NUM_QUOTIENT_SEGMENTS
+        + NUM_RANDOMIZED_QUOTIENT_SEGMENTS
         + NUM_DEEP_CODEWORD_COMPONENTS;
 
     fn sample(proof_stream: &mut ProofStream) -> Self {
         const MAIN_END: usize = MasterMainTable::NUM_COLUMNS;
         const AUX_END: usize = MAIN_END + MasterAuxTable::NUM_COLUMNS;
-        const QUOT_END: usize = AUX_END + NUM_QUOTIENT_SEGMENTS;
+        const QUOT_END: usize = AUX_END + NUM_RANDOMIZED_QUOTIENT_SEGMENTS;
 
         let weights = proof_stream.sample_scalars(Self::NUM);
 
@@ -2028,6 +2226,13 @@ pub(crate) mod tests {
         }
     }
 
+    #[macro_rules_attr::apply(test)]
+    fn xi_div_zeta_pow_k_has_sufficiently_large_multiplicative_order() {
+        let k = NUM_QUOTIENT_SEGMENTS as u64;
+        let xi_div_zeta_pow_k = Stark::ZETA.inverse().mod_pow(k);
+        assert!((0..=k).map(|i| xi_div_zeta_pow_k.mod_pow(i)).all_unique());
+    }
+
     #[macro_rules_attr::apply(proptest)]
     fn two_default_provers_have_different_randomness_seeds() {
         let seed = || Prover::default().randomness_seed;
@@ -2101,6 +2306,40 @@ pub(crate) mod tests {
         assert_no_trace_mutation(CacheDecision::NoCache);
     }
 
+    #[macro_rules_attr::apply(proptest(cases = 100))]
+    fn randomized_quotient_segment_codewords_and_polynomials_correspond(
+        #[strategy(arb())] stark: Stark,
+        seed: <StdRng as SeedableRng>::Seed,
+        #[strategy(3..=10)]
+        #[map(|l2_ph| 1_usize << l2_ph)]
+        padded_height: usize,
+        #[strategy(arb())] segment_polys: [Polynomial<'static, XFieldElement>;
+            NUM_QUOTIENT_SEGMENTS],
+    ) {
+        let prover = Prover::new(stark).set_randomness_seed_which_may_break_zero_knowledge(seed);
+        let Ok(ldt) = prover.parameters.ldt(padded_height) else {
+            return Err(TestCaseError::Reject("parameters should be valid".into()));
+        };
+        let num_trace_randomizers = Stark::num_trace_randomizers(&*ldt);
+        let ldt_domain = ldt.initial_domain();
+        let mut segment_codewords = Array2::zeros([ldt_domain.len(), 0]);
+        for poly in &segment_polys {
+            segment_codewords.push_column(Array1::from(ldt_domain.evaluate(poly)).view())?;
+        }
+        let segment_polys = Array1::from(segment_polys.to_vec());
+
+        let (codewords, polys) = prover.randomize_quotient_segments(
+            ldt_domain,
+            num_trace_randomizers,
+            segment_codewords,
+            segment_polys,
+        );
+        for (codeword, poly) in codewords.axis_iter(COL_AXIS).zip_eq(polys) {
+            let poly_again = ldt_domain.interpolate(codeword.as_slice().unwrap());
+            prop_assert_eq!(poly, poly_again);
+        }
+    }
+
     #[macro_rules_attr::apply(test)]
     fn supplying_prover_randomness_seed_fully_derandomizes_produced_proof() {
         let TestableProgram {
@@ -2122,11 +2361,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"14889921327105298036,\
-              06682255610245086431,\
-              05206909330556490957,\
-              07454391559113512407,\
-              13338302248205653138",
+            @"10988396521046403478,\
+              03675778761636400487,\
+              09426375981525898604,\
+              08643783039365964851,\
+              07481169175274841635",
         );
     }
 
@@ -3385,13 +3624,16 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(proptest)]
     fn linear_combination_weights_samples_correct_number_of_elements(
-        #[strategy(arb())] mut proof_stream: ProofStream,
+        mut proof_stream: ProofStream,
     ) {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
 
         prop_assert_eq!(MasterMainTable::NUM_COLUMNS, weights.main.len());
         prop_assert_eq!(MasterAuxTable::NUM_COLUMNS, weights.aux.len());
-        prop_assert_eq!(NUM_QUOTIENT_SEGMENTS, weights.quot_segments.len());
+        prop_assert_eq!(
+            NUM_RANDOMIZED_QUOTIENT_SEGMENTS,
+            weights.quot_segments.len()
+        );
         prop_assert_eq!(NUM_DEEP_CODEWORD_COMPONENTS, weights.deep.len());
         prop_assert_eq!(
             MasterMainTable::NUM_COLUMNS + MasterAuxTable::NUM_COLUMNS,
