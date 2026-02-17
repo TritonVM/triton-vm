@@ -368,16 +368,11 @@ impl Prover {
             );
 
         profiler!(start "hash rows of quotient segments" ("hash"));
-        let interpret_xfe_as_bfes = |xfe: &XFieldElement| xfe.coefficients.to_vec();
-        let hash_row = |row: ArrayView1<_>| {
-            let row_as_bfes = row.iter().map(interpret_xfe_as_bfes).concat();
-            Tip5::hash_varlen(&row_as_bfes)
-        };
-        let quotient_segments_rows = ldt_domain_quotient_segment_codewords
+        let ldt_domain_quotient_segment_codewords_digests = ldt_domain_quotient_segment_codewords
             .axis_iter(ROW_AXIS)
-            .into_par_iter();
-        let ldt_domain_quotient_segment_codewords_digests =
-            quotient_segments_rows.map(hash_row).collect::<Vec<_>>();
+            .into_par_iter()
+            .map(|row| Tip5::hash_varlen(XFieldElement::bfe_slice(row.as_slice().unwrap())))
+            .collect::<Vec<_>>();
         profiler!(stop "hash rows of quotient segments");
         profiler!(start "Merkle tree" ("hash"));
         let quot_merkle_tree = MerkleTree::par_new(&ldt_domain_quotient_segment_codewords_digests)?;
@@ -1141,25 +1136,28 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    /// Th segment polynomials evaluated over the low-degree test domain.
+    /// The segment polynomials evaluated over the low-degree test domain.
     fn ldt_domain_segment_polynomials(
         quotient_segment_polynomials: ArrayView1<Polynomial<XFieldElement>>,
         ldt_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
+        debug_assert_eq!(quotient_segment_polynomials.len(), NUM_QUOTIENT_SEGMENTS);
+
         let ldt_domain_codewords: Vec<_> = quotient_segment_polynomials
             .into_par_iter()
-            .flat_map(|segment| ldt_domain.evaluate(segment))
+            .map(|segment| ldt_domain.evaluate(segment))
             .collect();
 
-        // While later steps would benefit from row majority (“`C`”), the
-        // required `.to_standard_layout().to_owned()` is prohibitively
-        // expensive. Should we decide to chase small gains at some point,
-        // then a parallel transpose could be considered.
-        Array2::from_shape_vec(
-            [ldt_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
-            ldt_domain_codewords,
-        )
-        .unwrap()
+        let num_rows = ldt_domain.len();
+        let num_cols = NUM_QUOTIENT_SEGMENTS;
+        let mut array_innards = Vec::with_capacity(num_rows * num_cols);
+        for r in 0..num_rows {
+            for codeword in &ldt_domain_codewords {
+                array_innards.push(codeword[r]);
+            }
+        }
+
+        Array2::from_shape_vec([num_rows, num_cols], array_innards).unwrap()
     }
 
     /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value
