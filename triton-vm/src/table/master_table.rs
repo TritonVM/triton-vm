@@ -1148,9 +1148,7 @@ pub(crate) fn max_degree_with_origin(
         .unwrap()
 }
 
-pub fn initial_quotient_zerofier_inverse(
-    quotient_domain: ArithmeticDomain,
-) -> Array1<BFieldElement> {
+fn initial_quotient_zerofier_inverse(quotient_domain: ArithmeticDomain) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
         .values()
         .into_iter()
@@ -1159,7 +1157,7 @@ pub fn initial_quotient_zerofier_inverse(
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
-pub fn consistency_quotient_zerofier_inverse(
+fn consistency_quotient_zerofier_inverse(
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
@@ -1171,7 +1169,7 @@ pub fn consistency_quotient_zerofier_inverse(
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
-pub fn transition_quotient_zerofier_inverse(
+fn transition_quotient_zerofier_inverse(
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
@@ -1193,7 +1191,7 @@ pub fn transition_quotient_zerofier_inverse(
     zerofier_inverse.into()
 }
 
-pub fn terminal_quotient_zerofier_inverse(
+fn terminal_quotient_zerofier_inverse(
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
