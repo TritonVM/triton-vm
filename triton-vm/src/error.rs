@@ -67,7 +67,7 @@ pub enum ProofStreamError {
     #[error("expected {expected}, got {got}")]
     UnexpectedItem {
         expected: ProofItemVariant,
-        got: ProofItem,
+        got: Box<ProofItem>,
     },
 
     #[error("the proof stream must contain a log2_padded_height item")]
