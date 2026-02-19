@@ -50,10 +50,12 @@ use crate::table::master_table::max_degree_with_origin;
 /// Helps keeping the FRI domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
-/// The number of randomizer polynomials over the [extension
-/// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
-/// zero-knowledge in [FRI](Fri).
-pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
+/// The number of batch randomizers over the [extension field](XFieldElement)
+/// used in the [`STARK`](Stark).
+///
+/// Integral for achieving zero-knowledge in the
+/// [low-degree test](LowDegreeTest).
+pub const NUM_BATCH_RANDOMIZERS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
