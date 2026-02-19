@@ -362,7 +362,6 @@ impl Prover {
             Self::compute_quotient_segments(
                 &mut master_main_table,
                 &mut master_aux_table,
-                domains.quotient,
                 &challenges,
                 &quotient_combination_weights,
             );
@@ -600,7 +599,6 @@ impl Prover {
     fn compute_quotient_segments(
         main_table: &mut MasterMainTable,
         aux_table: &mut MasterAuxTable,
-        quotient_domain: ArithmeticDomain,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
     ) -> (
@@ -648,6 +646,7 @@ impl Prover {
         };
 
         profiler!(start "quotient calculation (cached)" ("CC"));
+        let quotient_domain = main_table.domains().quotient;
         let quotient_codeword = all_quotients_combined(
             main_quotient_domain_codewords,
             aux_quotient_domain_codewords,
@@ -2039,25 +2038,16 @@ pub(crate) mod tests {
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
         let test_program = TestableProgram::new(triton_program!(halt));
-        let stark = test_program.stark;
         let artifacts = test_program.generate_proof_artifacts();
         let mut main = artifacts.master_main_table;
         let mut aux = artifacts.master_aux_table;
         let ch = artifacts.challenges;
-        let padded_height = main.trace_table().nrows();
-        let ldt = stark.ldt(padded_height).unwrap();
-        let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
-        let ldt_dom = ldt.initial_domain();
-        let max_degree = stark.max_degree(padded_height, num_trace_randos);
-        let domains = ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
-        let quot_dom = domains.quotient;
         let weights = StdRng::seed_from_u64(1632525295622789151)
             .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
         debug_assert!(main.ldt_domain_table().is_none());
         debug_assert!(aux.ldt_domain_table().is_none());
-        let jit_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+        let jit_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         debug_assert!(main.ldt_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns();
@@ -2067,8 +2057,7 @@ pub(crate) mod tests {
         aux.maybe_low_degree_extend_all_columns();
         debug_assert!(aux.ldt_domain_table().is_some());
 
-        let cache_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+        let cache_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         assert_eq!(jit_segments, cache_segments);
     }
@@ -2082,7 +2071,6 @@ pub(crate) mod tests {
             crate::config::overwrite_lde_trace_caching_to(cache_decision);
 
             let test_program = TestableProgram::new(triton_program!(halt));
-            let stark = test_program.stark;
             let artifacts = test_program.generate_proof_artifacts();
             let mut main = artifacts.master_main_table;
             let mut aux = artifacts.master_aux_table;
@@ -2090,15 +2078,6 @@ pub(crate) mod tests {
 
             let original_main_trace = main.trace_table().to_owned();
             let original_aux_trace = aux.trace_table().to_owned();
-
-            let padded_height = main.trace_table().nrows();
-            let ldt = stark.ldt(padded_height).unwrap();
-            let ldt_dom = ldt.initial_domain();
-            let num_trace_randos = Stark::num_trace_randomizers(&*ldt);
-            let max_degree = stark.max_degree(padded_height, num_trace_randos);
-            let domains =
-                ProverDomains::derive(padded_height, num_trace_randos, ldt_dom, max_degree);
-            let quot_dom = domains.quotient;
 
             if cache_decision == CacheDecision::Cache {
                 main.maybe_low_degree_extend_all_columns();
@@ -2110,8 +2089,7 @@ pub(crate) mod tests {
 
             let weights = StdRng::seed_from_u64(15157673430940347283)
                 .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
-            let _segments =
-                Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+            let _segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
             assert_eq!(original_main_trace, main.trace_table());
             assert_eq!(original_aux_trace, aux.trace_table());
