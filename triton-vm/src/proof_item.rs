@@ -61,7 +61,7 @@ macro_rules! proof_items {
                     Self::$variant(payload) => Ok(payload),
                     _ => Err(UnexpectedItem {
                         expected: ProofItemVariant::$variant,
-                        got: self,
+                        got: Box::new(self),
                     }),
                 }
             }
