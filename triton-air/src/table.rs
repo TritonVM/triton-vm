@@ -37,7 +37,8 @@ pub const NUM_MAIN_COLUMNS: usize = <ProgramTable as AIR>::MainColumn::COUNT
     + <U32Table as AIR>::MainColumn::COUNT;
 
 /// The total number of auxiliary columns across all tables.
-/// The degree lowering columns as well as any randomizer polynomials are _not_
+///
+/// The degree lowering columns as well as any batch randomizer are _not_
 /// included.
 pub const NUM_AUX_COLUMNS: usize = <ProgramTable as AIR>::AuxColumn::COUNT
     + <ProcessorTable as AIR>::AuxColumn::COUNT

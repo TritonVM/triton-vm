@@ -56,10 +56,12 @@ use crate::table::master_table::max_degree_with_origin;
 /// Helps keeping the low-degree test domain small.
 pub const NUM_QUOTIENT_SEGMENTS: usize = air::TARGET_DEGREE as usize;
 
-/// The number of randomizer polynomials over the [extension
-/// field](XFieldElement) used in the [`STARK`](Stark). Integral for achieving
-/// zero-knowledge in the [low-degree test](LowDegreeTest).
-pub const NUM_RANDOMIZER_POLYNOMIALS: usize = 1;
+/// The number of batch randomizers over the [extension field](XFieldElement)
+/// used in the [`STARK`](Stark).
+///
+/// Integral for achieving zero-knowledge in the
+/// [low-degree test](LowDegreeTest).
+pub const NUM_BATCH_RANDOMIZERS: usize = 1;
 
 const NUM_DEEP_CODEWORD_COMPONENTS: usize = 3;
 
@@ -2120,11 +2122,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"00966712734099213509,\
-              04471063432217919059,\
-              10676364812233310601,\
-              12339529344586307741,\
-              10898088727121018963",
+            @"14889921327105298036,\
+              06682255610245086431,\
+              05206909330556490957,\
+              07454391559113512407,\
+              13338302248205653138",
         );
     }
 
