@@ -31,6 +31,10 @@ jobs:
         with:
           tool: wasm-pack
 
-      - name: Run wasm-pack tests
+      - name: Run wasm-pack tests (excluding “STARK”)
         working-directory: triton-vm
-        run: wasm-pack test --node
+        run: wasm-pack test --node -- -- --skip stark
+
+      - name: Run wasm-pack tests (only “STARK”)
+        working-directory: triton-vm
+        run: wasm-pack test --node -- -- stark
