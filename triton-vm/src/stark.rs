@@ -325,7 +325,7 @@ impl Prover {
         master_main_table.pad();
         profiler!(stop "pad");
 
-        master_main_table.maybe_low_degree_extend_all_columns();
+        master_main_table.maybe_low_degree_extend_all_columns()?;
 
         profiler!(start "Merkle tree");
         let main_merkle_tree = master_main_table.merkle_tree();
@@ -343,7 +343,7 @@ impl Prover {
         profiler!(stop "main tables");
 
         profiler!(start "aux tables");
-        master_aux_table.maybe_low_degree_extend_all_columns();
+        master_aux_table.maybe_low_degree_extend_all_columns()?;
 
         profiler!(start "Merkle tree");
         let aux_merkle_tree = master_aux_table.merkle_tree();
@@ -2050,11 +2050,11 @@ pub(crate) mod tests {
         let jit_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         debug_assert!(main.ldt_domain_table().is_none());
-        main.maybe_low_degree_extend_all_columns();
+        main.maybe_low_degree_extend_all_columns().unwrap();
         debug_assert!(main.ldt_domain_table().is_some());
 
         debug_assert!(aux.ldt_domain_table().is_none());
-        aux.maybe_low_degree_extend_all_columns();
+        aux.maybe_low_degree_extend_all_columns().unwrap();
         debug_assert!(aux.ldt_domain_table().is_some());
 
         let cache_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
@@ -2080,10 +2080,10 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             if cache_decision == CacheDecision::Cache {
-                main.maybe_low_degree_extend_all_columns();
+                main.maybe_low_degree_extend_all_columns().unwrap();
                 assert!(main.ldt_domain_table().is_some());
 
-                aux.maybe_low_degree_extend_all_columns();
+                aux.maybe_low_degree_extend_all_columns().unwrap();
                 assert!(aux.ldt_domain_table().is_some());
             }
 
