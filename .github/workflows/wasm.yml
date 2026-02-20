@@ -31,10 +31,6 @@ jobs:
         with:
           tool: wasm-pack
 
-      - name: Build with wasm-pack
-        working-directory: triton-vm
-        run: wasm-pack build --release --target nodejs
-
       - name: Run wasm-pack tests
         working-directory: triton-vm
         run: wasm-pack test --node
