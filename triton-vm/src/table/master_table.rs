@@ -121,6 +121,7 @@ use air::table_column::RamAuxColumn;
 use air::table_column::RamMainColumn;
 use air::table_column::U32AuxColumn;
 use air::table_column::U32MainColumn;
+use itertools::EitherOrBoth;
 use itertools::Itertools;
 use itertools::izip;
 use ndarray::Array2;
@@ -153,7 +154,7 @@ use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
-use crate::stark::NUM_RANDOMIZER_POLYNOMIALS;
+use crate::stark::NUM_BATCH_RANDOMIZERS;
 use crate::stark::ProverDomains;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
@@ -221,11 +222,11 @@ where
     }
 
     /// Presents underlying trace data, excluding trace randomizers and
-    /// randomizer polynomials.
+    /// batch randomizers.
     fn trace_table(&self) -> ArrayView2<'_, Self::Field>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and
-    /// randomizer polynomials.
+    /// batch randomizers.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, Self::Field>;
 
     /// The quotient-domain view of the cached low-degree-extended table, if
@@ -332,9 +333,11 @@ where
     /// access the implementing object's fields.
     fn ldt_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
-    /// Get one row of the table at an arbitrary index. Notably, the index does
-    /// not have to be in any of the domains. In other words, can be used to
-    /// compute out-of-domain rows. Does not include randomizer polynomials.
+    /// Get one row of the table at an arbitrary index.
+    ///
+    /// Notably, the index does not have to be in any of the domains. In other
+    /// words, can be used to compute out-of-domain rows. Does not include
+    /// batch randomizers.
     fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
         // The following is a batched version of barycentric Lagrangian
         // evaluation. Since the method `barycentric_evaluate` is
@@ -416,7 +419,7 @@ where
         // error.
         assert!(idx < Self::NUM_COLUMNS);
 
-        let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), idx);
+        let mut rng = StdRng::from_seed(offset_rng_seed(self.trace_randomizer_seed(), idx));
         let coefficients = (0..self.num_trace_randomizers())
             .map(|_| rng.random())
             .collect();
@@ -599,27 +602,56 @@ where
     }
 }
 
-/// Create a [random-number generator](StdRng) from a seed and an offset.
-fn rng_from_offset_seed<B>(mut seed: <StdRng as SeedableRng>::Seed, offset: B) -> StdRng
+/// Offset a seed for use with a [random-number generator](StdRng).
+///
+/// This is a linear function: offsetting some `seed` by `a` and the result by
+/// `b` is the same as offsetting the `seed` by `a + b`.
+///
+/// When constructing a random-number generator from an offset seed, make sure
+/// to use an offset that has not been used before. Here is an overview of the
+/// offsets in use, as well as their respective purpose:
+///
+/// | offset                                   | purpose                      |
+/// |:-----------------------------------------|:-----------------------------|
+/// | 0..[num_main_columns]                    | trace randomizers main table |
+/// | [num_main_columns]..[num_aux_columns]    | trace randomizers aux table  |
+/// | [num_main_columns]+[num_aux_columns]     | batch randomizer             |
+/// | [num_main_columns]+[num_aux_columns] + 1 | quotient table randomizer    |
+///
+/// [num_main_columns]: MasterMainTable::NUM_COLUMNS
+/// [num_aux_columns]: MasterAuxTable::NUM_COLUMNS
+pub(crate) fn offset_rng_seed<B>(
+    mut seed: <StdRng as SeedableRng>::Seed,
+    offset: B,
+) -> <StdRng as SeedableRng>::Seed
 where
     B: ToBytes,
     <B as ToBytes>::Bytes: IntoIterator<Item = u8>,
 {
-    let offset_le_bytes = offset.to_le_bytes();
+    // Ensure that the operation is independent of the target's pointer width
+    // to accommodate offsets  of type `{u, i}size`: `to_le_bytes` yields any
+    // leading zeros _after_ bits of lesser significance.
+    // Note that this does not _guarantee_ portability across architectures, as
+    // `rand::StdRng` is specifically documented as being not portable, but in
+    // practice, it does seem to be portable (enough).
+    let offset_bytes = offset.to_le_bytes();
+    let offset_bytes = offset_bytes.as_ref();
 
-    // entire offset must be used
-    debug_assert!(offset_le_bytes.as_ref().len() <= seed.len());
-
-    // Ensure that the operation is independent of the target pointer:
-    // `to_le_bytes` yields any leading zeros _after_ bits of lesser
-    // significance. Note that this does not guarantee portability across
-    // architectures, as `rand::StdRng` is specifically documented as being not
-    // portable.
-    for (seed_byte, offset_byte) in seed.iter_mut().zip(offset_le_bytes) {
-        *seed_byte = seed_byte.wrapping_add(offset_byte);
+    // Perform wrapping addition of the offset into the seed bytes, propagating
+    // carries across the entire seed.
+    let mut carry = 0;
+    for seed_byte_and_addend in seed.iter_mut().zip_longest(offset_bytes) {
+        let (seed_byte, addend) = match seed_byte_and_addend {
+            EitherOrBoth::Both(seed_byte, &addend) => (seed_byte, addend),
+            EitherOrBoth::Left(seed_byte) => (seed_byte, 0),
+            EitherOrBoth::Right(_) => panic!("internal error: offset len must not exceed seed len"),
+        };
+        let sum = u16::from(*seed_byte) + u16::from(addend) + carry;
+        *seed_byte = (sum & 0xFF) as u8;
+        carry = sum >> 8;
     }
 
-    StdRng::from_seed(seed)
+    seed
 }
 
 /// Helper struct and function to absorb however many elements are available;
@@ -774,7 +806,7 @@ impl MasterTable for MasterAuxTable {
     type Field = XFieldElement;
     const NUM_COLUMNS: usize = air::table::NUM_AUX_COLUMNS
         + crate::table::degree_lowering::DegreeLoweringAuxColumn::COUNT
-        + NUM_RANDOMIZER_POLYNOMIALS;
+        + NUM_BATCH_RANDOMIZERS;
 
     fn domains(&self) -> ProverDomains {
         self.domains
@@ -965,16 +997,20 @@ impl MasterMainTable {
     /// specific to that table, but always involves adding some number of
     /// columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
-        // construct a seed that hasn't been used for any main table column's
-        // trace randomizer
-        let mut rng = rng_from_offset_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
+        // a seed that hasn't been used for any main table trace randomizer
+        let aux_table_trace_randomizer_seed =
+            offset_rng_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
 
         profiler!(start "initialize master table");
         // column majority (“`F`”) for contiguous column slices
         let aux_trace_table_shape = (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f();
         let mut aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
 
-        let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_RANDOMIZER_POLYNOMIALS;
+        // a seed that also won't be used for any aux table trace randomizer
+        let batch_randomizer_seed =
+            offset_rng_seed(aux_table_trace_randomizer_seed, MasterAuxTable::NUM_COLUMNS);
+        let mut rng = StdRng::from_seed(batch_randomizer_seed);
+        let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
         aux_trace_table
             .slice_mut(s![.., randomizers_start..])
             .mapv_inplace(|_| rng.random());
@@ -984,7 +1020,7 @@ impl MasterMainTable {
             num_trace_randomizers: self.num_trace_randomizers,
             domains: self.domains,
             trace_table: aux_trace_table,
-            trace_randomizer_seed: rng.random(),
+            trace_randomizer_seed: aux_table_trace_randomizer_seed,
             low_degree_extended_table: None,
         };
 
@@ -1717,7 +1753,7 @@ mod tests {
         all_table_info.push((
             "Randomizers".to_string(),
             [0; NUM_DEGREE_LOWERING_TARGETS],
-            [NUM_RANDOMIZER_POLYNOMIALS; NUM_DEGREE_LOWERING_TARGETS],
+            [NUM_BATCH_RANDOMIZERS; NUM_DEGREE_LOWERING_TARGETS],
         ));
         let all_table_info = all_table_info;
 
@@ -2369,6 +2405,17 @@ mod tests {
             If there was an intentional change to the constraints, don't forget to \
             update the value of `expected`."
         );
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn offsetting_randomizer_seed_is_linear(
+        seed: <StdRng as SeedableRng>::Seed,
+        total: u128,
+        #[strategy(0..=#total)] partial: u128,
+    ) {
+        let expected = offset_rng_seed(seed, total);
+        let offset_seed = offset_rng_seed(offset_rng_seed(seed, partial), total - partial);
+        prop_assert_eq!(expected, offset_seed);
     }
 
     /// Verify for a dummy trace table that the trace randomizer for every pair
