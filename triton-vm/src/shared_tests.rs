@@ -185,7 +185,15 @@ impl TestableProgram {
         profiler!(stop "Prove");
 
         profiler!(start "Verify");
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
+        let verdict = stark.verify(&claim, &proof);
+        if let Err(e) = verdict {
+            #[cfg(target_arch = "wasm32")]
+            {
+                wasm_bindgen_test::console_log!("{e}");
+                panic!();
+            }
+            panic!("{e}");
+        }
         profiler!(stop "Verify");
         let profile = crate::profiler::finish();
 
