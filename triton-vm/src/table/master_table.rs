@@ -1736,7 +1736,7 @@ mod tests {
             if slice.iter().all(|&n| n == slice[0]) {
                 format!("{}", slice[0])
             } else {
-                slice.iter().join("/").to_string()
+                slice.iter().join("/")
             }
         };
         let mut total_main = [0; NUM_DEGREE_LOWERING_TARGETS];
