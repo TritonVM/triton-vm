@@ -35,6 +35,26 @@ jobs:
         working-directory: triton-vm
         run: wasm-pack build --release --target nodejs
 
-      - name: Run wasm-pack tests
+      # Because of weird and hard-to-find limitations somewhere in the testing pipeline,
+      # running (1) the full test suite (2) through `wasm-pack test` on (3) CI machines
+      # causes relatively consistent CI failures.
+      # The solution deployed here runs every test individually instead. This clutters
+      # the CI log, but at least it gives a green checkmark.
+      - name: Run wasm-pack tests (one by one)
         working-directory: triton-vm
-        run: wasm-pack test --node
+        run: |
+          set -euo pipefail
+
+          mapfile -t TESTS < <(
+            cargo test --manifest-path "${PWD}/Cargo.toml" -- --list 2>&1 \
+            | awk '/^[^[:space:]]+: test$/ { sub(/: test$/,""); print }'
+          )
+
+          if (( ${#TESTS[@]} == 0 )); then
+            echo "No tests found; check the --list output parsing."
+            exit 1
+          fi
+
+          for test in "${TESTS[@]}"; do
+            wasm-pack test --node -- -- --exact "$test"
+          done
