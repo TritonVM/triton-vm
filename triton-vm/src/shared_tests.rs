@@ -192,7 +192,10 @@ impl TestableProgram {
                 wasm_bindgen_test::console_log!("{e}");
                 panic!();
             }
-            panic!("{e}");
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                panic!("{e}");
+            }
         }
         profiler!(stop "Verify");
         let profile = crate::profiler::finish();
