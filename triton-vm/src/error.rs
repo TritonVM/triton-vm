@@ -177,6 +177,9 @@ pub enum ProvingError {
 
     #[error(transparent)]
     VMError(#[from] VMError),
+
+    #[error(transparent)]
+    TryReserveError(#[from] std::collections::TryReserveError),
 }
 
 #[non_exhaustive]

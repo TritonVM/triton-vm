@@ -248,21 +248,27 @@ where
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
-    fn maybe_low_degree_extend_all_columns(&mut self) {
+    ///
+    /// # Errors
+    ///
+    /// Errors if the
+    /// [cache decision](crate::config::overwrite_lde_trace_caching_to) is to
+    /// cache but the required allocation fails.
+    fn maybe_low_degree_extend_all_columns(&mut self) -> Result<(), ProvingError> {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
 
-        let mut extended_trace = Vec::with_capacity(0);
-        match crate::config::cache_lde_trace() {
-            Some(CacheDecision::NoCache) => return,
-            Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
-            None => {
-                let Ok(()) = extended_trace.try_reserve_exact(num_elements) else {
-                    return;
-                };
-            }
+        let must_cache = match crate::config::cache_lde_trace() {
+            Some(CacheDecision::NoCache) => return Ok(()),
+            Some(CacheDecision::Cache) => true,
+            None => false,
         };
+
+        let mut extended_trace = Vec::with_capacity(0);
+        if let Err(e) = extended_trace.try_reserve_exact(num_elements) {
+            return if must_cache { Err(e.into()) } else { Ok(()) };
+        }
 
         profiler!(start "LDE" ("LDE"));
         profiler!(start "polynomial zero-initialization");
@@ -311,6 +317,8 @@ where
         self.memoize_low_degree_extended_table(extended_columns);
         profiler!(stop "memoize");
         profiler!(stop "LDE");
+
+        Ok(())
     }
 
     /// Not intended for direct use, but through
@@ -1477,7 +1485,7 @@ mod tests {
             let jit_digests = table.hash_all_ldt_domain_rows();
 
             assert!(table.ldt_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns().unwrap();
 
             assert!(table.ldt_domain_table().is_some());
             let cache_digests = table.hash_all_ldt_domain_rows();
@@ -1508,7 +1516,7 @@ mod tests {
             let jit_rows = table.reveal_rows(indices);
 
             assert!(table.ldt_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns().unwrap();
 
             assert!(table.ldt_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);
