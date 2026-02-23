@@ -2015,25 +2015,8 @@ pub(crate) mod tests {
                 .with_non_determinism(non_determinism)
         }
 
-        /// Checks whether the [`TestableProgram`] generated through
-        /// [`Self::assemble`] can
-        /// - be executed without crashing the VM, and
-        /// - produces the correct output.
-        #[must_use]
-        pub fn is_integral(&self) -> bool {
-            let inclusion_proof = MerkleTreeInclusionProof {
-                tree_height: self.leaved_merkle_tree.merkle_tree.height(),
-                indexed_leafs: vec![(self.revealed_leafs_index, self.new_leaf)],
-                authentication_structure: self.authentication_path(),
-            };
-
-            let new_root = self.clone().assemble().run().unwrap();
-            let new_root = Digest(new_root.try_into().unwrap());
-            inclusion_proof.verify(new_root)
-        }
-
         /// The authentication path for the leaf at `self.revealed_leafs_index`.
-        /// Independent of the leaf's value, _i.e._, is up to date even one the
+        /// Independent of the leaf's value, _i.e._, is up to date even once the
         /// leaf has been updated.
         fn authentication_path(&self) -> Vec<Digest> {
             self.leaved_merkle_tree
@@ -3013,11 +2996,23 @@ pub(crate) mod tests {
         assert!(let Ok(_) = VM::run(program, public_input.into(), non_determinism));
     }
 
+    /// Checks whether the [`TestableProgram`] generated through
+    /// [`ProgramForMerkleTreeUpdate::assemble`] can
+    /// - be executed without crashing the VM, and
+    /// - produces the correct output.
     #[macro_rules_attr::apply(proptest)]
     fn merkle_tree_updating_program_correctly_updates_a_merkle_tree(
-        program_for_merkle_tree_update: ProgramForMerkleTreeUpdate,
+        program: ProgramForMerkleTreeUpdate,
     ) {
-        prop_assert!(program_for_merkle_tree_update.is_integral());
+        let inclusion_proof = MerkleTreeInclusionProof {
+            tree_height: program.leaved_merkle_tree.merkle_tree.height(),
+            indexed_leafs: vec![(program.revealed_leafs_index, program.new_leaf)],
+            authentication_structure: program.authentication_path(),
+        };
+        let new_root = program.assemble().run()?;
+        let new_root = Digest(new_root.try_into().unwrap());
+
+        prop_assert!(inclusion_proof.verify(new_root));
     }
 
     #[macro_rules_attr::apply(proptest(cases = 10))]
