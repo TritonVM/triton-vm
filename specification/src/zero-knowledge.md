@@ -24,7 +24,7 @@ Triton VM applies three randomization steps, summarized as follows.
 ### Batch-Randomizer
 
 The batch randomizer is a uniformly random polynomial that is included into the random linear combination of polynomials
-in the batching step, in preparation of the low-degree test. Its codeword is adjoined to the auxiliary trace but left
+in the batching step, in preparation for the low-degree test. Its codeword is adjoined to the auxiliary trace but left
 unconstrained by all AIR constraints.
 
 The effect of adding the batch randomizer is that all codewords sent in the course of the low-degree test are perfectly
@@ -70,7 +70,7 @@ of $t + ef$ and for the auxiliary trace an equivalent of $t + f$ rows. Consequen
 trace polynomials and $h \geqslant t + f$ for the auxiliary trace polynomials.
 
 For simplicity we choose to have only one $h$ that works for both main and auxiliary traces. Furthermore, we anticipate
-another term $2kef$ originating from the quotient table randomization. So: $h = t + ef + 2kef$.
+another term $kef$ originating from the quotient table randomization. So: $h = t + ef + kef$.
 
 **Note:** The batch-randomizer $\hat{r}(X)$ is also trace-randomized:
 $\hat{r}(X) = r(X) + Z(X) \cdot r_{\mathsf{w}}(X)$, where $r(X)$ is the *unrandomized* batch-randomizer of $N$ uniform
@@ -89,78 +89,76 @@ $$ q(X) = \sum_{i=0}^{k-1} X^i q_i(X^k) .$$
 For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
 
 1. Sample $s_k(X)$ uniformly of degree less than $\rho |D|$.
-2. For $0 \leqslant i < k$, define $s_i(X) := \xi^i q_i(\xi^kX) - \xi^i \zeta^{-i} s_{i+1}(\xi^k\zeta^{-k}X)$.
+2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^{-i} s_{i+1}(\zeta^{-k}X)$.
 
-The constants $\xi$ and $\zeta$ are almost-arbitrary, fixed parameters of the STARK. The one constraint is that
-$\xi^k\zeta^{-k}$ has a multiplicative cycle larger than $k$; the reason for this is expanded upon below.
+The constant $\zeta$ is almost-arbitrary, fixed parameters of the STARK. The one constraint is that
+$\zeta^{-k}$ has a multiplicative cycle larger than $k$; the reason for this is expanded upon below.
 
 Furthermore, define
 
 $$ \begin{align*}
-p(X) &:= \sum_{i=0}^{k-1} \xi^{-i} X^i s_i(\xi^{-k} X^k) \\
+p(X) &:= \sum_{i=0}^{k-1} X^i s_i(X^k) \\
 r(X) &:= \sum_{i=0}^{k-1} \zeta^{-i} X^i s_{i+1}(\zeta^{-k} X^k) \\
 \end{align*} $$
 
 and observe that
 
 $$ \begin{align*}
-p(X) + r(X) &= \left( \sum_{i=0}^{k-1} \xi^{-i} X^i s_i(\xi^{-k} X^k) \right) +
+p(X) + r(X) &= \left( \sum_{i=0}^{k-1} X^i s_i(X^k) \right) +
 \left( \sum_{i=0}^{k-1}\zeta^{-i} X^i s_{i+1}(\zeta^{-k} X^k) \right) \\
-&= \sum_{i=0}^{k-1} X^i \left(\xi^{-i} s_i(\xi^{-k} X^k) + \zeta^{-i} s_{i+1}(\zeta^{-k} X^k)\right) \\
+&= \sum_{i=0}^{k-1} X^i \left(s_i(X^k) + \zeta^{-i} s_{i+1}(\zeta^{-k} X^k)\right) \\
 &= \sum_{i=0}^{k-1} X^i q_i(X^k) \\
 &= q(X) .\\
 \end{align*} $$
 
 The “randomized quotient table” consists of the $k+1$ segments' codewords: $\{s_i(D)\}_{i=0}^{k}$. There are two
-out-of-domain rows of $k$ elements each: $\{s_i(\xi^{-k} \alpha^k)\}_{i=0}^{k-1}$ and
+out-of-domain rows of $k$ elements each: $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ and
 $\{s_i(\zeta^{-k} \alpha^k)\}_{i=1}^{k}$. These out-of-domain rows allow the verifier to compute $p(\alpha)$ and
-$r(\alpha)$ and hence $q(\alpha) = p(\alpha) + r(\alpha)$. Using DEEP-ALI, the verifier can check that $q(\alpha)$ is
-integral.
+$r(\alpha)$ and hence $q(\alpha) = p(\alpha) + r(\alpha)$. The DEEP-ALI verifier equates $q(\alpha)$ to the value of the AIR constraints applied to the revealed out-of-domain trace rows, after dividing out the zerofier.
 
 Two DEEP updates (single-point quotients) suffice to link the two out-of-domain rows to the randomized quotient table,
 establishing the integrity of $p(\alpha)$ and $r(\alpha)$ as well.
-(As a practical performance matter, it may be prudent to release two rows of $k+1$ elements each so that batching
-marries well with the DEEP-update. The zero-knowledge argument covers those elements too.)
+(As a practical performance matter, it is prudent to release two rows of $k+1$ elements each so that batching
+marries well with the DEEP-update. The extra elements, which are not needed for computing $p(\alpha)$ or $r(\alpha)$, are also covered by the following proof of the zero-knowledge property.)
 
 Given $t+1$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}$ for each of the $k+1$ segments and
 indeterminates $\{x_0, \ldots, x_{t}\}$.
 
-Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by
-$\pm (\xi \zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\xi^{(k-i) k} \zeta^{-(k-i)k} x_j) + <$ *some terms that depend
+Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by $-\zeta^i s_{i+1}(\zeta^{-k}x_j) + <$ *some terms that depend on $q(X)$* $>$ and ultimately by
+$(-1)^{k-i} (\zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\zeta^{-(k-i)k} x_j) + <$ *some terms that depend
 on* $q(X) >$. With every replacement, the indeterminate is sent to a new value
-$x_j \mapsto (\xi^k \zeta^{-k})^{k-i} x_j \mapsto \ldots$. It follows that every row (whether in-domain or
-out-of-domain) is an invertible affine transformation of the vector $\{s_k((\xi\zeta^{-1})^{k(k-i)}x_j)\}_{i=0}^k$,
-where the concrete transformation depends on the quotient $q(X)$ and the indeterminate $x_j$.
+$x_j \mapsto (\zeta^{-k})^{k-i} x_j \mapsto \ldots$. It follows that every row (whether in-domain or
+out-of-domain) is an invertible affine transformation of the vector $\{s_k((\zeta^{-1})^{k(k-i)}x_j)\}_{i=0}^k$,
+where the concrete transformation depends on the quotient $q(X)$ and $\zeta$.
 
-Unless the set of indeterminates contains a pair $(x_i, x_j)$ such that $\xi^k\zeta^{-k} x_i = x_j$, the $(t+1)(k+1)$
-elements revealed by $(t+1)$ rows uniquely determine $(t+1)(k+1)$ points on $s_k(X)$, for any fixed quotient $q(X)$. As
+Unless the set of indeterminates contains a pair $(x', x'')$ such that $\zeta^{-k(k-i)} x' = x''$ for some $i \in \{0, \ldots, k-1\}$, the $(t+1)(k+1)$
+elements revealed by $(t+1)$ rows uniquely determine $(t+1)(k+1)$ points on $s_k(X)$, for any fixed quotient $q(X)$ and any admissible choice of $\zeta$. As
 long as $(t+1)(k+1) \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that under these conditions
 any set of $t+1$ revealed rows is independent of the quotient.
 
-This argument covers all in-domain rows and at most one out-of-domain row but not both. Indeed, the indeterminates for
-the out-of-domain rows are $\xi^{-k}\alpha^k$ and $\zeta^{-k}\alpha^k$ and are apart by a factor $\xi^k\zeta^{-k}$,
-and therefore violate the above clause.
+This argument covers all in-domain rows and at most one out-of-domain row but not both out-of-domain rows. Indeed, the indeterminates for
+the out-of-domain rows are $\alpha^k$ and $\zeta^{-k}\alpha^k$ and are apart by a factor $\zeta^{-k}$, and therefore violate the above clause.
 
-To show that the remaining as-of-yet unconsidered out-of-domain row is *also* independent of the trace, consider the $k$
-indeterminates $\{\omega^i \zeta^{-k} \alpha^k\}_{i=0}^{k-1}$, where $\omega$ is a primitive $k$-th root of unity.
+A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^{-k} \alpha^k)$ substitutes to
+$\pm (\zeta^{-1})^{\sum_{\iota = 0}^k \iota} s_k(\zeta^{-k^2} \zeta^{-k} \alpha^{k}) + <$ *some terms that depend
+on* $q(X) >$. That the indeterminate $\zeta^{-(k+1)k} \alpha^{k}$ is not contained in the set $\{\zeta^{-(k-i)k}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_i\}_{j=0}^{t-1}$ of indeterminates resulting from the first out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result, the argument from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ fixes points covers all in-domain rows, the entire first out-of-domain row, and the first coefficient of the second out-of-domain row. The requirement is that $(t+1)(k+1) + 1 \leqslant \rho |D|$.
+
+To show that the remainder of the second out-of-domain row is *also* independent of the trace, consider the $k$-fold segmentation equation applied to $r(X)$ and its segments $\{s_{i+1}(X)\}_{i=0}^{k-1}$:
+
+$$ \left( r(\omega^i \alpha) \right)_{i=0}^{k-1} = \left( \sum_{j=0}^{k-1} \omega^{ij} \zeta^{-j} \alpha^{j} s_{j+1}(\zeta^{-k} \alpha^k) \right)_{i=0}^{k-1} $$
+
+ where $\omega$ is a primitive $k$-th root of unity.
 Ignoring the first element, we have a bijection between $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ and
 $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$. Likewise, from the first $k$ elements of the penultimate row one obtains
 $\{p(\omega^i \alpha)\}_{i=0}^{k-1}$. Considering this information fixed (as it was already established to be
 independent of the trace), it follows that $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to
-$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$.
+$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. Therefore, in order to show that $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ is independent of the trace, it suffices to show that $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is independent of the trace.
 
-Consider the distinguisher that receives the authentic preimages under the AIR evaluation map to
-$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$, in addition to the transcript. These preimages are the $f$-tuples of out-of-domain
-trace rows corresponding to $\{\omega^i \alpha\}_{i=0}^{k-1}$. Since we had more than $kef$ coefficients of margin in
+Consider the distinguisher that receives, as a supplementary hint in addition to the transcript, the authentic preimages under the AIR evaluation map to
+$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. These preimages are the $f$-tuples of out-of-domain
+trace rows corresponding to $\{\omega^i \alpha\}_{i=0}^{k-1}$. Since we had $kef$ coefficients of margin in
 our choice for $h$, it follows that even these $k$-many $f$-tuples of (degree-$e$ extension field) rows are independent
 of the trace, and the same must be true for any image of them.
-
-That leaves the first coefficient of the last row of the quotient table, $s_0(\zeta^{-k} \alpha^k)$. A similar argument
-applies, except now with respect to $\{p(\omega^i \xi \zeta^{-1} \alpha^k)\}_{i=0}^{k-1}$ which is bijectively
-equivalent to $\{q(\omega^i \xi \zeta^{-1} \alpha^k)\}$ because $r(X)$ is fixed and this first coefficient in question
-is independent of $r(X)$. Consider the distinguisher who sees, in addition to the transcript and the previous hint, the
-preimages to these values. The final $kef$ coefficients of the trace randomizers ensure that these row-tuples are
-independent of the trace as well; along with any images of it.
 
 ### Simulation
 
