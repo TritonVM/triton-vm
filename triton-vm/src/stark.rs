@@ -2026,6 +2026,13 @@ pub(crate) mod tests {
         }
     }
 
+    impl Prover {
+        /// Test-only method to extract the used randomness seed.
+        pub(crate) fn randomness_seed(&self) -> <StdRng as SeedableRng>::Seed {
+            self.randomness_seed
+        }
+    }
+
     #[macro_rules_attr::apply(proptest)]
     fn two_default_provers_have_different_randomness_seeds() {
         let seed = || Prover::default().randomness_seed;

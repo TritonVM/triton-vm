@@ -181,8 +181,15 @@ impl TestableProgram {
         profiler!(stop "Pre-flight");
 
         profiler!(start "Prove");
-        let proof = stark.prove(&claim, &aet).unwrap();
+        let prover = Prover::new(stark);
+        let randomness_seed = prover.randomness_seed();
+        let proof = prover.prove(&claim, &aet).unwrap();
         profiler!(stop "Prove");
+
+        // help reproducing failing test cases
+        dbg!(randomness_seed);
+        dbg!(Tip5::hash(&claim));
+        dbg!(Tip5::hash(&proof));
 
         profiler!(start "Verify");
         assert!(let Ok(()) = stark.verify(&claim, &proof));
