@@ -146,11 +146,10 @@ $\zeta^{-k}$, and therefore violate the above clause.
 
 A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^{-k} \alpha^k)$
 substitutes to $(-1)^k (\zeta^{-1})^{\sum_{\iota = 0}^k \iota} s_k(\zeta^{-k^2} \zeta^{-k} \alpha^{k}) + \langle\!$
-*terms
-that only depend on* $q(X) \rangle$. That the indeterminate $\zeta^{-(k+1)k} \alpha^{k}$ is not contained in the set
-$\{\zeta^{-k(k-i)}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_i\}_{j=0}^{t-1}$ of indeterminates resulting
+*terms that only depend on* $q(X) \rangle$. The indeterminate $\zeta^{-k(k+1)} \alpha^{k}$ is not contained in the set
+$\{\zeta^{-k(k-i)}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_{i=0}^k\}_{j=0}^{t-1}$ of indeterminates resulting
 from the first out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result,
-the argument from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ fixes points covers all in-domain rows, the entire first
+the argument from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ points covers all in-domain rows, the entire first
 out-of-domain row, and the first coefficient of the second out-of-domain row. The requirement is that
 $(t+1)(k+1) + 1 \leqslant \rho |D|$.
 
