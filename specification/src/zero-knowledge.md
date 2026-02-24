@@ -160,12 +160,12 @@ $$ \left( r(\omega^i \alpha) \right)_{i=0}^{k-1} =
 \left( \sum_{j=0}^{k-1} \omega^{ij} \zeta^{-j} \alpha^{j} s_{j+1}(\zeta^{-k} \alpha^k) \right)_{i=0}^{k-1} $$
 
 where $\omega$ is a primitive $k$-th root of unity.
-Ignoring the first element, we have a bijection between $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ and
-$\{r(\omega^i \alpha)\}_{i=0}^{k-1}$. Likewise, from the first $k$ elements of the penultimate row one obtains
-$\{p(\omega^i \alpha)\}_{i=0}^{k-1}$. Considering this information fixed (as it was already established to be
-independent of the trace), it follows that $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to
-$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. Therefore, in order to show that $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ is
-independent of the trace, it suffices to show that $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is independent of the trace.
+We have a bijection between $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ and $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$.
+Likewise, from the first $k$ elements of the penultimate row one obtains $\{p(\omega^i \alpha)\}_{i=0}^{k-1}$.
+Considering this information fixed (as it was already established to be independent of the trace), it follows that
+$\{r(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. Therefore, in
+order to show that $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ is independent of the trace, it suffices to show that
+$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is independent of the trace.
 
 Consider the distinguisher that receives, as a supplementary hint in addition to the transcript, the authentic preimages
 under the AIR evaluation map to $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. These preimages are the $f$-tuples of
