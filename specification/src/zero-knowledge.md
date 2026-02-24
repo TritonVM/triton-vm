@@ -127,12 +127,12 @@ Given $t+1$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}
 indeterminates $\{x_0, \ldots, x_{t}\}$.
 
 Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by
-$-\zeta^i s_{i+1}(\zeta^{-k}x_j) + <$ *some terms that depend on $q(X)$* $>$ and ultimately by
-$(-1)^{k-i} (\zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\zeta^{-(k-i)k} x_j) + <$ *some terms that depend on*
-$q(X) >$. With every replacement, the indeterminate is sent to a new value
-$x_j \mapsto (\zeta^{-k})^{k-i} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is
-an invertible affine transformation of the vector $\{s_k((\zeta^{-1})^{k(k-i)}x_j)\}_{i=0}^k$, where the concrete
-transformation depends on the quotient $q(X)$ and $\zeta$.
+$-\zeta^i s_{i+1}(\zeta^{-k}x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
+$(-1)^{k-i} (\zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\zeta^{-k(k-i)} x_j) + \langle\!$ *terms that only depend on*
+$q(X) \rangle$. With every replacement, the indeterminate is sent to a new value
+$x_j \mapsto \zeta^{-k(k-i)} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is an
+invertible affine transformation of the vector $\{s_k(\zeta^{-k(k-i)}x_j)\}_{i=0}^k$, where the concrete transformation
+depends on the quotient $q(X)$ and $\zeta$.
 
 Unless the set of indeterminates contains a pair $(x', x'')$ such that $\zeta^{-k(k-i)} x' = x''$ for some
 $i \in \{0, \ldots, k-1\}$, the $(t+1)(k+1)$ elements revealed by $(t+1)$ rows uniquely determine $(t+1)(k+1)$ points on
@@ -145,9 +145,10 @@ indeterminates for the out-of-domain rows are $\alpha^k$ and $\zeta^{-k}\alpha^k
 $\zeta^{-k}$, and therefore violate the above clause.
 
 A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^{-k} \alpha^k)$
-substitutes to $\pm (\zeta^{-1})^{\sum_{\iota = 0}^k \iota} s_k(\zeta^{-k^2} \zeta^{-k} \alpha^{k}) + <$ *some terms
-that depend on* $q(X) >$. That the indeterminate $\zeta^{-(k+1)k} \alpha^{k}$ is not contained in the set
-$\{\zeta^{-(k-i)k}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_i\}_{j=0}^{t-1}$ of indeterminates resulting
+substitutes to $(-1)^k (\zeta^{-1})^{\sum_{\iota = 0}^k \iota} s_k(\zeta^{-k^2} \zeta^{-k} \alpha^{k}) + \langle\!$
+*terms
+that only depend on* $q(X) \rangle$. That the indeterminate $\zeta^{-(k+1)k} \alpha^{k}$ is not contained in the set
+$\{\zeta^{-k(k-i)}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_i\}_{j=0}^{t-1}$ of indeterminates resulting
 from the first out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result,
 the argument from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ fixes points covers all in-domain rows, the entire first
 out-of-domain row, and the first coefficient of the second out-of-domain row. The requirement is that
