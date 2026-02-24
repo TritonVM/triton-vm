@@ -127,7 +127,7 @@ Given $t+1$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}
 indeterminates $\{x_0, \ldots, x_{t}\}$.
 
 Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by
-$-\zeta^i s_{i+1}(\zeta^{-k}x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
+$-\zeta^{-i} s_{i+1}(\zeta^{-k}x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
 $(-1)^{k-i} (\zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\zeta^{-k(k-i)} x_j) + \langle\!$ *terms that only depend on*
 $q(X) \rangle$. With every replacement, the indeterminate is sent to a new value
 $x_j \mapsto \zeta^{-k(k-i)} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is an
