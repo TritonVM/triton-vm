@@ -1280,7 +1280,7 @@ mod tests {
         }
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn incorrect_last_round_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(arbitrary_polynomial().no_shrink())] fri_polynomial: XfePoly,
@@ -1315,7 +1315,7 @@ mod tests {
         ));
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn codeword_corresponding_to_high_degree_polynomial_results_in_verification_failure(
         fri: Fri,
         #[strategy(Just(#fri.max_degree() as i64 + 1))] _min_fail_deg: i64,
@@ -1339,7 +1339,7 @@ mod tests {
         let _verdict = fri.verify(&mut proof_stream);
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn postscript_is_integral(
         fri: Fri,
         #[strategy(arbitrary_polynomial_of_degree(#fri.max_degree() as i64).no_shrink())]

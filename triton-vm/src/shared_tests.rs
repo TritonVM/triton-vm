@@ -55,9 +55,9 @@ prop_compose! {
 #[derive(Debug, Clone, test_strategy::Arbitrary)]
 pub(crate) struct LeavedMerkleTreeTestData {
     #[strategy(1..=10_usize)]
-    pub _tree_height: usize,
+    pub tree_height: usize,
 
-    #[strategy(vec(arb(), 1 << #_tree_height))]
+    #[strategy(vec(arb(), 1 << #tree_height))]
     pub leaves: Vec<XFieldElement>,
 
     #[strategy(vec(0..#leaves.len(), 1..=#leaves.len()))]
@@ -181,8 +181,15 @@ impl TestableProgram {
         profiler!(stop "Pre-flight");
 
         profiler!(start "Prove");
-        let proof = stark.prove(&claim, &aet).unwrap();
+        let prover = Prover::new(stark);
+        let randomness_seed = prover.randomness_seed();
+        let proof = prover.prove(&claim, &aet).unwrap();
         profiler!(stop "Prove");
+
+        // help reproducing failing test cases
+        dbg!(randomness_seed);
+        dbg!(Tip5::hash(&claim));
+        dbg!(Tip5::hash(&proof));
 
         profiler!(start "Verify");
         assert!(let Ok(()) = stark.verify(&claim, &proof));
