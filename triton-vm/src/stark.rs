@@ -2022,7 +2022,7 @@ impl Stark {
         // chapter on Zero Knowledge, section “Randomized Trace Polynomials”.
         ldt.num_first_round_queries()
             + x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
-            + 2 * NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
+            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
