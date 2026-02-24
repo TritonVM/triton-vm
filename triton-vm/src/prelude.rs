@@ -27,6 +27,7 @@ pub use isa::triton_asm;
 pub use isa::triton_instr;
 pub use isa::triton_program;
 
+pub use air;
 pub use air::AIR;
 pub use air::table::TableId;
 
