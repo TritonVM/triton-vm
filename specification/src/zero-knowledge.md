@@ -113,9 +113,9 @@ p(X) + r(X) &= \left( \sum_{i=0}^{k-1} X^i s_i(X^k) \right) +
 
 The “randomized quotient table” consists of the $k+1$ segments' codewords: $\{s_i(D)\}_{i=0}^{k}$. There are two
 out-of-domain rows of $k$ elements each: $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ and $\{s_i(\zeta^{-k} \alpha^k)\}_{i=1}^{k}$.
-These out-of-domain rows allow the verifier to compute $p(\alpha)$ and $r(\alpha)$ and hence
-$q(\alpha) = p(\alpha) + r(\alpha)$. The DEEP-ALI verifier equates $q(\alpha)$ to the value of the AIR constraints
-applied to the revealed out-of-domain trace rows, after dividing out the zerofier.
+These out-of-domain rows allow the verifier to compute $p(\alpha)$ and $r(\alpha)$ and hence $q(\alpha)$. The DEEP-ALI
+verifier equates $q(\alpha)$ to the value of the AIR constraints applied to the revealed out-of-domain trace rows, after
+dividing out the zerofier.
 
 Two DEEP updates (single-point quotients) suffice to link the two out-of-domain rows to the randomized quotient table,
 establishing the integrity of $p(\alpha)$ and $r(\alpha)$ as well. (As a practical performance matter, it is prudent to
