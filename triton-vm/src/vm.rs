@@ -1536,10 +1536,12 @@ pub(crate) mod tests {
     use proptest_arbitrary_adapter::arb;
     use rand::Rng;
     use rand::RngCore;
+    use rand::SeedableRng;
+    use rand::distr::StandardUniform;
+    use rand::prelude::StdRng;
     use rand::rngs::ThreadRng;
     use strum::EnumCount;
     use strum::EnumIter;
-    use twenty_first::math::other::random_elements;
 
     use super::*;
     use crate::shared_tests::LeavedMerkleTreeTestData;
@@ -2460,11 +2462,15 @@ pub(crate) mod tests {
         TestableProgram::new(program)
     }
 
-    pub(crate) fn property_based_test_program_for_random_ram_access() -> TestableProgram {
-        let mut rng = ThreadRng::default();
+    pub(crate) fn property_based_test_program_for_random_ram_access(
+        seed: <StdRng as SeedableRng>::Seed,
+    ) -> TestableProgram {
+        let mut rng = StdRng::from_seed(seed);
         let num_memory_accesses = rng.random_range(10..50);
-        let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
-        let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
+        let mut random_elements =
+            |n| -> Vec<BFieldElement> { (&mut rng).sample_iter(StandardUniform).take(n).collect() };
+        let memory_addresses = random_elements(num_memory_accesses);
+        let mut memory_values = random_elements(num_memory_accesses);
         let mut instructions = vec![];
 
         // Read some memory before first write to ensure that the memory is
@@ -2528,10 +2534,11 @@ pub(crate) mod tests {
 
     /// Sanity check for the relatively complex property-based test for random
     /// RAM access.
-    #[macro_rules_attr::apply(test)]
-    fn run_dont_prove_property_based_test_for_random_ram_access() {
-        let program = property_based_test_program_for_random_ram_access();
-        program.run().unwrap();
+    #[macro_rules_attr::apply(proptest)]
+    fn run_dont_prove_property_based_test_for_random_ram_access(
+        seed: <StdRng as SeedableRng>::Seed,
+    ) {
+        property_based_test_program_for_random_ram_access(seed).run()?;
     }
 
     #[macro_rules_attr::apply(test)]

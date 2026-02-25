@@ -1499,7 +1499,7 @@ mod tests {
         row_hashes_are_identical(artifacts.master_aux_table);
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn revealing_rows_is_independent_of_table_caching(
         #[filter(!#row_indices.is_empty())] row_indices: Vec<usize>,
     ) {

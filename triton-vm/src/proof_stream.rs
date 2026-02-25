@@ -134,8 +134,8 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::BoxedStrategy;
     use proptest::prelude::Strategy;
+    use proptest::prelude::prop_assert;
     use proptest_arbitrary_adapter::arb;
-    use twenty_first::math::other::random_elements;
 
     use crate::low_degree_test::stir::StirResponse;
     use crate::proof_item::ProofItem;
@@ -253,20 +253,13 @@ mod tests {
         assert!(0 == sponge_states.len());
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn enqueue_dequeue_verify_partial_authentication_structure() {
-        let tree_height = 8;
-        let num_leaves = 1 << tree_height;
-        let leaf_values: Vec<XFieldElement> = random_elements(num_leaves);
-        let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
-        let merkle_tree = MerkleTree::par_new(&leaf_digests).unwrap();
-        let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
-        let auth_structure = merkle_tree
-            .authentication_structure(&indices_to_check)
-            .unwrap();
-        let queried_leafs = indices_to_check
+    #[macro_rules_attr::apply(proptest)]
+    fn enqueue_dequeue_verify_authentication_structure(tree: LeavedMerkleTreeTestData) {
+        let auth_structure = tree.auth_structure;
+        let queried_leafs = tree
+            .revealed_indices
             .iter()
-            .map(|&idx| vec![leaf_values[idx]])
+            .map(|&i| vec![tree.leaves[i]])
             .collect();
         let response = StirResponse {
             queried_leafs,
@@ -276,24 +269,25 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         proof_stream.enqueue(ProofItem::StirResponse(response));
 
-        let proof_item = proof_stream.dequeue().unwrap();
-        let maybe_same_response = proof_item.try_into_stir_response().unwrap();
         let StirResponse {
             queried_leafs,
             auth_structure,
-        } = maybe_same_response;
-        let maybe_same_leaf_digests = queried_leafs.iter().map(|xfe_vec| xfe_vec[0].into());
-        let indexed_leafs = indices_to_check
+        } = proof_stream.dequeue()?.try_into_stir_response()?;
+        let leaf_digests = queried_leafs.into_iter().map(|xfe_vec| xfe_vec[0].into());
+        let indexed_leafs = tree
+            .revealed_indices
             .into_iter()
-            .zip_eq(maybe_same_leaf_digests)
+            .zip_eq(leaf_digests)
             .collect();
 
+        let tree_height = u32::try_from(tree.tree_height)?;
         let inclusion_proof = MerkleTreeInclusionProof {
             tree_height,
             indexed_leafs,
             authentication_structure: auth_structure,
         };
-        assert!(inclusion_proof.verify(merkle_tree.root()));
+
+        prop_assert!(inclusion_proof.verify(tree.merkle_tree.root()));
     }
 
     #[macro_rules_attr::apply(test)]

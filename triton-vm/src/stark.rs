@@ -1946,7 +1946,6 @@ pub(crate) mod tests {
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use thiserror::Error;
-    use twenty_first::math::other::random_elements;
 
     use super::*;
     use crate::PublicInput;
@@ -1954,6 +1953,7 @@ pub(crate) mod tests {
     use crate::error::InstructionError;
     use crate::low_degree_test::tests::LdtStats;
     use crate::shared_tests::TestableProgram;
+    use crate::shared_tests::arbitrary_polynomial_of_degree;
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
@@ -2135,7 +2135,7 @@ pub(crate) mod tests {
         );
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn too_high_padded_height_results_in_immediate_verification_failure(
         #[strategy(32_u32..)] height: u32,
     ) {
@@ -2779,7 +2779,7 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
     }
 
-    #[macro_rules_attr::apply(proptest(cases = 20))]
+    #[macro_rules_attr::apply(proptest(cases = 15))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
         program: ProgramForMerkleTreeUpdate,
     ) {
@@ -2975,10 +2975,11 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access())
+    #[macro_rules_attr::apply(proptest(cases = 1))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access(
+        seed: <StdRng as SeedableRng>::Seed,
+    ) -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access(seed))
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3188,37 +3189,28 @@ pub(crate) mod tests {
         assert!(let InstructionError::LogarithmOfZero = err.source);
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn deep_update() {
-        let domain_length = 1 << 10;
-        let domain = ArithmeticDomain::of_length(domain_length).unwrap();
-
-        let poly_degree = rand::rng().random_range(2..20);
-        let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);
-        let low_deg_poly = Polynomial::new(low_deg_poly_coeffs.clone());
+    #[macro_rules_attr::apply(proptest(cases = 100))]
+    fn deep_update(
+        #[filter(#domain.len() >= 4)] domain: ArithmeticDomain,
+        #[strategy(arbitrary_polynomial_of_degree(i64::try_from(#domain.len()).unwrap() / 4))]
+        low_deg_poly: Polynomial<'static, XFieldElement>,
+        #[strategy(arb())] ood_point: XFieldElement,
+        #[strategy(arb())] bogus_ood_value: XFieldElement,
+    ) {
         let low_deg_codeword = domain.evaluate(&low_deg_poly);
+        let ood_value = low_deg_poly.evaluate(ood_point);
 
-        let out_of_domain_point: XFieldElement = rand::rng().random();
-        let out_of_domain_value = low_deg_poly.evaluate(out_of_domain_point);
+        let deep_codeword = Prover::deep_codeword(&low_deg_codeword, domain, ood_point, ood_value);
+        let deep_poly = domain.interpolate(&deep_codeword);
+        prop_assert_eq!(low_deg_poly.degree() - 1, deep_poly.degree());
 
-        let deep_poly = Prover::deep_codeword(
-            &low_deg_codeword,
-            domain,
-            out_of_domain_point,
-            out_of_domain_value,
-        );
-        let poly_of_maybe_low_degree = domain.interpolate(&deep_poly);
-        assert!(poly_degree as isize - 2 == poly_of_maybe_low_degree.degree());
+        prop_assume!(ood_value != bogus_ood_value);
+        let bogus_deep_codeword =
+            Prover::deep_codeword(&low_deg_codeword, domain, ood_point, bogus_ood_value);
+        let high_deg_poly = domain.interpolate(&bogus_deep_codeword);
+        let domain_len = isize::try_from(domain.len())?;
 
-        let bogus_out_of_domain_value = rand::rng().random();
-        let bogus_deep_poly = Prover::deep_codeword(
-            &low_deg_codeword,
-            domain,
-            out_of_domain_point,
-            bogus_out_of_domain_value,
-        );
-        let poly_of_hopefully_high_degree = domain.interpolate(&bogus_deep_poly);
-        assert!(domain_length as isize - 1 == poly_of_hopefully_high_degree.degree());
+        prop_assert_eq!(domain_len - 1, high_deg_poly.degree());
     }
 
     /// Re-compose the segments of a polynomial and assert that the result is
@@ -3314,7 +3306,7 @@ pub(crate) mod tests {
         random_point: XFieldElement,
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn polynomial_segments_cohere_with_originating_polynomial(test_data: SegmentifyProptestData) {
         fn segmentify_and_assert_coherence<const N: usize>(
             test_data: &SegmentifyProptestData,

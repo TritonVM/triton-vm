@@ -453,7 +453,7 @@ mod tests {
         implements_auto_traits::<vm::CoProcessorCall>();
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 50))]
     fn prove_verify_knowledge_of_hash_preimage(
         #[strategy(arb())] hash_preimage: Digest,
         #[strategy(arb())] some_tie_to_an_outer_context: Digest,

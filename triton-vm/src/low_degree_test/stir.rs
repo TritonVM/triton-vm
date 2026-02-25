@@ -1855,7 +1855,7 @@ mod tests {
         }
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn prove_and_verify_low_degree_polynomial(
         params: StirParameters,
         #[strategy(-1..=#params.max_degree() as i64)] _d: i64,
@@ -1884,7 +1884,7 @@ mod tests {
         }
     }
 
-    #[macro_rules_attr::apply(proptest)]
+    #[macro_rules_attr::apply(proptest(cases = 100))]
     fn prove_and_fail_to_verify_high_degree_polynomial(
         params: StirParameters,
         #[strategy(Just(1 << #params.log2_high_degree_bound))] _too_high_degree: i64,

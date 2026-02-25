@@ -55,9 +55,9 @@ prop_compose! {
 #[derive(Debug, Clone, test_strategy::Arbitrary)]
 pub(crate) struct LeavedMerkleTreeTestData {
     #[strategy(1..=10_usize)]
-    pub _tree_height: usize,
+    pub tree_height: usize,
 
-    #[strategy(vec(arb(), 1 << #_tree_height))]
+    #[strategy(vec(arb(), 1 << #tree_height))]
     pub leaves: Vec<XFieldElement>,
 
     #[strategy(vec(0..#leaves.len(), 1..=#leaves.len()))]
