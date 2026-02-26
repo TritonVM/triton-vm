@@ -89,30 +89,30 @@ $$ q(X) = \sum_{i=0}^{k-1} X^i q_i(X^k) .$$
 For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
 
 1. Sample $s_k(X)$ uniformly of degree less than $\rho |D|$.
-2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^{-i} s_{i+1}(\zeta^{-k}X)$.
+2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^i s_{i+1}(\zeta X)$.
 
-The constant $\zeta$ is an almost-arbitrary, fixed parameter of the STARK. The one constraint is that
-$\zeta^{-k}$ has a multiplicative cycle larger than $k$; the reason for this is expanded upon below.
+The constant $\zeta$ is an almost-arbitrary, fixed parameter of the STARK. The one constraint is that $\zeta$ has a
+multiplicative cycle larger than $k$; the reason for this is expanded upon below.
 
 Furthermore, define
 
 $$ \begin{align*}
 p(X) &:= \sum_{i=0}^{k-1} X^i s_i(X^k) \\
-r(X) &:= \sum_{i=0}^{k-1} \zeta^{-i} X^i s_{i+1}(\zeta^{-k} X^k) \\
+r(X) &:= \sum_{i=0}^{k-1} \zeta^i X^i s_{i+1}(\zeta^k X^k) \\
 \end{align*} $$
 
 and observe that
 
 $$ \begin{align*}
 p(X) + r(X) &= \left( \sum_{i=0}^{k-1} X^i s_i(X^k) \right) +
-\left( \sum_{i=0}^{k-1}\zeta^{-i} X^i s_{i+1}(\zeta^{-k} X^k) \right) \\
-&= \sum_{i=0}^{k-1} X^i \left(s_i(X^k) + \zeta^{-i} s_{i+1}(\zeta^{-k} X^k)\right) \\
+\left( \sum_{i=0}^{k-1}\zeta^i X^i s_{i+1}(\zeta^k X^k) \right) \\
+&= \sum_{i=0}^{k-1} X^i \left(s_i(X^k) + \zeta^i s_{i+1}(\zeta^k X^k)\right) \\
 &= \sum_{i=0}^{k-1} X^i q_i(X^k) \\
 &= q(X) .\\
 \end{align*} $$
 
 The “randomized quotient table” consists of the $k+1$ segments' codewords: $\{s_i(D)\}_{i=0}^{k}$. There are two
-out-of-domain rows of $k$ elements each: $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ and $\{s_i(\zeta^{-k} \alpha^k)\}_{i=1}^{k}$.
+out-of-domain rows of $k$ elements each: $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ and $\{s_i(\zeta^k \alpha^k)\}_{i=1}^{k}$.
 These out-of-domain rows allow the verifier to compute $p(\alpha)$ and $r(\alpha)$ and hence $q(\alpha)$. The DEEP-ALI
 verifier equates $q(\alpha)$ to the value of the AIR constraints applied to the revealed out-of-domain trace rows, after
 dividing out the zerofier.
@@ -127,44 +127,43 @@ Given $t+1$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}
 indeterminates $\{x_0, \ldots, x_{t}\}$.
 
 Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by
-$-\zeta^{-i} s_{i+1}(\zeta^{-k}x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
-$(-1)^{k-i} (\zeta^{-1})^{\sum_{\iota = i}^k \iota} s_k(\zeta^{-k(k-i)} x_j) + \langle\!$ *terms that only depend on*
+$-\zeta^i s_{i+1}(\zeta x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
+$(-1)^{k-i} \zeta^i \dots \zeta^k s_k(\zeta^{k-i} x_j) + \langle\!$ *terms that only depend on*
 $q(X) \rangle$. With every replacement, the indeterminate is sent to a new value
-$x_j \mapsto \zeta^{-k(k-i)} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is an
-invertible affine transformation of the vector $\{s_k(\zeta^{-k(k-i)}x_j)\}_{i=0}^k$, where the concrete transformation
-depends on the quotient $q(X)$ and $\zeta$.
+$x_j \mapsto \zeta^{k-i} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is an
+invertible affine transformation of the vector $\{s_k(\zeta^{k-i} x_j)\}_{i=0}^k$, or equivalently, of the vector
+$\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient $q(X)$ and $\zeta$.
 
-Unless the set of indeterminates contains a pair $(x', x'')$ such that $\zeta^{-k(k-i)} x' = x''$ for some
+Unless the set of indeterminates contains a pair $(x', x'')$ such that $\zeta^{k-i} x' = x''$ for some
 $i \in \{0, \ldots, k-1\}$, the $(t+1)(k+1)$ elements revealed by $(t+1)$ rows uniquely determine $(t+1)(k+1)$ points on
 $s_k(X)$, for any fixed quotient $q(X)$ and any admissible choice of $\zeta$. As long as
 $(t+1)(k+1) \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that under these conditions any set
 of $t+1$ revealed rows is independent of the quotient.
 
 This argument covers all in-domain rows and at most one out-of-domain row but not both out-of-domain rows. Indeed, the
-indeterminates for the out-of-domain rows are $\alpha^k$ and $\zeta^{-k}\alpha^k$ and are apart by a factor
-$\zeta^{-k}$, and therefore violate the above clause.
+indeterminates for the out-of-domain rows are $\alpha^k$ and $\zeta^k\alpha^k$ and are apart by a factor
+$\zeta^k$, and therefore violate the above clause.
 
-A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^{-k} \alpha^k)$
-substitutes to $(-1)^k (\zeta^{-1})^{\sum_{\iota = 0}^k \iota} s_k(\zeta^{-k^2} \zeta^{-k} \alpha^{k}) + \langle\!$
-*terms that only depend on* $q(X) \rangle$. The indeterminate $\zeta^{-k(k+1)} \alpha^{k}$ is not contained in the set
-$\{\zeta^{-k(k-i)}\alpha^k\}_{i=0}^k \cup \{\{\zeta^{-k(k-i)} x_j\}_{i=0}^k\}_{j=0}^{t-1}$ of indeterminates resulting
-from the first out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result,
-the argument from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ points covers all in-domain rows, the entire first
-out-of-domain row, and the first coefficient of the second out-of-domain row. The requirement is that
-$(t+1)(k+1) + 1 \leqslant \rho |D|$.
+A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^k \alpha^k)$
+substitutes to $(-1)^k \zeta^0 \dots \zeta^k s_k(\zeta^{2k} \alpha^k) + \langle\!$
+*terms that only depend on* $q(X) \rangle$. The indeterminate $\zeta^{2k} \alpha^{k}$ is not contained in the set
+$\{\zeta^i\alpha^k\}_{i=0}^k \cup \{\{\zeta^i x_j\}_{i=0}^k\}_{j=0}^{t-1}$ of indeterminates resulting from the first
+out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result, the argument
+from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ points covers all in-domain rows, the entire first out-of-domain row,
+and the first coefficient of the second out-of-domain row. The requirement is that $(t+1)(k+1) + 1 \leqslant \rho |D|$.
 
 To show that the remainder of the second out-of-domain row is *also* independent of the trace, consider the $k$-fold
 segmentation equation applied to $r(X)$ and its segments $\{s_{i+1}(X)\}_{i=0}^{k-1}$:
 
 $$ \left( r(\omega^i \alpha) \right)_{i=0}^{k-1} =
-\left( \sum_{j=0}^{k-1} \omega^{ij} \zeta^{-j} \alpha^{j} s_{j+1}(\zeta^{-k} \alpha^k) \right)_{i=0}^{k-1} $$
+\left( \sum_{j=0}^{k-1} \omega^{ij} \zeta^j \alpha^{j} s_{j+1}(\zeta^k \alpha^k) \right)_{i=0}^{k-1} $$
 
 where $\omega$ is a primitive $k$-th root of unity.
-We have a bijection between $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ and $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$.
+We have a bijection between $\{s_{i+1}(\zeta^k\alpha^k)\}_{i=0}^{k-1}$ and $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$.
 Likewise, from the first $k$ elements of the penultimate row one obtains $\{p(\omega^i \alpha)\}_{i=0}^{k-1}$.
 Considering this information fixed (as it was already established to be independent of the trace), it follows that
 $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. Therefore, in
-order to show that $\{s_{i+1}(\zeta^{-k}\alpha^k)\}_{i=0}^{k-1}$ is independent of the trace, it suffices to show that
+order to show that $\{s_{i+1}(\zeta^k\alpha^k)\}_{i=0}^{k-1}$ is independent of the trace, it suffices to show that
 $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is independent of the trace.
 
 Consider the distinguisher that receives, as a supplementary hint in addition to the transcript, the authentic preimages

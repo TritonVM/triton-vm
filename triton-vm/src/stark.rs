@@ -465,9 +465,8 @@ impl Prover {
         // for the quotient table.
         let ood_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-        let ood_point_curr_row_over_zeta_pow_num_segments = (out_of_domain_point_curr_row
-            / Stark::ZETA.lift())
-        .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let ood_point_curr_row_times_zeta_pow_num_segments =
+            (out_of_domain_point_curr_row * Stark::ZETA).mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
 
         let evaluate_rand_quot_segment_polys_in = |point| {
             randomized_quotient_segment_polynomials
@@ -480,7 +479,7 @@ impl Prover {
             evaluate_rand_quot_segment_polys_in(ood_point_curr_row_pow_num_segments),
         ));
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
-            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_over_zeta_pow_num_segments),
+            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_times_zeta_pow_num_segments),
         ));
         profiler!(stop "out-of-domain rows");
 
@@ -572,14 +571,14 @@ impl Prover {
             out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value,
         );
 
-        let out_of_domain_curr_row_over_zeta_pow_num_segments_rand_quot_segments_value =
+        let out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value =
             randomized_quotient_segments_combination_polynomial
-                .evaluate(ood_point_curr_row_over_zeta_pow_num_segments);
-        let randomized_quotient_segments_curr_row_over_zeta_deep_codeword = Self::deep_codeword(
+                .evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
+        let randomized_quotient_segments_curr_row_times_zeta_deep_codeword = Self::deep_codeword(
             &randomized_quotient_segments_combination_codeword,
             short_domain,
-            ood_point_curr_row_over_zeta_pow_num_segments,
-            out_of_domain_curr_row_over_zeta_pow_num_segments_rand_quot_segments_value,
+            ood_point_curr_row_times_zeta_pow_num_segments,
+            out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value,
         );
         profiler!(stop "randomized segmented quotient");
         profiler!(stop "DEEP");
@@ -590,7 +589,7 @@ impl Prover {
             main_and_aux_curr_row_deep_codeword,
             main_and_aux_next_row_deep_codeword,
             randomized_quotient_segments_curr_row_deep_codeword,
-            randomized_quotient_segments_curr_row_over_zeta_deep_codeword,
+            randomized_quotient_segments_curr_row_times_zeta_deep_codeword,
         ]
         .into_par_iter()
         .zip_eq(weights.deep.as_slice().unwrap())
@@ -1293,9 +1292,8 @@ impl Prover {
             .push(ROW_AXIS, quotient_segment_randomizer.view())
             .unwrap();
 
-        let one_over_zeta = Stark::ZETA.inverse();
-        let zeta_to_the_minus_k =
-            one_over_zeta.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
+        let zeta_to_the_k =
+            Stark::ZETA.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
         for (i, mut s_i_codeword) in randomized_segment_codewords
             .columns_mut()
             .into_iter()
@@ -1303,10 +1301,9 @@ impl Prover {
             .dropping_back(1)
             .rev()
         {
-            let zeta_to_the_minus_i =
-                one_over_zeta.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
+            let zeta_to_the_i = Stark::ZETA.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
             let s_i_plus_1_poly = randomized_segment_polynomials.get(i + 1).unwrap();
-            let s_i_addend_poly = -zeta_to_the_minus_i * s_i_plus_1_poly.scale(zeta_to_the_minus_k);
+            let s_i_addend_poly = -zeta_to_the_i * s_i_plus_1_poly.scale(zeta_to_the_k);
             let s_i_addend_codeword = ldt_domain.evaluate(&s_i_addend_poly);
             s_i_codeword.add_assign(&Array1::from(s_i_addend_codeword));
             randomized_segment_polynomials
@@ -1399,9 +1396,8 @@ impl Verifier {
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
         let ood_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-        let ood_point_curr_row_over_zeta_pow_num_segments = (out_of_domain_point_curr_row
-            / Stark::ZETA.lift())
-        .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let ood_point_curr_row_times_zeta_pow_num_segments =
+            (out_of_domain_point_curr_row * Stark::ZETA).mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
 
         let out_of_domain_curr_main_row =
             proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
@@ -1414,7 +1410,7 @@ impl Verifier {
         let out_of_domain_curr_row_pow_num_segments_randomized_quot_segments = proof_stream
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
-        let out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments =
+        let out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments =
             proof_stream
                 .dequeue()?
                 .try_into_out_of_domain_quot_segments()?;
@@ -1493,18 +1489,18 @@ impl Verifier {
             .map(|(i, x)| ood_point_curr_row.mod_pow_u32(i) * x)
             .sum::<XFieldElement>();
 
-        let ood_point_curr_row_over_zeta = out_of_domain_point_curr_row / Stark::ZETA.lift();
-        let relevant_ood_rand_quot_segments_for_curr_row_over_zeta =
-            out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments
+        let ood_point_curr_row_times_zeta = out_of_domain_point_curr_row * Stark::ZETA;
+        let relevant_ood_rand_quot_segments_for_curr_row_times_zeta =
+            out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
                 .into_iter()
                 .skip(1);
-        let derandomized_ood_quotient_value_curr_row_over_zeta = (0..NUM_QUOTIENT_SEGMENTS as u32)
-            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row_over_zeta)
-            .map(|(i, x)| ood_point_curr_row_over_zeta.mod_pow_u32(i) * x)
+        let derandomized_ood_quotient_value_curr_row_times_zeta = (0..NUM_QUOTIENT_SEGMENTS as u32)
+            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row_times_zeta)
+            .map(|(i, x)| ood_point_curr_row_times_zeta.mod_pow_u32(i) * x)
             .sum::<XFieldElement>();
 
         let derandomized_out_of_domain_quotient_value = derandomized_ood_quotient_value_curr_row
-            + derandomized_ood_quotient_value_curr_row_over_zeta;
+            + derandomized_ood_quotient_value_curr_row_times_zeta;
         if out_of_domain_quotient_value != derandomized_out_of_domain_quotient_value {
             return Err(VerificationError::OutOfDomainQuotientValueMismatch);
         };
@@ -1527,13 +1523,14 @@ impl Verifier {
             main_and_aux_codeword_weights.view(),
         );
 
-        let out_of_domain_curr_row_pow_num_segments_randomized_quotient_segment_value =
+        let ood_curr_row_pow_num_segments_randomized_quotient_segment_value =
             weights.quot_segments.dot(&Array1::from(
                 out_of_domain_curr_row_pow_num_segments_randomized_quot_segments.to_vec(),
             ));
-        let out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quotient_segment_value =
+        let ood_curr_row_times_zeta_pow_num_segments_randomized_quotient_segment_value =
             weights.quot_segments.dot(&Array1::from(
-                out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quot_segments.to_vec(),
+                out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
+                    .to_vec(),
             ));
         profiler!(stop "sum out-of-domain values");
 
@@ -1678,13 +1675,13 @@ impl Verifier {
                 current_ldt_domain_value,
                 quotient_segments_curr_row_element,
                 ood_point_curr_row_pow_num_segments,
-                out_of_domain_curr_row_pow_num_segments_randomized_quotient_segment_value,
+                ood_curr_row_pow_num_segments_randomized_quotient_segment_value,
             );
-            let quot_curr_row_over_zeta_pow_num_segments_deep_value = Stark::deep_update(
+            let quot_curr_row_times_zeta_pow_num_segments_deep_value = Stark::deep_update(
                 current_ldt_domain_value,
                 quotient_segments_curr_row_element,
-                ood_point_curr_row_over_zeta_pow_num_segments,
-                out_of_domain_curr_row_over_zeta_pow_num_segments_randomized_quotient_segment_value,
+                ood_point_curr_row_times_zeta_pow_num_segments,
+                ood_curr_row_times_zeta_pow_num_segments_randomized_quotient_segment_value,
             );
             profiler!(stop "DEEP update");
 
@@ -1693,7 +1690,7 @@ impl Verifier {
                 main_and_aux_curr_row_deep_value,
                 main_and_aux_next_row_deep_value,
                 quot_curr_row_pow_num_segments_deep_value,
-                quot_curr_row_over_zeta_pow_num_segments_deep_value,
+                quot_curr_row_times_zeta_pow_num_segments_deep_value,
             ]);
             if revealed_value != weights.deep.dot(&deep_value_components) {
                 return Err(VerificationError::CombinationCodewordMismatch);
@@ -2244,10 +2241,10 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
-    fn one_over_zeta_pow_k_has_sufficiently_large_multiplicative_order() {
+    fn zeta_pow_k_has_sufficiently_large_multiplicative_order() {
         let k = NUM_QUOTIENT_SEGMENTS as u64;
-        let one_over_zeta_pow_k = Stark::ZETA.inverse().mod_pow(k);
-        assert!((0..=k).map(|i| one_over_zeta_pow_k.mod_pow(i)).all_unique());
+        let zeta_pow_k = Stark::ZETA.mod_pow(k);
+        assert!((0..=k).map(|i| zeta_pow_k.mod_pow(i)).all_unique());
     }
 
     #[macro_rules_attr::apply(proptest)]
