@@ -470,8 +470,9 @@ impl Prover {
 
         let evaluate_rand_quot_segment_polys_in = |point| {
             randomized_quotient_segment_polynomials
+                .iter()
                 .map(|poly| poly.evaluate(point))
-                .to_vec()
+                .collect_vec()
                 .try_into()
                 .unwrap()
         };
@@ -506,13 +507,17 @@ impl Prover {
         let main_and_aux_codeword = short_domain.evaluate(&main_and_aux_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
-        let randomized_quotient_segments_combination_polynomial =
-            randomized_quotient_segment_polynomials
-                .into_iter()
-                .zip_eq(weights.quot_segments)
-                .fold(Polynomial::zero(), |acc, (poly, w)| acc + poly * w);
-        let randomized_quotient_segments_combination_codeword =
-            short_domain.evaluate(&randomized_quotient_segments_combination_polynomial);
+        let [s0, s1, s2, s3, s4] = randomized_quotient_segment_polynomials;
+        let shared_randomized_quotient_segments_combination_polynomial = [s1, s2, s3]
+            .into_iter()
+            .zip_eq(weights.quot_segments.iter().skip(1).dropping_back(1))
+            .fold(Polynomial::zero(), |acc, (p, &w)| acc + p.scalar_mul(w));
+        let poly_for_p = s0 * weights.quot_segments[0]
+            + shared_randomized_quotient_segments_combination_polynomial.clone();
+        let poly_for_r = shared_randomized_quotient_segments_combination_polynomial
+            + s4 * weights.quot_segments[4];
+        let codeword_for_p = short_domain.evaluate(&poly_for_p);
+        let codeword_for_r = short_domain.evaluate(&poly_for_r);
         profiler!(stop "quotient");
 
         profiler!(stop "linear combination");
@@ -562,20 +567,18 @@ impl Prover {
 
         profiler!(start "randomized segmented quotient");
         let out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value =
-            randomized_quotient_segments_combination_polynomial
-                .evaluate(ood_point_curr_row_pow_num_segments);
+            poly_for_p.evaluate(ood_point_curr_row_pow_num_segments);
         let randomized_quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
-            &randomized_quotient_segments_combination_codeword,
+            &codeword_for_p,
             short_domain,
             ood_point_curr_row_pow_num_segments,
             out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value,
         );
 
         let out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value =
-            randomized_quotient_segments_combination_polynomial
-                .evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
+            poly_for_r.evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
         let randomized_quotient_segments_curr_row_times_zeta_deep_codeword = Self::deep_codeword(
-            &randomized_quotient_segments_combination_codeword,
+            &codeword_for_r,
             short_domain,
             ood_point_curr_row_times_zeta_pow_num_segments,
             out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value,
@@ -1262,7 +1265,7 @@ impl Prover {
         segment_polynomials: Array1<Polynomial<'static, XFieldElement>>,
     ) -> (
         Array2<XFieldElement>,
-        Array1<Polynomial<'static, XFieldElement>>,
+        [Polynomial<'static, XFieldElement>; NUM_RANDOMIZED_QUOTIENT_SEGMENTS],
     ) {
         debug_assert_eq!(ldt_domain.len(), segment_codewords.nrows());
         debug_assert_eq!(NUM_QUOTIENT_SEGMENTS, segment_codewords.ncols());
@@ -1291,6 +1294,8 @@ impl Prover {
         randomized_segment_polynomials
             .push(ROW_AXIS, quotient_segment_randomizer.view())
             .unwrap();
+        let mut randomized_segment_polynomials: [_; NUM_RANDOMIZED_QUOTIENT_SEGMENTS] =
+            randomized_segment_polynomials.to_vec().try_into().unwrap();
 
         let zeta_to_the_k =
             Stark::ZETA.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
@@ -1302,14 +1307,11 @@ impl Prover {
             .rev()
         {
             let zeta_to_the_i = Stark::ZETA.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
-            let s_i_plus_1_poly = randomized_segment_polynomials.get(i + 1).unwrap();
+            let s_i_plus_1_poly = &randomized_segment_polynomials[i + 1];
             let s_i_addend_poly = -zeta_to_the_i * s_i_plus_1_poly.scale(zeta_to_the_k);
             let s_i_addend_codeword = ldt_domain.evaluate(&s_i_addend_poly);
             s_i_codeword.add_assign(&Array1::from(s_i_addend_codeword));
-            randomized_segment_polynomials
-                .get_mut(i)
-                .unwrap()
-                .add_assign(s_i_addend_poly);
+            randomized_segment_polynomials[i] += s_i_addend_poly;
         }
 
         (randomized_segment_codewords, randomized_segment_polynomials)
@@ -1523,15 +1525,14 @@ impl Verifier {
             main_and_aux_codeword_weights.view(),
         );
 
+        let [w0, w1, w2, w3, w4] = weights.quot_segments.to_vec().try_into().unwrap();
+        let [p0, p1, p2, p3, _] = out_of_domain_curr_row_pow_num_segments_randomized_quot_segments;
         let ood_curr_row_pow_num_segments_randomized_quotient_segment_value =
-            weights.quot_segments.dot(&Array1::from(
-                out_of_domain_curr_row_pow_num_segments_randomized_quot_segments.to_vec(),
-            ));
+            w0 * p0 + w1 * p1 + w2 * p2 + w3 * p3;
+        let [_, r1, r2, r3, r4] =
+            out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments;
         let ood_curr_row_times_zeta_pow_num_segments_randomized_quotient_segment_value =
-            weights.quot_segments.dot(&Array1::from(
-                out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
-                    .to_vec(),
-            ));
+            w1 * r1 + w2 * r2 + w3 * r3 + w4 * r4;
         profiler!(stop "sum out-of-domain values");
 
         // verify low degree of combination polynomial
@@ -1653,9 +1654,10 @@ impl Verifier {
                 aux_row.view(),
                 main_and_aux_codeword_weights.view(),
             );
-            let quotient_segments_curr_row_element = weights
-                .quot_segments
-                .dot(&Array1::from(quotient_segments_elements.to_vec()));
+            let [s0, s1, s2, s3, s4] = quotient_segments_elements;
+            let shared_part = w1 * s1 + w2 * s2 + w3 * s3;
+            let quotient_segments_curr_row_element_for_p = w0 * s0 + shared_part;
+            let quotient_segments_curr_row_element_for_r = shared_part + w4 * s4;
             profiler!(stop "main & aux elements");
 
             profiler!(start "DEEP update");
@@ -1673,13 +1675,13 @@ impl Verifier {
             );
             let quot_curr_row_pow_num_segments_deep_value = Stark::deep_update(
                 current_ldt_domain_value,
-                quotient_segments_curr_row_element,
+                quotient_segments_curr_row_element_for_p,
                 ood_point_curr_row_pow_num_segments,
                 ood_curr_row_pow_num_segments_randomized_quotient_segment_value,
             );
             let quot_curr_row_times_zeta_pow_num_segments_deep_value = Stark::deep_update(
                 current_ldt_domain_value,
-                quotient_segments_curr_row_element,
+                quotient_segments_curr_row_element_for_r,
                 ood_point_curr_row_times_zeta_pow_num_segments,
                 ood_curr_row_times_zeta_pow_num_segments_randomized_quotient_segment_value,
             );
