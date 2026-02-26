@@ -91,8 +91,8 @@ For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
 1. Sample $s_k(X)$ uniformly of degree less than $\rho |D|$.
 2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^i s_{i+1}(\zeta X)$.
 
-The constant $\zeta$ is an almost-arbitrary, fixed parameter of the STARK. The one constraint is that $\zeta$ has a
-multiplicative cycle larger than $k$; the reason for this is expanded upon below.
+The constant $\zeta$ is an almost-arbitrary, fixed parameter of the STARK. The one constraint is that $\zeta$ has
+multiplicative order larger than $k$; the reason for this is expanded upon below.
 
 Furthermore, define
 
@@ -117,60 +117,35 @@ These out-of-domain rows allow the verifier to compute $p(\alpha)$ and $r(\alpha
 verifier equates $q(\alpha)$ to the value of the AIR constraints applied to the revealed out-of-domain trace rows, after
 dividing out the zerofier.
 
-Two DEEP updates (single-point quotients) suffice to link the two out-of-domain rows to the randomized quotient table,
-establishing the integrity of $p(\alpha)$ and $r(\alpha)$ as well. (As a practical performance matter, it is prudent to
-release two rows of $k+1$ elements each so that batching marries well with the DEEP-update. The extra elements, which
-are not needed for computing $p(\alpha)$ or $r(\alpha)$, are also covered by the following proof of the zero-knowledge
-property.)
+Two DEEP updates (single-point quotients) link the two out-of-domain rows to the randomized quotient table,
+establishing the integrity of $p(\alpha)$ and $r(\alpha)$.
 
-Given $t+1$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}$ for each of the $k+1$ segments and
-indeterminates $\{x_0, \ldots, x_{t}\}$.
+Given $t$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}$ for each of the $k+1$ segments and
+indeterminates $\{x_0, \ldots, x_{t-1}\}$. Using the definition of $s_i(X)$ for $i < k$, we can replace
+$s_i(x_j)$ by $-\zeta^i s_{i+1}(\zeta x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
+$(-1)^{k-i} \zeta^i \dots \zeta^k s_k(\zeta^{k-i} x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$. With
+every replacement, the indeterminate is sent to a new value $x_j \mapsto \zeta^{k-i} x_j \mapsto \ldots$. It follows
+that every row in-domain row is an invertible affine transformation of the vector $\{s_k(\zeta^{k-i} x_j)\}_{i=0}^k$,
+or equivalently, of the vector $\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient
+$q(X)$ and on $\zeta$.
 
-Using the definition of $s_i(X)$ for $0 \leqslant i < k$, we can replace $s_i(x_j)$ by
-$-\zeta^i s_{i+1}(\zeta x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
-$(-1)^{k-i} \zeta^i \dots \zeta^k s_k(\zeta^{k-i} x_j) + \langle\!$ *terms that only depend on*
-$q(X) \rangle$. With every replacement, the indeterminate is sent to a new value
-$x_j \mapsto \zeta^{k-i} x_j \mapsto \ldots$. It follows that every row (whether in-domain or out-of-domain) is an
-invertible affine transformation of the vector $\{s_k(\zeta^{k-i} x_j)\}_{i=0}^k$, or equivalently, of the vector
-$\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient $q(X)$ and $\zeta$.
+The two out-of-domain rows each contain one fewer element. There, the corresponding vectors are
+$\{s_k(\zeta^i\alpha^k)\}_{i=0}^{k-1}$ and $\{s_k(\zeta^{2k-i} \alpha^k)\}_{i=0}^{k-1}$, respectively.
 
-Unless the set of indeterminates contains a pair $(x', x'')$ such that $\zeta^{k-i} x' = x''$ for some
-$i \in \{0, \ldots, k-1\}$, the $(t+1)(k+1)$ elements revealed by $(t+1)$ rows uniquely determine $(t+1)(k+1)$ points on
-$s_k(X)$, for any fixed quotient $q(X)$ and any admissible choice of $\zeta$. As long as
-$(t+1)(k+1) \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that under these conditions any set
-of $t+1$ revealed rows is independent of the quotient.
+Let $G := \{\zeta^i x_j\}_{i=0}^k \cup \{\zeta^i\alpha^k\}_{i=0}^{k-1} \cup \{\zeta^{2k-i} \alpha^k\}_{i=0}^{k-1}$
+the set of indeterminates in which $s_k$ is evaluated.
 
-This argument covers all in-domain rows and at most one out-of-domain row but not both out-of-domain rows. Indeed, the
-indeterminates for the out-of-domain rows are $\alpha^k$ and $\zeta^k\alpha^k$ and are apart by a factor
-$\zeta^k$, and therefore violate the above clause.
+In total, there are $g := t(k+1) + 2k$ elements revealed by the $t$ in-domain and 2 out-of-domain rows. As long as
+$|G| = g$, the revealed elements uniquely determine $g$ points on $s_k(X)$, for any fixed quotient $q(X)$ and any
+admissible choice of $\zeta$. As long as $g \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that
+under these conditions, any revealed $t$ in-domain and 2 out-of-domain rows are independent of the quotient.
 
-A closer inspection shows that the first coefficient of the second out-of-domain row, $s_0(\zeta^k \alpha^k)$
-substitutes to $(-1)^k \zeta^0 \dots \zeta^k s_k(\zeta^{2k} \alpha^k) + \langle\!$
-*terms that only depend on* $q(X) \rangle$. The indeterminate $\zeta^{2k} \alpha^{k}$ is not contained in the set
-$\{\zeta^i\alpha^k\}_{i=0}^k \cup \{\{\zeta^i x_j\}_{i=0}^k\}_{j=0}^{t-1}$ of indeterminates resulting from the first
-out-of-domain row and all $t$ in-domain rows (unless for very unlikely choices of $\alpha$). As a result, the argument
-from interpolating $s_k(X)$ from $(t+1)(k+1) + 1$ points covers all in-domain rows, the entire first out-of-domain row,
-and the first coefficient of the second out-of-domain row. The requirement is that $(t+1)(k+1) + 1 \leqslant \rho |D|$.
+<!-- todo: Show that |G| = g -->
 
-To show that the remainder of the second out-of-domain row is *also* independent of the trace, consider the $k$-fold
-segmentation equation applied to $r(X)$ and its segments $\{s_{i+1}(X)\}_{i=0}^{k-1}$:
+Unless $G$ contains a pair $(x', x'')$ such that $\zeta^{k-i} x' = x''$ for some $i \in \{0, \ldots, k-1\}$,
 
-$$ \left( r(\omega^i \alpha) \right)_{i=0}^{k-1} =
-\left( \sum_{j=0}^{k-1} \omega^{ij} \zeta^j \alpha^{j} s_{j+1}(\zeta^k \alpha^k) \right)_{i=0}^{k-1} $$
-
-where $\omega$ is a primitive $k$-th root of unity.
-We have a bijection between $\{s_{i+1}(\zeta^k\alpha^k)\}_{i=0}^{k-1}$ and $\{r(\omega^i \alpha)\}_{i=0}^{k-1}$.
-Likewise, from the first $k$ elements of the penultimate row one obtains $\{p(\omega^i \alpha)\}_{i=0}^{k-1}$.
-Considering this information fixed (as it was already established to be independent of the trace), it follows that
-$\{r(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. Therefore, in
-order to show that $\{s_{i+1}(\zeta^k\alpha^k)\}_{i=0}^{k-1}$ is independent of the trace, it suffices to show that
-$\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is independent of the trace.
-
-Consider the distinguisher that receives, as a supplementary hint in addition to the transcript, the authentic preimages
-under the AIR evaluation map to $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$. These preimages are the $f$-tuples of
-out-of-domain trace rows corresponding to $\{\omega^i \alpha\}_{i=0}^{k-1}$. Since we had $kef$ coefficients of margin
-in our choice for $h$, it follows that even these $k$-many $f$-tuples of (degree-$e$ extension field) rows are
-independent of the trace, and the same must be true for any image of them.
+To see that $|G| = g$, first note that any set $\{\zeta^i X\}_{i=0}^k$ for non-zero $X$ is of size $(k+1)$ because
+$\zeta$ has multiplicative order larger than $k$.
 
 ### Simulation
 
