@@ -1,3 +1,9 @@
 # Configuration for link-checker lychee. See also: https://lychee.cli.rs
 include_fragments = true
 require_https = true
+
+exclude = [
+    # As of 2026, automated access to eprint is severely limited.
+    # See also: https://eprint.iacr.org/robots.txt
+    '^https://eprint.iacr.org/'
+]
