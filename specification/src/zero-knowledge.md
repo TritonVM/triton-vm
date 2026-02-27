@@ -91,8 +91,12 @@ For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
 1. Sample $s_k(X)$ uniformly of degree less than $\rho |D|$.
 2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^i s_{i+1}(\zeta X)$.
 
-The constant $\zeta$ is an almost-arbitrary, fixed parameter of the STARK. The one constraint is that $\zeta$ has
-multiplicative order larger than $k$; the reason for this is expanded upon below.
+The constant $\zeta$ is a fixed parameter of the STARK with the following constraints:
+
+1. $\zeta$ has multiplicative order larger than $2k$, and
+2. none of the powers $\{\zeta^i\}_{i=1}^k$ are an element of the field's 2-adic subgroups.
+
+The reasons for this is expanded upon below.
 
 Furthermore, define
 
@@ -130,9 +134,14 @@ or equivalently, of the vector $\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concret
 $q(X)$ and on $\zeta$.
 
 The two out-of-domain rows each contain one fewer element. There, the corresponding vectors are
-$\{s_k(\zeta^i\alpha^k)\}_{i=0}^{k-1}$ and $\{s_k(\zeta^{2k-i} \alpha^k)\}_{i=0}^{k-1}$, respectively.
+$\{s_k(\zeta^i\alpha^k)\}_{i=0}^{k-1}$ and $\{s_k(\zeta^{k+i+1} \alpha^k)\}_{i=0}^{k-1}$, respectively. Let
 
-Let $G := \{\zeta^i x_j\}_{i=0}^k \cup \{\zeta^i\alpha^k\}_{i=0}^{k-1} \cup \{\zeta^{2k-i} \alpha^k\}_{i=0}^{k-1}$
+$$
+G := \{\{\zeta^i x_j\}_{i=0}^k\}_{j=0}^{t-1}
+\cup \{\zeta^i\alpha^k\}_{i=0}^{k-1}
+\cup \{\zeta^{k+i+1} \alpha^k\}_{i=0}^{k-1}
+$$
+
 the set of indeterminates in which $s_k$ is evaluated.
 
 In total, there are $g := t(k+1) + 2k$ elements revealed by the $t$ in-domain and 2 out-of-domain rows. As long as
@@ -140,12 +149,18 @@ $|G| = g$, the revealed elements uniquely determine $g$ points on $s_k(X)$, for 
 admissible choice of $\zeta$. As long as $g \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that
 under these conditions, any revealed $t$ in-domain and 2 out-of-domain rows are independent of the quotient.
 
-<!-- todo: Show that |G| = g -->
+Finally, we show that $|G| = g$. Because of the constraints on $\zeta$, $t$ distinct in-domain indeterminates $x_j$ give
+rise to $t(k+1)$ distinct indeterminates for $s_k$. In particular,
 
-Unless $G$ contains a pair $(x', x'')$ such that $\zeta^{k-i} x' = x''$ for some $i \in \{0, \ldots, k-1\}$,
+1. $\{\zeta^i x_j\}_{i=0}^k$ is of size $(k+1)$ because of the multiplicative order of $\zeta$, and
+2. since all $x_j$ are sampled from a (co-set of) a 2-adic subgroup, there is no $x_j^\prime \neq x_j$ such that
+   $\zeta^ix_j = x_j^\prime$, since that would imply $\zeta^i = x_j^{-1} x_j^\prime$ be an element of a 2-adic subgroup,
+   violating the second constraint on $\zeta$.
 
-To see that $|G| = g$, first note that any set $\{\zeta^i X\}_{i=0}^k$ for non-zero $X$ is of size $(k+1)$ because
-$\zeta$ has multiplicative order larger than $k$.
+As long as neither $\alpha^k$ nor $\zeta^k\alpha^k$ equals any of the in-domain indeterminates, the multiplicative order
+of $\zeta$ guarantees that the respective powers $\{\zeta^i\alpha^k\}_{i=0}^{k-1}$ and
+$\{\zeta^{k+i+1} \alpha^k\}_{i=0}^{k-1}$ contribute another $k$ distinct elements to $G$ respectively, proving
+$|G| = g$.
 
 ### Simulation
 
