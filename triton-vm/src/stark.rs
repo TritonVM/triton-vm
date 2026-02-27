@@ -1753,8 +1753,11 @@ impl Stark {
     /// as using it requires intimate familiarity with the internals of
     /// Triton VM. It is probably only useful when re-implementing the
     /// [prover](Self::prove) or the [verifier](Self::verify).
+    ///
+    /// For more information on this constant the constraints on it, see the
+    /// chapter on “Zero-Knowledge” in the specification.
     #[doc(hidden)]
-    pub const ZETA: BFieldElement = BFieldElement::new(2);
+    pub const ZETA: BFieldElement = BFieldElement::new(3);
 
     /// Create a new STARK instance.
     ///
@@ -2162,6 +2165,7 @@ pub(crate) mod tests {
     use isa::instruction::Instruction;
     use isa::op_stack::OpStackElement;
     use itertools::izip;
+    use num_traits::One;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
@@ -2259,10 +2263,21 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
-    fn zeta_pow_k_has_sufficiently_large_multiplicative_order() {
+    fn zeta_has_sufficiently_large_multiplicative_order() {
         let k = NUM_QUOTIENT_SEGMENTS as u64;
-        let zeta_pow_k = Stark::ZETA.mod_pow(k);
-        assert!((0..=k).map(|i| zeta_pow_k.mod_pow(i)).all_unique());
+        assert!((0..=2 * k).map(|i| Stark::ZETA.mod_pow(i)).all_unique());
+    }
+
+    /// none of the powers ζ^i are an element of the field's 2-adic subgroups
+    #[macro_rules_attr::apply(test)]
+    fn zetas_powers_are_not_in_2_adic_subgroups() {
+        for i in 1..=NUM_QUOTIENT_SEGMENTS as u64 {
+            let mut zeta = Stark::ZETA.mod_pow(i);
+            for j in 0..=ArithmeticDomain::LOG2_MAX_LEN {
+                assert!(!zeta.is_one(), "(ζ^{i})^(2^{j}) must not be 1");
+                zeta = zeta.square();
+            }
+        }
     }
 
     #[macro_rules_attr::apply(proptest)]
@@ -2392,11 +2407,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"03948041510082225201,\
-              06998889193338867487,\
-              06671026104453868988,\
-              02260166049708958353,\
-              07078703048206246249",
+            @"08596488571636512623,\
+              05239711105624166845,\
+              06871548225784412594,\
+              11513757682923448558,\
+              05221168945973099134",
         );
     }
 
