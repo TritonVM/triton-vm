@@ -460,23 +460,29 @@ impl Prover {
         let ood_next_aux_row = MasterAuxTable::try_to_aux_row(ood_next_aux_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainAuxRow(Box::new(ood_next_aux_row)));
 
-        // The following two out-of-domain points help achieve zero-knowledge
-        // for the quotient table.
+        // The following two out-of-domain rows help achieve zero-knowledge for
+        // the quotient table. Identifiers `p` and `r` are as in the
+        // specification's chapter on Zero-Knowledge.
+        let [ref randomized_quot_segment_polys_for_p @ .., ref _last] =
+            randomized_quotient_segment_polynomials;
         let ood_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let randomized_quot_segment_ood_row_for_p = randomized_quot_segment_polys_for_p
+            .each_ref()
+            .map(|poly| poly.evaluate(ood_point_curr_row_pow_num_segments));
+        proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
+            randomized_quot_segment_ood_row_for_p,
+        ));
+
+        let [ref _first, ref randomized_quot_segment_polys_for_r @ ..] =
+            randomized_quotient_segment_polynomials;
         let ood_point_curr_row_times_zeta_pow_num_segments =
             (out_of_domain_point_curr_row * Stark::ZETA).mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-
-        let evaluate_rand_quot_segment_polys_in = |point| {
-            randomized_quotient_segment_polynomials
-                .each_ref()
-                .map(|poly| poly.evaluate(point))
-        };
+        let randomized_quot_segment_ood_row_for_r = randomized_quot_segment_polys_for_r
+            .each_ref()
+            .map(|poly| poly.evaluate(ood_point_curr_row_times_zeta_pow_num_segments));
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
-            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_pow_num_segments),
-        ));
-        proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
-            evaluate_rand_quot_segment_polys_in(ood_point_curr_row_times_zeta_pow_num_segments),
+            randomized_quot_segment_ood_row_for_r,
         ));
         profiler!(stop "out-of-domain rows");
 
@@ -1412,13 +1418,12 @@ impl Verifier {
             proof_stream.dequeue()?.try_into_out_of_domain_main_row()?;
         let out_of_domain_next_aux_row =
             proof_stream.dequeue()?.try_into_out_of_domain_aux_row()?;
-        let out_of_domain_curr_row_pow_num_segments_randomized_quot_segments = proof_stream
+        let ood_curr_row_pow_num_segments_randomized_quot_segments = proof_stream
             .dequeue()?
             .try_into_out_of_domain_quot_segments()?;
-        let out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments =
-            proof_stream
-                .dequeue()?
-                .try_into_out_of_domain_quot_segments()?;
+        let ood_curr_row_times_zeta_pow_num_segments_randomized_quot_segments = proof_stream
+            .dequeue()?
+            .try_into_out_of_domain_quot_segments()?;
 
         let out_of_domain_curr_main_row = Array1::from(out_of_domain_curr_main_row.to_vec());
         let out_of_domain_curr_aux_row = Array1::from(out_of_domain_curr_aux_row.to_vec());
@@ -1484,23 +1489,14 @@ impl Verifier {
         profiler!(stop "out-of-domain quotient element");
 
         profiler!(start "verify quotient's segments");
-        let ood_point_curr_row = out_of_domain_point_curr_row;
-        let relevant_ood_rand_quot_segments_for_curr_row =
-            out_of_domain_curr_row_pow_num_segments_randomized_quot_segments
-                .into_iter()
-                .dropping_back(1);
         let derandomized_ood_quotient_value_curr_row = (0..NUM_QUOTIENT_SEGMENTS as u32)
-            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row)
-            .map(|(i, x)| ood_point_curr_row.mod_pow_u32(i) * x)
+            .zip_eq(ood_curr_row_pow_num_segments_randomized_quot_segments)
+            .map(|(i, x)| out_of_domain_point_curr_row.mod_pow_u32(i) * x)
             .sum::<XFieldElement>();
 
         let ood_point_curr_row_times_zeta = out_of_domain_point_curr_row * Stark::ZETA;
-        let relevant_ood_rand_quot_segments_for_curr_row_times_zeta =
-            out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
-                .into_iter()
-                .skip(1);
         let derandomized_ood_quotient_value_curr_row_times_zeta = (0..NUM_QUOTIENT_SEGMENTS as u32)
-            .zip_eq(relevant_ood_rand_quot_segments_for_curr_row_times_zeta)
+            .zip_eq(ood_curr_row_times_zeta_pow_num_segments_randomized_quot_segments)
             .map(|(i, x)| ood_point_curr_row_times_zeta.mod_pow_u32(i) * x)
             .sum::<XFieldElement>();
 
@@ -1529,24 +1525,14 @@ impl Verifier {
         );
 
         let quot_segment_weights = weights.quot_segments.to_vec();
-        // todo: temp, until superfluous element is not sent any longer
-        let [
-            out_of_domain_curr_row_pow_num_segments_randomized_quot_segments @ ..,
-            _,
-        ] = out_of_domain_curr_row_pow_num_segments_randomized_quot_segments;
         let ood_curr_row_pow_num_segments_randomized_quotient_segment_value =
-            out_of_domain_curr_row_pow_num_segments_randomized_quot_segments
+            ood_curr_row_pow_num_segments_randomized_quot_segments
                 .into_iter()
                 .zip_eq(weights.quot_segments.iter().dropping_back(1))
                 .map(|(elem, &weight)| elem * weight)
                 .sum();
-        // todo: temp, until superfluous element is not sent any longer
-        let [
-            _,
-            out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments @ ..,
-        ] = out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments;
         let ood_curr_row_times_zeta_pow_num_segments_randomized_quotient_segment_value =
-            out_of_domain_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
+            ood_curr_row_times_zeta_pow_num_segments_randomized_quot_segments
                 .into_iter()
                 .zip_eq(weights.quot_segments.iter().skip(1))
                 .map(|(elem, &weight)| elem * weight)
@@ -2406,11 +2392,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"10104585026378235437,\
-              17950906967034906468,\
-              06361212971497508998,\
-              14942258522158278247,\
-              07086958585032176433",
+            @"03948041510082225201,\
+              06998889193338867487,\
+              06671026104453868988,\
+              02260166049708958353,\
+              07078703048206246249",
         );
     }
 
@@ -3380,7 +3366,7 @@ pub(crate) mod tests {
         test_program_hash_nop_nop_lt().prove_and_verify();
     }
 
-    #[macro_rules_attr::apply(proptest(cases = 10))]
+    #[test_strategy::proptest(cases = 10)]
     fn prove_and_verify_halt_with_different_stark_parameters(#[strategy(arb())] stark: Stark) {
         test_program_for_halt().use_stark(stark).prove_and_verify();
     }

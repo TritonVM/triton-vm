@@ -11,6 +11,7 @@ use crate::low_degree_test::fri::FriResponse;
 use crate::low_degree_test::stir::StirResponse;
 use crate::table::AuxiliaryRow;
 use crate::table::MainRow;
+use crate::table::OodQuotientSegments;
 use crate::table::RandQuotientSegments;
 
 pub type AuthenticationStructure = Vec<Digest>;
@@ -97,7 +98,7 @@ proof_items!(
     Log2PaddedHeight(u32) => true, try_into_log2_padded_height,
     OutOfDomainMainRow(Box<MainRow<XFieldElement>>) => true, try_into_out_of_domain_main_row,
     OutOfDomainAuxRow(Box<AuxiliaryRow>) => true, try_into_out_of_domain_aux_row,
-    OutOfDomainQuotientSegments(RandQuotientSegments) => true, try_into_out_of_domain_quot_segments,
+    OutOfDomainQuotientSegments(OodQuotientSegments) => true, try_into_out_of_domain_quot_segments,
     Polynomial(Polynomial<'static, XFieldElement>) => true, try_into_polynomial,
     StirOutOfDomainValues(Vec<XFieldElement>) => true, try_into_stir_ood_values,
 
