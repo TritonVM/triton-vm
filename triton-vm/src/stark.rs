@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::AddAssign;
 use std::ops::Mul;
 
@@ -632,6 +633,26 @@ impl Prover {
         profiler!(start "low-degree test");
         let revealed_current_row_indices = ldt.prove(&combination_codeword, &mut proof_stream)?;
         profiler!(stop "low-degree test");
+
+        // For Zero-Knowledge, the out-of-domain row must not conflict with the
+        // revealed in-domain rows. Note that this conflict only happens with
+        // negligible probability.
+        if let Some(ood_point_to_the_num_segments) = out_of_domain_point_curr_row
+            .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32)
+            .unlift()
+        {
+            let ood_point_times_zeta_to_the_num_segments = ood_point_to_the_num_segments
+                * Stark::ZETA.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+            let in_domain_indeterminates = revealed_current_row_indices
+                .par_iter()
+                .map(|&i| domains.ldt.value(u32::try_from(i).unwrap()))
+                .collect::<HashSet<_>>();
+            if in_domain_indeterminates.contains(&ood_point_to_the_num_segments)
+                || in_domain_indeterminates.contains(&ood_point_times_zeta_to_the_num_segments)
+            {
+                return Err(ProvingError::ZeroKnowledgeViolation);
+            }
+        }
 
         profiler!(start "open trace leafs");
         // Open leafs of zipped codewords at indicated positions
