@@ -69,8 +69,7 @@ to admit one evaluation of the AIR, $f$ rows must be supplied. So for the main t
 of $t + ef$ and for the auxiliary trace an equivalent of $t + f$ rows. Consequently, $h \geqslant t + ef$ for the main
 trace polynomials and $h \geqslant t + f$ for the auxiliary trace polynomials.
 
-For simplicity we choose to have only one $h$ that works for both main and auxiliary traces. Furthermore, we anticipate
-another term $kef$ originating from the quotient table randomization. So: $h = t + ef + kef$.
+For simplicity, we choose to have only one $h$ that works for both main and auxiliary traces. So: $h = t + ef$.
 
 **Note:** The batch-randomizer $\hat{r}(X)$ is also trace-randomized:
 $\hat{r}(X) = r(X) + Z(X) \cdot r_{\mathsf{w}}(X)$, where $r(X)$ is the *unrandomized* batch-randomizer of $N$ uniform

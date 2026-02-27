@@ -2051,9 +2051,7 @@ impl Stark {
     pub(crate) fn num_trace_randomizers(ldt: &dyn LowDegreeTest) -> usize {
         // For a detailed explanation of this formula, see the specification's
         // chapter on Zero Knowledge, section “Randomized Trace Polynomials”.
-        ldt.num_first_round_queries()
-            + x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
-            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
+        ldt.num_first_round_queries() + x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
