@@ -17,8 +17,8 @@ Triton VM applies three randomization steps, summarized as follows.
 2. All trace polynomials (both main and auxiliary) contain $h$ field elements worth of entropy. The variable $h$ is
    chosen such that all in-domain and out-of-domain rows that are queried as part of the batch-check of the low-degree
    test are uniform.
-3. The quotient table is extended with one column and the entire table is randomized in a way that preserves extracting
-   the value of the quotient at a certain point while perfectly hiding the value of individual segments for each
+3. The quotient table is extended with one column and the entire table is randomized in a way that preserves the ability to extract
+   the value of the quotient at a certain out-of-domain point while perfectly hiding the values of the individual segments for each
    revealed row.
 
 ### Batch-Randomizer
