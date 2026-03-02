@@ -75,8 +75,7 @@ $\hat{r}(X) = r(X) + Z(X) \cdot r_{\mathsf{w}}(X)$, where $r(X)$ is the *unrando
 coefficients, $N$ is the length of the trace domain, and $r_{\mathsf{w}}(X)$ is the trace randomizer for the
 batch-randomizer which adds another $h$ uniform coefficients.
 
-**Note:** In order for the above argument to work, the low-degree trace domain $D$ must be disjoint from the trace
-domain. Otherwise, $Z(X)$ may cancel some contributions of $r_i(X)$.
+**Note:** Besides requiring that the LDT and trace domains are disjoint sets, it is also important to disallow verifiers who sample $\alpha$ from the trace domain. In the non-interactive case, the probability of this event is negligible and may safely be ignored, but interactively the prover must guard against malicious verifiers employing this strategy.
 
 ### Quotient Table Randomization
 
