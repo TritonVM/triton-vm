@@ -31,15 +31,14 @@ The effect of adding the batch randomizer is that all codewords sent in the cour
 independent of the witness. To see this, let $\mathbf{c}$ be the first combination codeword in a given accepting
 transcript, and let $\{ \hat{t}_i(X) \}_i$ be *any* choice for the randomized trace polynomials and
 $\{ \hat{q}_i(X) \}_i$ *any* choice for the randomized quotient segment polynomials. Isolate the batch-randomizer term
-$\mathbf{r}$ in the batch equation
+$r$ in the batch equation
 
-$$ \sum_{i=0}^{\mathsf{w}-1} w_i \cdot \hat{t}_i(D) + \sum_{i = 0}^{k} w_{\mathsf{w}+i} \cdot \hat{q}_i(D) + \mathbf{r}
+$$ \sum_{i=0}^{\mathsf{w}-1} w_i \cdot \hat{t}_i(D) + \sum_{i = 0}^{k} w_{\mathsf{w}+i} \cdot \hat{q}_i(D) + r(D)
 = \mathbf{c} \enspace , $$
 
 where $D$ is the LDT domain and the sums run over all $\mathsf{w}$ randomized trace polynomials and all $k+1$ randomized
-quotient segment polynomials. The vector $\mathbf{r}$ is indeed a Reed-Solomon codeword if $\mathbf{c}$ is, in which
-case $\mathbf{r}$ agrees with some low-degree polynomial $\hat{r}(X)$ on $D$. This argument establishes that
-$\mathbf{c}$ is uniform if $\hat{r}(X)$ is and, consequently, that no distinguisher has any advantage over a random
+quotient segment polynomials. The right hand side, $\boldsymbol{c}$ must be a Reed-Solomon codeword because it is a linear combination of Reed-Solomon codewords. Consequently, there must be some low degree polynomial $c(X)$ that agrees with $\boldsymbol{c}$ on $D$. The distribution of $c(X)$ equals that of $r(X)$ up to translation, and even this "up to translation" is unnecessary because the distribution is in fact uniform over polynomials of bounded degree. This argument establishes that
+$\mathbf{c}$ is a uniformly random Reed-Solomon codeword and, consequently, that no distinguisher has any advantage over a random
 guess at distinguishing simulated from authentic transcripts based on the codewords from the low-degree test alone
 because that would entail distinguishing distributions that are identical.
 
