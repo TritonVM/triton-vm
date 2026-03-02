@@ -24,7 +24,7 @@ Triton VM applies three randomization steps, summarized as follows.
 ### Batch-Randomizer
 
 The batch randomizer is a uniformly random polynomial that is included into the random linear combination of polynomials
-in the batching step, in preparation for the low-degree test. Its codeword is adjoined to the auxiliary trace but left
+in the batching step, in preparation for the low-degree test (or, depending on your perspective, as its initialization step). Its codeword (specifically, its list of evaluations on the trace domain) is adjoined to the auxiliary trace but left
 unconstrained by all AIR constraints.
 
 The effect of adding the batch randomizer is that all codewords sent in the course of the low-degree test are perfectly
