@@ -68,7 +68,7 @@ to admit one evaluation of the AIR, $f$ rows must be supplied. So for the main t
 of $t + ef$ and for the auxiliary trace an equivalent of $t + f$ rows. Consequently, $h \geqslant t + ef$ for the main
 trace polynomials and $h \geqslant t + f$ for the auxiliary trace polynomials.
 
-For simplicity, we choose to have only one $h$ that works for both main and auxiliary traces. So: $h = t + ef$.
+For simplicity, we choose to have only one $h$ that works for both main and auxiliary traces. Furthermore, we anticipate the need for a margin of $(k-1)ef$ coefficients originating from the randomized quotient table. So: $h = t + kef$.
 
 **Note:** The batch-randomizer $\hat{r}(X)$ is also trace-randomized:
 $\hat{r}(X) = r(X) + Z(X) \cdot r_{\mathsf{w}}(X)$, where $r(X)$ is the *unrandomized* batch-randomizer of $N$ uniform
@@ -132,34 +132,44 @@ that every row in-domain row is an invertible affine transformation of the vecto
 or equivalently, of the vector $\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient
 $q(X)$ and on $\zeta$.
 
-The two out-of-domain rows each contain one element less. There, the corresponding vectors are
-$\{s_k(\zeta^i\alpha^k)\}_{i=0}^{k-1}$ and $\{s_k(\zeta^{k+i+1} \alpha^k)\}_{i=0}^{k-1}$, respectively. Let
+Consider the *first* out-of-domain row. After applying all possible substitutions, $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ become s
+$\{s_k(\zeta^{k-i}\alpha^k)\}_{i=0}^{k-1} = \{s_k(\zeta^{i}\alpha^k)\}_{i=1}^{k}$. Let
 
 $$
 G := \{\{\zeta^i x_j\}_{i=0}^k\}_{j=0}^{t-1}
-\cup \{\zeta^i\alpha^k\}_{i=0}^{k-1}
-\cup \{\zeta^{k+i+1} \alpha^k\}_{i=0}^{k-1}
+\cup \{\zeta^i\alpha^k\}_{i=1}^{k}
 $$
 
 the set of indeterminates in which $s_k$ is evaluated.
 
-In total, there are $g := t(k+1) + 2k$ elements revealed by the $t$ in-domain and 2 out-of-domain rows. As long as
+In total, there are $g := t(k+1) + k$ elements revealed by the $t$ in-domain and 1 out-of-domain row. As long as
 $|G| = g$, the revealed elements uniquely determine $g$ points on $s_k(X)$, for any fixed quotient $q(X)$ and any
 admissible choice of $\zeta$. As long as $g \leqslant \rho |D|$, $s_k(X)$ can be found by interpolation. It follows that
-under these conditions, any revealed $t$ in-domain and 2 out-of-domain rows are independent of the quotient.
+under these conditions, any revealed combintation of $t$ in-domain and 1 out-of-domain row are independent of the quotient.
 
 Finally, we show that $|G| = g$. Because of the constraints on $\zeta$, $t$ distinct in-domain indeterminates $x_j$ give
 rise to $t(k+1)$ distinct indeterminates for $s_k$. In particular,
 
 1. $\{\zeta^i x_j\}_{i=0}^k$ is of size $(k+1)$ because of the multiplicative order of $\zeta$, and
-2. since all $x_j$ are sampled from a (co-set of) a 2-adic subgroup, there is no $x_j^\prime \neq x_j$ such that
+2. since all $x_j$ are sampled from the same coset, there is no $x_j^\prime \neq x_j$ such that
    $\zeta^ix_j = x_j^\prime$, since that would imply $\zeta^i = x_j^{-1} x_j^\prime$ be an element of a 2-adic subgroup,
    violating the second constraint on $\zeta$.
 
-As long as neither $\alpha^k$ nor $\zeta^k\alpha^k$ equals any of the in-domain indeterminates, the multiplicative order
-of $\zeta$ guarantees that the respective powers $\{\zeta^i\alpha^k\}_{i=0}^{k-1}$ and
-$\{\zeta^{k+i+1} \alpha^k\}_{i=0}^{k-1}$ contribute another $k$ distinct elements to $G$ respectively, proving
-$|G| = g$.
+The prover must reject $\alpha$ such that $\{\zeta^i\alpha^k\}_{i=1}^k$ and $\{\{\zeta^i x_j\}_{i=0}^k\}_{j=0}^{t-1}$ have a non-empty intersection. In this case, $\{\zeta^i\alpha^k\}_{i=1}^k$ contributes another $k$ distinct elements to $G$, proving $|G| = g$. In the non-interactive case, the probability of sampling a malicious $\alpha$ is negligible and may safely by ignored.
+
+Note that we cannot apply the same argument to the *second* out-of-domain row $\{s_{i}(\zeta^k\alpha^k)\}_{i=1}^{k}$ because after substitutions it maps to $\{s_k(\zeta^{2k-i} \alpha^k)\}_{i=1}^{k} = \{s_k(\zeta^{i} \alpha^k)\}_{i=k}^{2k-1}$ which repeats $s_k(\zeta^k \alpha^k)$. Therefore, we must have a second argument to show that the second out-of-domain row is *also* independent of the trace, which follows below.
+
+Consider the modified protocol where the prover sends not one $f$-tuple of out-of-domain trace rows corresponding to the preimage of $q(\alpha)$, but $k$-many $f$-tuples of out-of-domain trace rows corresponding to the preimages of $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ for a primitive $k$-th root of unity $\omega$. The extra margin $(k-1)ef$ on the bound on the number of trace randomizers $h$ guarantees that even these $k \times f$ extension-field rows are independent of the trace (as well as uniform). Consequently, the images $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ of these $f$-tuples are independent of the trace (though not necessarily uniform).
+
+From the segmentation equation 
+
+$$ q(X) = \sum_{i=0}^{k-1} X^i q_i(X^k) ,$$
+
+one obtains a bijection between $\{q(\omega^i X)\}_{i=0}^{k-1}$ and $\{q_i(X^k)\}_{i=0}^{k-1}$. To see this, substitute $X$ for all of $\{\omega^i X\}_{i=0}^{k}$ to obtain $k$ equations or one equation of $k$-vectors involving an invertible matrix and an invertible Hadamard product.
+
+It follows that the set $\{q(\omega^i \alpha)\}_{i=0}^{k-1}$ is bijectively equivalent to $\{q_i(\alpha^k)\}_{i=0}^{k-1}$. According to the definition of the randomized segments, $\{q_i(\alpha^k)\}_{i=0}^{k-1} = \{s_i(\alpha^k) + \zeta^i s_{i+1}(\zeta^k \alpha^k)\}$ and note that $\{s_i(\alpha^k)\}_{i=0}^{k-1}$ is exactly the first out-of-domain row of the randomized quotient table, which was already established to be independent of the trace (as well as uniform). Considering this first out-of-domain row fixed, there is also a bijective equivalence between $\{q_i(\alpha^k)\}_{i=0}^{k-1}$ and $\{s_{i+1}(\zeta^k \alpha^k)\}_{i=0}^{k-1} = \{s_{i}(\zeta^k \alpha^k)\}_{i=1}^{k}$, which is exactly the second out-of-domain row. It follows that even this second out-of-domain row is a deterministic image of a variable that is independent of the trace.
+
+Consequently, the distinguisher in the zero-knowledge game for this modified protocol cannot use this second out-of-domain row to his advantage. It follows that the distinguisher in the zero-knowledge game for the original protocol, which has strictly less information, cannot use it either.
 
 ### Simulation
 
