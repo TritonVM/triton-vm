@@ -10,7 +10,7 @@ techniques do in fact realize that intention.
 
 Triton VM applies three randomization steps, summarized as follows.
 
-1. A uniformly random polynomial is added to the batch of polynomials. With the addition of the batch randomizer, any
+1. A uniformly random polynomial, called the *batch randomizer*, is added to the batch of polynomials. With the addition of the batch randomizer, any
    linear combination of the trace and quotient polynomials is itself uniform and therefore perfectly independent of the
    witness. All codewords that arise in the course of the low-degree test are downstream from this linear combination
    and therefore share this property.
