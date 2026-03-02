@@ -85,7 +85,7 @@ $$ q(X) = \sum_{i=0}^{k-1} X^i q_i(X^k) .$$
 
 Note that $\rho$ is the rate of the Reed-Solomon code and $D$ its domain of definition. Moreover, note that $\rho D > N$ (where $N$ is the trace length) because of trace polynomial randomization.
 
-For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
+To use a randomized quotient table instead of these raw segments, construct $k+1$ segments $s_i(X)$ as follows:
 
 1. Sample $s_k(X)$ uniformly of degree less than $\rho |D|$.
 2. For $0 \leqslant i < k$, define $s_i(X) := q_i(X) - \zeta^i s_{i+1}(\zeta X)$.
