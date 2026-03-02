@@ -126,7 +126,7 @@ establishing the integrity of $p(\alpha)$ and $r(\alpha)$.
 Given $t$ rows of the quotient table, the distinguisher observes $\{s_i(x_j)\}$ for each of the $k+1$ segments and
 indeterminates $\{x_0, \ldots, x_{t-1}\}$. Using the definition of $s_i(X)$ for $i < k$, we can replace
 $s_i(x_j)$ by $-\zeta^i s_{i+1}(\zeta x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$ and ultimately by
-$(-1)^{k-i} \zeta^i \dots \zeta^k s_k(\zeta^{k-i} x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$. With
+$(-1)^{k-i} \zeta^i \cdots \zeta^k s_k(\zeta^{k-i} x_j) + \langle\!$ *terms that only depend on* $q(X) \rangle$. With
 every replacement, the indeterminate is sent to a new value $x_j \mapsto \zeta^{k-i} x_j \mapsto \ldots$. It follows
 that every row in-domain row is an invertible affine transformation of the vector $\{s_k(\zeta^{k-i} x_j)\}_{i=0}^k$,
 or equivalently, of the vector $\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient
