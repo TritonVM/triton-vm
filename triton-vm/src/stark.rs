@@ -2053,7 +2053,9 @@ impl Stark {
     ///
     /// Each column of the [main](MasterMainTable) and
     /// [auxiliary](MasterAuxTable) must be trace-randomized with this many
-    /// randomizers in order for the STARK to be Zero-Knowledge.
+    /// randomizers in order for the STARK to be Zero-Knowledge. The value
+    /// returned by this function corresponds to the symbol "h" in the
+    /// documentation.
     ///
     /// The type of the trace randomizers must be of the table's corresponding
     /// field, _i.e._, [base field](BFieldElement) elements for the main table
@@ -2061,7 +2063,8 @@ impl Stark {
     pub(crate) fn num_trace_randomizers(ldt: &dyn LowDegreeTest) -> usize {
         // For a detailed explanation of this formula, see the specification's
         // chapter on Zero Knowledge, section “Randomized Trace Polynomials”.
-        ldt.num_first_round_queries() + x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
+        ldt.num_first_round_queries()
+            + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
