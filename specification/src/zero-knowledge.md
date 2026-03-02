@@ -60,7 +60,7 @@ $\{x_0, \ldots, x_{h-1}\}$ gives $h$ points that $r_i(X)$ must agree with, and $
 interpolation. This method for obtaining $r_i(X)$ works for *any* trace polynomial $t_i(X)$.
 
 Since the target domain of the low-degree extension step, also known as the LDT domain, is a disjoint set from the trace domain, it follows that $h$ rows of the low-degree extended trace are independent of the trace. Let $t$ be the number of
-in-domain rows queried by the low-degree test. Obviously, $h \geqslant t$, but this alone is not enough because there
+in-domain rows queried by the low-degree test. Obviously, $h \geqslant t$ must be true for independence, but this alone is not enough because there
 are also out-of-domain rows released in the course of the DEEP-ALI protocol. For these rows we must take into account
 the extension degree $e$ as well as the fan-in $f$ of the AIR circuit. Since the out-of-domain indeterminate $\alpha$
 lives in the extension field, one out-of-domain row of the main table is equivalent to $e$ base field rows. Furthermore,
