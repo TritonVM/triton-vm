@@ -132,7 +132,7 @@ that every row in-domain row is an invertible affine transformation of the vecto
 or equivalently, of the vector $\{s_k(\zeta^i x_j)\}_{i=0}^k$, where the concrete transformation depends on the quotient
 $q(X)$ and on $\zeta$.
 
-The two out-of-domain rows each contain one fewer element. There, the corresponding vectors are
+The two out-of-domain rows each contain one element less. There, the corresponding vectors are
 $\{s_k(\zeta^i\alpha^k)\}_{i=0}^{k-1}$ and $\{s_k(\zeta^{k+i+1} \alpha^k)\}_{i=0}^{k-1}$, respectively. Let
 
 $$
