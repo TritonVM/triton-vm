@@ -79,9 +79,11 @@ batch-randomizer which adds another $h$ uniform coefficients.
 
 ### Quotient Table Randomization
 
-Segmentation is the process of splitting the large quotient polynomial $q(X)$ into $k$ segments $q_i(X)$ such that
+Segmentation is the process of splitting the large quotient polynomial $q(X)$ into $k$ segments $q_i(X)$ of degree less than $\rho |D|$ such that
 
 $$ q(X) = \sum_{i=0}^{k-1} X^i q_i(X^k) .$$
+
+Note that $\rho$ is the rate of the Reed-Solomon code and $D$ its domain of definition. Moreover, note that $\rho D > N$ (where $N$ is the trace length) because of trace polynomial randomization.
 
 For quotient randomization, construct $k+1$ segments $s_i(X)$ as follows:
 
