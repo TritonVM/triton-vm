@@ -53,7 +53,7 @@ $$ \hat{t}_i(X) = t_i(X) + Z(X) \cdot r_i(X) \enspace , $$
 where each $r_i(X)$ is a uniformly random polynomial over the respective field of degree less than $h$, and where $Z(X)$
 is the zerofier (vanishing polynomial) for the trace domain.
 
-The addition of $h$-coefficient randomizers ensures that $h$ values of $\hat{t}_i(X)$ are independent of $t_i(X)$,
+The addition of $h$-many randomizer coefficients ensures that $h$ values of $\hat{t}_i(X)$ are independent of $t_i(X)$,
 provided that $X$ is drawn from the same field and does not live in the trace domain. To see this, let
 $\{x_0, \ldots, x_{h-1}\}$ be distinct indeterminates satisfying these criteria. Restricting the above equation to
 $\{x_0, \ldots, x_{h-1}\}$ gives $h$ points that $r_i(X)$ must agree with, and $r_i(X)$ may be found through
