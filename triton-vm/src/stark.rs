@@ -2065,6 +2065,7 @@ impl Stark {
         // chapter on Zero Knowledge, section “Randomized Trace Polynomials”.
         ldt.num_first_round_queries()
             + NUM_QUOTIENT_SEGMENTS * x_field_element::EXTENSION_DEGREE * AIR_FAN_IN
+            + 1
     }
 
     /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the
@@ -2431,11 +2432,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"01927174222889700591,\
-            14617213337729255041,\
-            10619048299957057827,\
-            15382020919597448426,\
-            13660942097811523267",
+            @"08490340072595283145,\
+            08311687080158719967,\
+            03427158977522216236,\
+            12421988609384760621,\
+            07843058919046272224",
         );
     }
 
