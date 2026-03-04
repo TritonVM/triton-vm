@@ -68,7 +68,7 @@ to admit one evaluation of the AIR, $f$ rows must be supplied. So for the main t
 of $t + ef$ and for the auxiliary trace an equivalent of $t + f$ rows. Consequently, $h \geqslant t + ef$ for the main
 trace polynomials and $h \geqslant t + f$ for the auxiliary trace polynomials.
 
-For simplicity, we choose to have only one $h$ that works for both main and auxiliary traces. Furthermore, we anticipate the need for a margin of $(k-1)ef$ coefficients originating from the randomized quotient table. So: $h = t + kef$.
+For simplicity, we choose to have only one $h$ that works for both main and auxiliary traces. Furthermore, we anticipate the need for a margin of $(k-1)ef$ coefficients originating from the randomized quotient table, and 1 coefficient for the Merkle trees. So: $h = t + kef + 1$.
 
 **Note:** The batch-randomizer $\hat{r}(X)$ is also trace-randomized:
 $\hat{r}(X) = r(X) + Z(X) \cdot r_{\mathsf{w}}(X)$, where $r(X)$ is the *unrandomized* batch-randomizer of $N$ uniform
@@ -189,9 +189,34 @@ the verifier accepts.
 [BCS, §6 & §7](https://eprint.iacr.org/2016/116.pdf) presents and analyzes the canonical IOP-to-NIROP transformation.
 The analysis shows that that transformation retains zero-knowledge.
 
-Triton VM uses unsalted Merkle trees but otherwise the same transformation. However, the argument that zero-knowledge is
-retained is affected by this change.
+Triton VM uses Merkle trees without salts (or any other form of hiding commitment scheme) but otherwise the same transformation. However, the BCS argument that zero-knowledge is retained, fails when this change is applied. So below we articulate a new one. This argument is specific to the context of STARKs and may fail in a more general IOP context.
 
-TODO.
+The objects that are introduced by the BCS transform and that are *a priori* capable of leaking information are the Merkle authentication paths and Merkle roots. Without salts, these objects are images of data that should remain hidden.
+
+Distinguish on the one hand Merkle trees built from the batch codeword, or from codewords downstream from it; from on the other hand, Merkle trees built from low-degree-extended trace or quotient tables. Since the batch contains a batch randomizer, the batch codeword is a uniformly random Reed-Solomon codeword and perfectly independent of the trace. Therefore, even if the complete list of leaf-preimages to this Merkle root or of any Merkle root of a codeword downstream from it were released, that release would leak no information about the trace. It follows that the Merkle roots and authentication paths (or authentication structures, in case they are compressed) corresponding to the batch codeword or codewords downstream from it are independent of the trace.
+
+What remains is the Merkle trees built out of the low-degree-extended trace and quotient tables, with the important feature that both are randomized using the respective strategies described above. For these Merkle trees we quantitatively bound the the probability $P$ that information is leaked and show that this probability is negligible and concretely irrelevant.
+
+Consider instead of the internal Merkle nodes and Merkle roots, the complete list of leafs, whose preimages are rows in the low-degree-extended trace and quotient tables. Clearly the Merkle authentication paths and roots can be computed from this information, so it suffices to bound the amount of information leaked by these leafs instead.
+
+Consider the event in which the distinguisher recognizes one of these leaf digests because the digest appears as the image field of a list $L$ of preimage-and-image pairs produced by invoking the random oracle $Q$ times. (These invocations may even happen *after* the distinguisher receives the transcript.) If this event happens then all bets about concealing the trace are off because the distinguisher can infer the value from one more row than accounted for. If this event does not happen, then all observed leaf digests are new and therefore leak no information about their corresponding preimages.
+
+Consider first the low-degree-extended (and randomized) main trace. In order for the distinguisher to sample a preimage-and-image pair and row index whose image is observed as the leaf digest for that row, the distinguisher must make a correct guess at the entire set of main trace randomizers. (We consider the trace fixed.) The remaining 1 coefficient of margin on the number $h$ of randomizers *per column* means that there are $\mathsf{m}$ (number of columns) variables left to guess. Any one preimage-image pair from the list $L$ corresponds to $|D|$-many triples consisting of one preimage, one image, and one row index. So for every hash invocation, the distinguisher can test $|D|$ distinct guesses for the randomizers. The distinguisher is successful if he samples the correct set of main trace randomizers in any one of these $|D| \times Q$ guesses. The search space is $\mathbb{F}^\mathsf{m}$ so the probability of the distinguisher gleaning information from the main trace is no greater than $\frac{|D| Q}{|\mathbb{F}|^\mathsf{m}}$.
+
+An analogous argument holds for the auxiliary trace, where the number of columns is $\mathsf{w}-\mathsf{m}$ and the columns contain extension field elements. So the probability that the distinguisher gleans information from the auxiliary table is no greater than $\frac{|D| Q}{|\mathbb{F}|^{e(\mathsf{w}-\mathsf{m})}}$.
+
+For the quotient table, and considering the randomizers used for quotient table randomization fixed, any given row corresponds to $k$ quotient segments $\{q_i(X)\}_{i=0}^{k-1}$ and, via the segmentation equation, to $k$ values of the quotient $\{q(\omega^i X)\}_{i=0}^{k-1}$. That quotient value itself corresponds to $M$-many potential values of the $\mathsf{w}$-vector of randomized trace polynomials as preimages, where $M$ is at least $|\mathcal{C}|$, the number of constraints. The use of the term *preimage* here denotes not the inverse image of hash function evaluation but evaluation of the map that composes a) evaluation of the AIR constraints; b) division of the zerofiers; and c) taking the weighted linear sum.
+
+If the AIR circuit is not injective, then $M > |\mathcal{C}|$ and we bound $M$ as follows. Let $\mathsf{d}$ be the degree of the AIR. Then there are ${f\cdot\mathsf{w} + \mathsf{d} \choose \mathsf{d}}$ monomials of degree $\mathsf{d}$ or less in $f \cdot \mathsf{w}$ variables which correspond to a $f$-tuple of in-or-out-of-domain rows. To see this, consider that a there are $\# \star + \, \# |$ slots on a line to fill with $\# \star$ stars and $\# |$ bars and the resulting arrangement corresponds bijectively to a monomial of exactly degree $\# \star$ in $\# | + 1$ variables. Interpret the one extra variable as an imaginary one used to homogenize all monomials of non-max degree; then there are ${\#\star + \, \#| \choose \# \star}$ monomials of degree at most $\# \star$ in $\# |$ variables.
+
+Any value of the quotient $q(X)$ is a linear combination of these monomials. It follows that the number $M$ of corresponding $f$-tuples of $\mathsf{w}$-vectors of randomized trace values is bounded by ${f\cdot\mathsf{w} + \mathsf{d} \choose \mathsf{d}} - 1$.
+
+Therefore, whenever the distinguisher tests a candidate quotient row and finds that its hash is different from any leaf digest in the transcript, he can discount at most $k \cdot M \cdot |D|$ candidate $\mathsf{w}$-vectors of trace randomizers as viable candidates. The total number of discountable candidates is at most $k \cdot ({f\cdot\mathsf{w} + \mathsf{d} \choose \mathsf{d}} - 1) \cdot |D| \cdot Q$, which sounds large until you realize that the search space is $\mathbb{F}^{\mathsf{m} + e(\mathsf{w}-\mathsf{m})}$. The probability of the distinguisher gleaning information from the quotient table is therefore bounded by $\frac{k ({f\cdot\mathsf{w} + \mathsf{d} \choose \mathsf{d}} - 1) |D| Q}{|\mathbb{F}|^{\mathsf{m} + e(\mathsf{w}-\mathsf{m})}}$.
+
+In conclusion, the probability that the *computationally bounded* distinguisher, who limits himself to $Q$ invocations of the random oracle, finds in the transcript one of the responses to his random oracle queries, is bounded by
+
+$$ P \leq |D| \cdot  Q \cdot \left(\frac{1}{|\mathbb{F}|^\mathsf{m}} + \frac{1}{|\mathbb{F}|^{e(\mathsf{w}-\mathsf{m})}} + \frac{k \cdot ({f\cdot\mathsf{w} + \mathsf{d} \choose \mathsf{d}} - 1)}{|\mathbb{F}|^{\mathsf{m} + e(\mathsf{w}-\mathsf{m})}} \right).$$
 
 ### Zero-Knowledge IP to Zero-Knowledge NIP
+
+Applying the Fiat-Shamir transform does not affect the distribution of the transcript. It does, however, affect the simulator who needs to know the value of the challenge $\alpha$ before producing the commitments from which it is pseudorandomly derived. To achieve this, the simulator is defined relative to the *programmable random oracle model*, which enables him to specify (a sparse list of) query-response pairs that the random oracle must abide by.
