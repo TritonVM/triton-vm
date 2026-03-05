@@ -125,8 +125,11 @@ It might be the case, but is both out of our hands and a poor motivator for work
 
 ### Code
 
-Triton VM uses an [import granularity](https://rust-lang.github.io/rustfmt/#imports_granularity) of `item` and a [group order strategy](https://rust-lang.github.io/rustfmt/#group_imports) of `StdExternalCrate` in order to trivialize git merging of imports.
-Unfortunately, both of these `cargo_fmt` features are unstable for now and thus require manual editing or a formatting pass with nightly rust.
+Triton VM uses an [import granularity](https://github.com/rust-lang/rustfmt/issues/4991) of `item` and a
+[group order strategy](https://github.com/rust-lang/rustfmt/issues/5083) of `StdExternalCrate` in order to trivialize
+git merging of imports.
+Unfortunately, both of these `rustfmt` features are unstable for now and thus require manual editing or a formatting
+pass with nightly rust.
 
 Other than that, Triton VM has no formal style requirements at the moment.
 However, the core contributors might impose their (informal) style requirements on your pull request. 😊
@@ -149,4 +152,4 @@ Summarizing:
 
 ## Attribution
 
-This guide is based on the [contributing.md](https://contributing.md/generator).
+This guide is based on the [contributing.md](https://contributing.md/generator/).

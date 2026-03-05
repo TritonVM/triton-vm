@@ -37,7 +37,7 @@ jobs:
           restore-keys: cache-lychee-
 
       - name: Link Checker
-        uses: lycheeverse/lychee-action@v2.3.0
+        uses: lycheeverse/lychee-action@v2.8.0
         id: lychee_run
         with:
           args: |
@@ -45,9 +45,6 @@ jobs:
             --no-progress
             --cache
             --cache-exclude-status 400..=599
-            --max-concurrency 1
-            --max-retries 1
-            --retry-wait-time 60
             '.'
         continue-on-error: true
 
