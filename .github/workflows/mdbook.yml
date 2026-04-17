@@ -2,20 +2,28 @@ name: mdBook
 
 on:
   push:
-    branches:
-      - master
+    branches: [ "master" ]
   pull_request:
-    branches:
-      - master
+    branches: [ "master" ]
+
+permissions: { }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   mdbook:
     name: mdBook
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: jontze/action-mdbook@v4
+      - uses: jontze/action-mdbook@6c0be56d14c4bf16861b00af61f50ff7400ce502 # v4.0.0
         with:
           token: ${{secrets.GITHUB_TOKEN}}
           mdbook-version: "~0.5.2"

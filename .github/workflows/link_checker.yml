@@ -1,15 +1,19 @@
 name: Link Checker
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [ "master" ]
   pull_request:
-    branches:
-      - master
+    branches: [ "master" ]
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions: { }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 # Original source, at commit with id 444094f5:
 # https://github.com/kdeldycke/workflows/blob/main/.github/workflows/lint.yaml
@@ -18,15 +22,16 @@ jobs:
     name: Link Checker
     runs-on: ubuntu-latest
     permissions:
-      actions: write
-      contents: read
       issues: write # required for peter-evans/create-issue-from-file
+      contents: read
 
     # Manually manage the life-cycle of issues created in this job because the
     # `create-issue-from-file` action blindly creates issues ad-nauseam.
     # See also: https://github.com/peter-evans/create-issue-from-file/issues/298
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Decide whether to run lychee
         id: should_run_lychee
@@ -57,7 +62,7 @@ jobs:
       - name: Restore lychee cache
         id: restore_cache
         if: steps.should_run_lychee.outputs.should_run_lychee == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .lycheecache
           key: cache-lychee-${{ github.sha }}
@@ -66,7 +71,7 @@ jobs:
       - name: Link Checker
         id: lychee_run
         if: steps.should_run_lychee.outputs.should_run_lychee == 'true'
-        uses: lycheeverse/lychee-action@v2.8.0
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
         with:
           args: |
             --verbose
@@ -84,13 +89,14 @@ jobs:
       - name: Delete old lychee cache
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MATCHED_KEY: ${{ steps.restore_cache.outputs.cache-matched-key }}
         if: steps.should_run_lychee.outputs.should_run_lychee == 'true'
-        run: gh cache delete ${{ steps.restore_cache.outputs.cache-matched-key }}
+        run: gh cache delete ${MATCHED_KEY}
         continue-on-error: true
 
       - name: Save lychee cache
         if: ${{ !cancelled() && steps.should_run_lychee.outputs.should_run_lychee == 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .lycheecache
           key: cache-lychee-${{ github.sha }}
@@ -99,15 +105,18 @@ jobs:
         if: github.ref == 'refs/heads/master'
         id: issue_groups
         shell: python
+        env:
+          LYCHEE_EXIT_CODE: ${{ steps.lychee_run.outputs.exit_code }}
+          OPEN_ISSUES_RAW: ${{ steps.should_run_lychee.outputs.issues }}
         run: |
           import json
           import os
           from operator import itemgetter
           from pathlib import Path
 
-          exit_code = """${{ steps.lychee_run.outputs.exit_code }}"""
           # If lychee was skipped, treat exit_code as 0 (no broken links found).
-          if not exit_code.strip():
+          exit_code = os.environ.get("LYCHEE_EXIT_CODE")
+          if not exit_code:
               exit_code = "0"
           print(f"Lychee exit code: {exit_code!r}")
           broken_links_found = bool(int(exit_code))
@@ -116,7 +125,7 @@ jobs:
           else:
               print("No broken link found: close all open issues.")
 
-          open_issues_raw = '${{ steps.should_run_lychee.outputs.issues }}'
+          open_issues_raw = os.environ.get("OPEN_ISSUES_RAW")
           if open_issues_raw:
               open_issues = json.loads(open_issues_raw)
           else:
@@ -143,16 +152,20 @@ jobs:
 
       - name: Print issue groups
         if: github.ref == 'refs/heads/master'
+        env:
+          BROKEN_LINKS: ${{ steps.issue_groups.outputs.broken_links_found }}
+          ISSUE_TO_UPDATE: ${{ steps.issue_groups.outputs.issue_to_update }}
+          ISSUES_TO_CLOSE: ${{ steps.issue_groups.outputs.issues_to_close }}
         run: |
-          echo "Broken links found: ${{ steps.issue_groups.outputs.broken_links_found }}"
-          echo "Issue to update: ${{ steps.issue_groups.outputs.issue_to_update }}"
-          echo "Issues to close: ${{ steps.issue_groups.outputs.issues_to_close }}"
+          echo "Broken links found: ${BROKEN_LINKS}"
+          echo "Issue to update: ${ISSUE_TO_UPDATE}"
+          echo "Issues to close: ${ISSUES_TO_CLOSE}"
 
       - name: Create or update issue
         if: >
           github.ref == 'refs/heads/master'
           && fromJSON(steps.issue_groups.outputs.broken_links_found)
-        uses: peter-evans/create-issue-from-file@v5.0.1
+        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
         with:
           title: "Broken links"
           issue-number: ${{ steps.issue_groups.outputs.issue_to_update }}
@@ -165,10 +178,12 @@ jobs:
           && steps.issue_groups.outputs.issues_to_close
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TO_UPDATE: ${{ steps.issue_groups.outputs.issue_to_update }}
+          ISSUES_TO_CLOSE: ${{ steps.issue_groups.outputs.issues_to_close }}
         run: |
-          for number in ${{ steps.issue_groups.outputs.issues_to_close }}; do
-              if [[ "${{ steps.issue_groups.outputs.issue_to_update }}" =~ ^[0-9]+$ ]]; then
-                  comment="Superseded by #${{ steps.issue_groups.outputs.issue_to_update }}.";
+          for number in ${ISSUES_TO_CLOSE}; do
+              if [[ "${ISSUE_TO_UPDATE}" =~ ^[0-9]+$ ]]; then
+                  comment="Superseded by #${ISSUE_TO_UPDATE}.";
               else
                   comment="All broken links are fixed. 👏"
               fi
@@ -176,8 +191,10 @@ jobs:
           done
 
       - name: Fail workflow on broken links
+        env:
+          LYCHEE_EXIT_CODE: ${{ steps.lychee_run.outputs.exit_code }}
         run: |
-          exit_code="${{ steps.lychee_run.outputs.exit_code }}"
+          exit_code="${LYCHEE_EXIT_CODE}"
           if [ -z "$exit_code" ]; then
             # lychee didn't run, treat as no broken links
             exit 0

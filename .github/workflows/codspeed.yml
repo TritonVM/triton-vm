@@ -2,14 +2,18 @@ name: CodSpeed
 
 on:
   push:
-    branches:
-      - master
+    branches: [ "master" ]
   pull_request:
-    branches:
-      - master
+    branches: [ "master" ]
   # `workflow_dispatch` allows CodSpeed to trigger backtest
   # performance analysis in order to generate initial data.
   workflow_dispatch:
+
+permissions: { }
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmarks:
@@ -17,28 +21,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write # for OpenID Connect authentication with CodSpeed
     strategy:
       matrix:
         benchmark: [ bezout_coeffs, mem_io, prove_fib, verify_halt, degree_lowering ]
         mode: [ simulation, memory ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup install
 
       - name: Install codspeed
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@a2352fc6ce487f030a3aa709482d57823eadfb37 # v2.75.16
         with:
           tool: cargo-codspeed
 
       - name: Build benchmarks
-        run: cargo codspeed build --bench ${{ matrix.benchmark }}
+        env:
+          BENCHMARK: ${{ matrix.benchmark }}
+        run: cargo codspeed build --bench $BENCHMARK
 
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v4
+        uses: CodSpeedHQ/action@db35df748deb45fdef0960669f57d627c1956c30 # v4.13.1
         with:
           mode: ${{ matrix.mode }}
           run: cargo codspeed run
