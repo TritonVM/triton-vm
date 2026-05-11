@@ -20,6 +20,8 @@ use crate::vm::VMState;
 
 pub(crate) const USIZE_TO_U64_ERR: &str =
     "internal error: type `usize` should have at most 64 bits";
+pub(crate) const U32_TO_USIZE_ERR: &str =
+    "internal error: type `usize` should have at least 32 bits";
 
 /// Indicates a runtime error that resulted in a crash of Triton VM.
 #[derive(Debug, Clone, Eq, PartialEq, Error)]
@@ -78,36 +80,50 @@ pub enum ProofStreamError {
     DecodingError(#[from] <ProofStream as BFieldCodec>::Error),
 }
 
+/// Indicates the choice of an invalid combination of initial parameters for
+/// the [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-pub enum FriSetupError {
-    #[error("the expansion factor must be greater than 1")]
-    ExpansionFactorTooSmall,
+pub enum LdtParameterError {
+    #[error("the log₂ of the folding factor must be greater than or equal to 2, but is {0}")]
+    TooSmallLog2FoldingFactor(usize),
 
-    #[error("the expansion factor must be a power of 2")]
-    ExpansionFactorUnsupported,
+    #[error("the log₂ of the folding factor must be less than 32, but is {0}")]
+    TooBigLog2FoldingFactor(usize),
 
-    #[error("the expansion factor must be smaller than the domain length")]
-    ExpansionFactorMismatch,
+    #[error("the log₂ of the initial expansion factor must be greater than 0")]
+    TooSmallInitialExpansionFactor,
 
-    #[error(transparent)]
-    ArithmeticDomainError(#[from] ArithmeticDomainError),
+    #[error("the log₂ of the initial expansion factor must be less than 32")]
+    TooBigInitialExpansionFactor,
+
+    #[error("the “high degree” threshold must be greater than or equal to the folding factor")]
+    TooLowDegreeOfHighDegreePolynomials,
+
+    #[error("the initial domain must be shorter than 2^32, but was 2^{0}")]
+    InitialDomainTooBig(u64),
 }
 
+/// Indicates an error that occurred during
+/// [proving](crate::low_degree_test::LowDegreeTest::prove) of the
+/// [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Error)]
-pub enum FriProvingError {
-    #[error(transparent)]
-    MerkleTreeError(#[from] MerkleTreeError),
-
-    #[error(transparent)]
-    ArithmeticDomainError(#[from] ArithmeticDomainError),
+pub enum LdtProvingError {
+    #[error("initial domain len ({domain_len}) must equal first codeword len ({codeword_len})")]
+    InitialCodewordMismatch {
+        domain_len: usize,
+        codeword_len: usize,
+    },
 }
 
+/// Indicates an error that occurred during
+/// [verification](crate::low_degree_test::LowDegreeTest::verify) of the
+/// [low-degree test](crate::low_degree_test::LowDegreeTest).
 #[non_exhaustive]
 #[derive(Debug, Error)]
-pub enum FriValidationError {
-    #[error("the number of revealed leaves does not match the number of collinearity checks")]
+pub enum LdtVerificationError {
+    #[error("the number of revealed leaves does not match the number of (in-domain) queries")]
     IncorrectNumberOfRevealedLeaves,
 
     #[error("Merkle tree authentication failed")]
@@ -130,9 +146,6 @@ pub enum FriValidationError {
 
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
-
-    #[error(transparent)]
-    ArithmeticDomainError(#[from] ArithmeticDomainError),
 }
 
 #[non_exhaustive]
@@ -157,10 +170,10 @@ pub enum ProvingError {
     ArithmeticDomainError(#[from] ArithmeticDomainError),
 
     #[error(transparent)]
-    FriSetupError(#[from] FriSetupError),
+    LdtParameterError(#[from] LdtParameterError),
 
     #[error(transparent)]
-    FriProvingError(#[from] FriProvingError),
+    LdtProvingError(#[from] LdtProvingError),
 
     #[error(transparent)]
     VMError(#[from] VMError),
@@ -190,8 +203,8 @@ pub enum VerificationError {
     #[error("the number of received combination codeword indices does not match the parameters")]
     IncorrectNumberOfRowIndices,
 
-    #[error("the number of received FRI codeword values does not match the parameters")]
-    IncorrectNumberOfFRIValues,
+    #[error("the number of received low-degree test codeword values does not match the parameters")]
+    IncorrectNumberOfLowDegTestValues,
 
     #[error("the number of received quotient segment elements does not match the parameters")]
     IncorrectNumberOfQuotientSegmentElements,
@@ -209,10 +222,10 @@ pub enum VerificationError {
     ArithmeticDomainError(#[from] ArithmeticDomainError),
 
     #[error(transparent)]
-    FriSetupError(#[from] FriSetupError),
+    LdtParameterError(#[from] LdtParameterError),
 
     #[error(transparent)]
-    FriValidationError(#[from] FriValidationError),
+    LdtVerificationError(#[from] LdtVerificationError),
 }
 
 #[cfg(test)]
