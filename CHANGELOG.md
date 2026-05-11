@@ -3,6 +3,20 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [3.0.0](https://github.com/TritonVM/triton-vm/compare/v2.0.0..v3.0.0) - 2026-05-11
+
+### ✨ Features
+
+- (!) Make 32-bit architecture compatible ([d76f95fd](https://github.com/TritonVM/triton-vm/commit/d76f95fd))
+
+### 📚 Documentation
+
+- Add SECURITY.md ([b8ac5cb1](https://github.com/TritonVM/triton-vm/commit/b8ac5cb1))
+
+### ⚙️ Miscellaneous
+
+- Benchmark memory performance ([a7dab58d](https://github.com/TritonVM/triton-vm/commit/a7dab58d))
+
 ## [2.0.0](https://github.com/TritonVM/triton-vm/compare/v1.0.0..v2.0.0) - 2026-01-21
 
 ### ✨ Features
