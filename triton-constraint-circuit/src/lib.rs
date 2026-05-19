@@ -1150,6 +1150,8 @@ impl<'a, II: InputIndicator + Arbitrary<'a>> Arbitrary<'a> for ConstraintCircuit
 
         Ok(random_circuit)
     }
+
+    // no `fn size_hint(…)` here: I don't know how to estimate the size
 }
 
 fn random_circuit_leaf<'a, II: InputIndicator + Arbitrary<'a>>(

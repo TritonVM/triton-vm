@@ -212,6 +212,16 @@ impl<'a> Arbitrary<'a> for TypeHint {
         };
         Ok(type_hint)
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        arbitrary::size_hint::and_all(&[
+            usize::size_hint(depth), // starting index
+            usize::size_hint(depth), // length
+            bool::size_hint(depth),  // is type_name `Some`?
+            <TypeHintTypeName>::size_hint(depth),
+            <TypeHintVariableName>::size_hint(depth),
+        ])
+    }
 }
 
 /// A Triton VM instruction. See the
@@ -731,6 +741,19 @@ impl<'a> Arbitrary<'a> for LabelledInstruction {
 
         Ok(Self::Instruction(instruction))
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        let chosen_index_hint = usize::size_hint(depth);
+        let instruction_hint = arbitrary::size_hint::or_all(&[
+            <AnInstruction<String>>::size_hint(depth),
+            <InstructionLabel>::size_hint(depth),
+            <TypeHint>::size_hint(depth),
+            <AssertionContext>::size_hint(depth),
+        ]);
+        let label_hint = InstructionLabel::size_hint(depth);
+
+        arbitrary::size_hint::or_all(&[chosen_index_hint, instruction_hint, label_hint])
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -760,6 +783,10 @@ impl<'a> Arbitrary<'a> for InstructionLabel {
         }
         Ok(Self(label))
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        String::size_hint(depth)
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -785,6 +812,10 @@ impl<'a> Arbitrary<'a> for TypeHintVariableName {
             variable_name.push(*u.choose(&legal_characters)?);
         }
         Ok(Self(variable_name))
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <String>::size_hint(depth)
     }
 }
 
@@ -824,6 +855,10 @@ impl<'a> Arbitrary<'a> for TypeHintTypeName {
         }
 
         Ok(Self(type_name))
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        String::size_hint(depth)
     }
 }
 

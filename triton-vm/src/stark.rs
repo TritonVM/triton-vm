@@ -2108,6 +2108,15 @@ impl<'a> Arbitrary<'a> for Stark {
 
         Ok(stark)
     }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        arbitrary::size_hint::and_all(&[
+            usize::size_hint(depth), // security_level
+            usize::size_hint(depth), // log2_ldt_expansion_factor
+            <LdtChoice>::size_hint(depth),
+            <ProximityRegime>::size_hint(depth),
+        ])
+    }
 }
 
 /// Fiat-Shamir-sampled challenges to compress a row into a single

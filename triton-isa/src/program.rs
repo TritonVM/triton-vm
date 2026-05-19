@@ -184,6 +184,8 @@ impl<'a> Arbitrary<'a> for Program {
 
         Ok(Program::new(&labelled_instructions))
     }
+
+    // no `fn size_hint(…)` here: I don't know how to estimate the size
 }
 
 /// An `InstructionIter` loops the instructions of a `Program` by skipping

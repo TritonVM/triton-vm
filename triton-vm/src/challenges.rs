@@ -22,10 +22,14 @@
 //!   is computed directly from the public input (respectively output) and the
 //!   indeterminate.
 
-use arbitrary::Arbitrary;
 use std::ops::Index;
 use std::ops::Range;
 use std::ops::RangeInclusive;
+
+use arbitrary::Arbitrary;
+use arbitrary::MaxRecursionReached;
+use arbitrary::Unstructured;
+use arbitrary::size_hint;
 use strum::EnumCount;
 use twenty_first::prelude::*;
 use twenty_first::tip5;
@@ -40,7 +44,7 @@ use crate::prelude::Claim;
 /// challenges are known only at runtime. The challenges are indexed using enum
 /// [`ChallengeId`]. The `Challenges` struct is essentially a thin wrapper
 /// around an array of [`XFieldElement`]s, providing convenience methods.
-#[derive(Debug, Clone, Arbitrary)]
+#[derive(Debug, Clone)]
 pub struct Challenges {
     pub challenges: [XFieldElement; Self::COUNT],
 }
@@ -164,6 +168,31 @@ impl Index<RangeInclusive<ChallengeId>> for Challenges {
 
     fn index(&self, indices: RangeInclusive<ChallengeId>) -> &Self::Output {
         &self[indices.start().index()..=indices.end().index()]
+    }
+}
+
+impl Arbitrary<'_> for Challenges {
+    fn arbitrary(u: &mut Unstructured<'_>) -> arbitrary::Result<Self> {
+        let claim = u.arbitrary()?;
+        let challenges: [_; Challenges::SAMPLE_COUNT] = u.arbitrary()?;
+        let challenges = Challenges::new(challenges.to_vec(), &claim);
+
+        Ok(challenges)
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        Self::try_size_hint(depth).unwrap_or_default()
+    }
+
+    fn try_size_hint(depth: usize) -> Result<(usize, Option<usize>), MaxRecursionReached> {
+        size_hint::try_recursion_guard(depth, |depth| {
+            let size_hint = size_hint::and(
+                Claim::try_size_hint(depth)?,
+                <[XFieldElement; Self::SAMPLE_COUNT]>::try_size_hint(depth)?,
+            );
+
+            Ok(size_hint)
+        })
     }
 }
 
