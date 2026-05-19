@@ -1535,7 +1535,7 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
     use rand::Rng;
-    use rand::RngCore;
+    use rand::RngExt;
     use rand::SeedableRng;
     use rand::distr::StandardUniform;
     use rand::prelude::StdRng;

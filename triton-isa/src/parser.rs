@@ -900,7 +900,7 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
-    use rand::Rng;
+    use rand::RngExt;
     use strum::EnumCount;
     use test_strategy::Arbitrary;
     use test_strategy::proptest;

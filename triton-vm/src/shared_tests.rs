@@ -5,7 +5,7 @@ use num_traits::Zero;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest_arbitrary_adapter::arb;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use rand::prelude::StdRng;
 use test_strategy::Arbitrary;

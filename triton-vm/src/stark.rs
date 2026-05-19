@@ -2197,7 +2197,6 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
     use proptest_arbitrary_adapter::arb;
-    use rand::Rng;
     use rand::prelude::*;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
