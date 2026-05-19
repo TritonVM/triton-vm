@@ -318,6 +318,7 @@ impl Display for ExecutionTraceProfile {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
+    use dev_util::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
 
     use crate::prelude::InstructionError;
     use crate::prelude::TableId;
@@ -328,8 +329,7 @@ mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn profile_can_be_created_and_agrees_with_regular_vm_run() {
-        let program =
-            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+        let program = calculate_new_mmr_peaks_from_append_with_safe_lists();
         let (profile_output, profile) = VM::profile(program.clone(), [].into(), [].into()).unwrap();
         let mut vm_state = VMState::new(program.clone(), [].into(), [].into());
         assert!(let Ok(()) = vm_state.run());

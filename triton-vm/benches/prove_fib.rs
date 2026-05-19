@@ -2,7 +2,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use dev_util::ProgramToBench;
-use triton_vm::example_programs::FIBONACCI_SEQUENCE;
+use dev_util::example_programs::fibonacci_sequence;
 use triton_vm::prelude::*;
 
 const FIBONACCI_INDEX: u32 = 100;
@@ -16,8 +16,8 @@ criterion_group! {
 
 /// cargo criterion --bench prove_fib
 fn prove_fib(c: &mut Criterion) {
-    let program = FIBONACCI_SEQUENCE.clone();
-    let program = ProgramToBench::new(format!("Prove Fibonacci {FIBONACCI_INDEX}"), program)
+    let name = format!("Prove Fibonacci {FIBONACCI_INDEX}");
+    let program = ProgramToBench::new(name, fibonacci_sequence())
         .public_input(bfe_vec![FIBONACCI_INDEX])
         .assemble();
 

@@ -2,6 +2,7 @@
 //!
 //! This crate is not intended for publication on crates.io.
 
+#![recursion_limit = "4096"]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use bon::Builder;
@@ -18,6 +19,8 @@ use triton_vm::prelude::VM;
 use triton_vm::prelude::bfe_array;
 use triton_vm::prelude::triton_program;
 use triton_vm::profiler::VMPerformanceProfile;
+
+pub mod example_programs;
 
 /// Ties together a program with its inputs, name, and the proof system to use.
 #[derive(Debug, Clone, Eq, PartialEq, Builder)]

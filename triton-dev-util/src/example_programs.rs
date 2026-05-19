@@ -1,21 +1,9 @@
-use isa::program::Program;
-use isa::triton_program;
-use lazy_static::lazy_static;
+//! A small collection of programs written in Triton assembly.
 
-lazy_static! {
-    pub static ref FIBONACCI_SEQUENCE: Program = fibonacci_sequence();
-    pub static ref GREATEST_COMMON_DIVISOR: Program = greatest_common_divisor();
-    pub static ref PROGRAM_WITH_MANY_U32_INSTRUCTIONS: Program =
-        program_with_many_u32_instructions();
-    pub static ref VERIFY_SUDOKU: Program = verify_sudoku();
-    pub static ref CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS: Program =
-        calculate_new_mmr_peaks_from_append_with_safe_lists();
-    pub static ref MERKLE_TREE_AUTHENTICATION_PATH_VERIFY: Program =
-        merkle_tree_authentication_path_verify();
-    pub static ref MERKLE_TREE_UPDATE: Program = merkle_tree_update();
-}
+use triton_vm::prelude::Program;
+use triton_vm::prelude::triton_program;
 
-fn fibonacci_sequence() -> Program {
+pub fn fibonacci_sequence() -> Program {
     triton_program!(
         // initialize stack: ⊥ 0 1 i
         push 0
@@ -49,7 +37,7 @@ fn fibonacci_sequence() -> Program {
     )
 }
 
-fn greatest_common_divisor() -> Program {
+pub fn greatest_common_divisor() -> Program {
     triton_program!(
         read_io 2    // _ a b
         dup 1        // _ a b a
@@ -79,7 +67,7 @@ fn greatest_common_divisor() -> Program {
     )
 }
 
-fn program_with_many_u32_instructions() -> Program {
+pub fn program_with_many_u32_instructions() -> Program {
     triton_program!(
         push 1311768464867721216 split
         push 13387 push 78810 lt
@@ -110,7 +98,7 @@ fn program_with_many_u32_instructions() -> Program {
 /// Triton program to verify Merkle authentication paths.
 /// - input: merkle root, number of leafs, leaf values, APs
 /// - output: Result<(), VMFail>
-fn merkle_tree_authentication_path_verify() -> Program {
+pub fn merkle_tree_authentication_path_verify() -> Program {
     triton_program!(
         read_io 1                                   // number of authentication paths to test
                                                     // stack: [num]
@@ -191,7 +179,7 @@ fn merkle_tree_authentication_path_verify() -> Program {
 ///     - new leaf
 /// - output:
 ///     - new root
-fn merkle_tree_update() -> Program {
+pub fn merkle_tree_update() -> Program {
     triton_program! {
         read_io 3           // _ *ap leaf_index tree_height
         push 2 pow add      // _ *ap node_index
@@ -215,158 +203,7 @@ fn merkle_tree_update() -> Program {
     }
 }
 
-fn verify_sudoku() -> Program {
-    // RAM layout:
-    // 0..=8: primes for mapping digits 1..=9
-    // 9: flag for whether the Sudoku is valid
-    // 10..=90: the Sudoku grid
-    //
-    // 10 11 12  13 14 15  16 17 18
-    // 19 20 21  22 23 24  25 26 27
-    // 28 29 30  31 32 33  34 35 36
-    //
-    // 37 38 39  40 41 42  43 44 45
-    // 46 47 48  49 50 51  52 53 54
-    // 55 56 57  58 59 60  61 62 63
-    //
-    // 64 65 66  67 68 69  70 71 72
-    // 73 74 75  76 77 78  79 80 81
-    // 82 83 84  85 86 87  88 89 90
-
-    triton_program!(
-        call initialize_flag
-        call initialize_primes
-        call read_sudoku
-        call write_sudoku_and_check_rows
-        call check_columns
-        call check_squares
-        call assert_flag
-
-        // For checking whether the Sudoku is valid. Initially `true`, set to
-        // `false` if any inconsistency is found.
-        initialize_flag:
-            push 1                        // _ 1
-            push 0                        // _ 1 0
-            write_mem 1                   // _ 1
-            pop 1                         // _
-            return
-
-        invalidate_flag:
-            push 0                        // _ 0
-            push 0                        // _ 0 0
-            write_mem 1                   // _ 1
-            pop 1                         // _
-            return
-
-        assert_flag:
-            push 0                        // _ 0
-            read_mem 1                    // _ flag -1
-            pop 1                         // _ flag
-            assert                        // _
-            halt
-
-        // For mapping legal Sudoku digits to distinct primes. Helps with
-        // checking consistency of rows, columns, and boxes.
-        initialize_primes:
-            push 23 push 19 push 17
-            push 13 push 11 push  7
-            push  5 push  3 push  2
-            push 1 write_mem 5 write_mem 4
-            pop 1
-            return
-
-        read_sudoku:
-            call read9 call read9 call read9
-            call read9 call read9 call read9
-            call read9 call read9 call read9
-            return
-
-        read9:
-            call read1 call read1 call read1
-            call read1 call read1 call read1
-            call read1 call read1 call read1
-            return
-
-        // Applies the mapping from legal Sudoku digits to distinct primes.
-        read1:                            // _
-            read_io 1                     // _ d
-            read_mem 1                    // _ p d-1
-            pop 1                         // _ p
-            return
-
-        write_sudoku_and_check_rows:      // row0 row1 row2 row3 row4 row5 row6 row7 row8
-            push 10                       // row0 row1 row2 row3 row4 row5 row6 row7 row8 10
-            call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 row7 19
-            call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 27
-            call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 36
-            call write_and_check_one_row  // row0 row1 row2 row3 row4 45
-            call write_and_check_one_row  // row0 row1 row2 row3 54
-            call write_and_check_one_row  // row0 row1 row2 63
-            call write_and_check_one_row  // row0 row1 72
-            call write_and_check_one_row  // row0 81
-            call write_and_check_one_row  // 90
-            pop 1                         // ⊥
-            return
-
-        write_and_check_one_row:          // row addr
-            dup 9 dup 9 dup 9
-            dup 9 dup 9 dup 9
-            dup 9 dup 9 dup 9             // row addr row
-            call check_9_numbers          // row addr
-            write_mem 5 write_mem 4       // addr+9
-            return
-
-        check_columns:
-            push 82 call check_one_column
-            push 83 call check_one_column
-            push 84 call check_one_column
-            push 85 call check_one_column
-            push 86 call check_one_column
-            push 87 call check_one_column
-            push 88 call check_one_column
-            push 89 call check_one_column
-            push 90 call check_one_column
-            return
-
-        check_one_column:
-            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 push -8 add
-            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 push -8 add
-            read_mem 1 push -8 add read_mem 1 push -8 add read_mem 1 pop 1
-            call check_9_numbers
-            return
-
-        check_squares:
-            push 30 call check_one_square
-            push 33 call check_one_square
-            push 36 call check_one_square
-            push 57 call check_one_square
-            push 60 call check_one_square
-            push 63 call check_one_square
-            push 84 call check_one_square
-            push 87 call check_one_square
-            push 90 call check_one_square
-            return
-
-        check_one_square:
-            read_mem 3 push -6 add
-            read_mem 3 push -6 add
-            read_mem 3 pop 1
-            call check_9_numbers
-            return
-
-        check_9_numbers:
-            mul mul mul
-            mul mul mul
-            mul mul
-            // 223092870 = 2·3·5·7·11·13·17·19·23
-            push 223092870 eq
-            skiz return
-            call invalidate_flag
-            return
-    )
-}
-
-pub(crate) fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
+pub fn calculate_new_mmr_peaks_from_append_with_safe_lists() -> Program {
     triton_program!(
         // Stack and memory setup
         push 0                          // _ 0

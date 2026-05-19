@@ -2188,6 +2188,9 @@ pub(crate) mod tests {
     use assert2::assert;
     use assert2::check;
     use constraint_circuit::ConstraintCircuitBuilder;
+    use dev_util::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
+    use dev_util::example_programs::fibonacci_sequence;
+    use dev_util::example_programs::program_with_many_u32_instructions;
     use isa::error::OpStackError;
     use isa::instruction::Instruction;
     use isa::op_stack::OpStackElement;
@@ -2996,16 +2999,13 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
-        let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-            .with_input(bfe_array![100]);
+        let program = TestableProgram::new(fibonacci_sequence()).with_input(bfe_array![100]);
         triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_big_mmr_snippet() -> ConstraintResult {
-        let program = TestableProgram::new(
-            crate::example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone(),
-        );
+        let program = TestableProgram::new(calculate_new_mmr_peaks_from_append_with_safe_lists());
         triton_constraints_evaluate_to_zero(program)
     }
 
@@ -3423,7 +3423,7 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn prove_and_verify_fibonacci_100() {
-        TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+        TestableProgram::new(fibonacci_sequence())
             .with_input(PublicInput::from(bfe_array![100]))
             .prove_and_verify();
     }
@@ -3454,16 +3454,13 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_many_u32_operations() -> ConstraintResult {
-        let many_u32_instructions = TestableProgram::new(
-            crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone(),
-        );
+        let many_u32_instructions = TestableProgram::new(program_with_many_u32_instructions());
         triton_constraints_evaluate_to_zero(many_u32_instructions)
     }
 
     #[macro_rules_attr::apply(test)]
     fn prove_verify_many_u32_operations() {
-        TestableProgram::new(crate::example_programs::PROGRAM_WITH_MANY_U32_INSTRUCTIONS.clone())
-            .prove_and_verify();
+        TestableProgram::new(program_with_many_u32_instructions()).prove_and_verify();
     }
 
     #[macro_rules_attr::apply(proptest)]

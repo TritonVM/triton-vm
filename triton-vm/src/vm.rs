@@ -1522,6 +1522,10 @@ pub(crate) mod tests {
     use std::ops::BitXor;
 
     use assert2::assert;
+    use dev_util::example_programs::fibonacci_sequence;
+    use dev_util::example_programs::greatest_common_divisor;
+    use dev_util::example_programs::merkle_tree_authentication_path_verify;
+    use dev_util::example_programs::merkle_tree_update;
     use isa::instruction::ALL_INSTRUCTIONS;
     use isa::instruction::AnInstruction;
     use isa::instruction::LabelledInstruction;
@@ -1624,7 +1628,7 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn initialise_table() {
-        let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
+        let program = greatest_common_divisor();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
         VM::trace_execution(program, stdin, secret_in).unwrap();
@@ -1632,7 +1636,7 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn run_tvm_gcd() {
-        let program = crate::example_programs::GREATEST_COMMON_DIVISOR.clone();
+        let program = greatest_common_divisor();
         let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
         let secret_in = NonDeterminism::default();
         assert!(let Ok(stdout) = VM::run(program, stdin, secret_in));
@@ -2012,7 +2016,7 @@ pub(crate) mod tests {
             public_input.extend(old_root.reversed().values());
             public_input.extend(self.new_leaf.reversed().values());
 
-            TestableProgram::new(crate::example_programs::MERKLE_TREE_UPDATE.clone())
+            TestableProgram::new(merkle_tree_update())
                 .with_input(public_input)
                 .with_non_determinism(non_determinism)
         }
@@ -2999,7 +3003,7 @@ pub(crate) mod tests {
             public_input.extend(revealed_leaf.reversed().values());
         }
 
-        let program = crate::example_programs::MERKLE_TREE_AUTHENTICATION_PATH_VERIFY.clone();
+        let program = merkle_tree_authentication_path_verify();
         assert!(let Ok(_) = VM::run(program, public_input.into(), non_determinism));
     }
 
@@ -3085,8 +3089,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn run_tvm_fibonacci() {
         for (input, expected_output) in [(0, 1), (7, 21), (11, 144)] {
-            let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-                .with_input(bfe_array![input]);
+            let program = TestableProgram::new(fibonacci_sequence()).with_input(bfe_array![input]);
             assert!(let Ok(output) = program.run());
             assert!(let &[output] = &output[..]);
             assert!(expected_output == output.value(), "input was: {input}");
@@ -3162,47 +3165,6 @@ pub(crate) mod tests {
         let program = triton_program!(nop);
         assert!(let Err(err) = VM::trace_execution(program, [].into(), [].into()));
         assert!(let InstructionError::InstructionPointerOverflow = err.source);
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn verify_sudoku() {
-        let program = crate::example_programs::VERIFY_SUDOKU.clone();
-        let sudoku = [
-            8, 5, 9, /*  */ 7, 6, 1, /*  */ 4, 2, 3, //
-            4, 2, 6, /*  */ 8, 5, 3, /*  */ 7, 9, 1, //
-            7, 1, 3, /*  */ 9, 2, 4, /*  */ 8, 5, 6, //
-            /************************************ */
-            9, 6, 1, /*  */ 5, 3, 7, /*  */ 2, 8, 4, //
-            2, 8, 7, /*  */ 4, 1, 9, /*  */ 6, 3, 5, //
-            3, 4, 5, /*  */ 2, 8, 6, /*  */ 1, 7, 9, //
-            /************************************ */
-            5, 3, 4, /*  */ 6, 7, 8, /*  */ 9, 1, 2, //
-            6, 7, 2, /*  */ 1, 9, 5, /*  */ 3, 4, 8, //
-            1, 9, 8, /*  */ 3, 4, 2, /*  */ 5, 6, 7, //
-        ];
-
-        let std_in = PublicInput::from(sudoku.map(|b| bfe!(b)));
-        let secret_in = NonDeterminism::default();
-        assert!(let Ok(_) = VM::trace_execution(program.clone(), std_in, secret_in));
-
-        // rows and columns adhere to Sudoku rules, boxes do not
-        let bad_sudoku = [
-            1, 2, 3, /*  */ 4, 5, 7, /*  */ 8, 9, 6, //
-            4, 3, 1, /*  */ 5, 2, 9, /*  */ 6, 7, 8, //
-            2, 7, 9, /*  */ 6, 1, 3, /*  */ 5, 8, 4, //
-            /************************************ */
-            7, 6, 5, /*  */ 3, 4, 8, /*  */ 9, 2, 1, //
-            5, 1, 4, /*  */ 9, 8, 6, /*  */ 7, 3, 2, //
-            6, 8, 2, /*  */ 7, 9, 4, /*  */ 1, 5, 3, //
-            /************************************ */
-            3, 5, 6, /*  */ 8, 7, 2, /*  */ 4, 1, 9, //
-            9, 4, 8, /*  */ 1, 3, 5, /*  */ 2, 6, 7, //
-            8, 9, 7, /*  */ 2, 6, 1, /*  */ 3, 4, 5, //
-        ];
-        let bad_std_in = PublicInput::from(bad_sudoku.map(|b| bfe!(b)));
-        let secret_in = NonDeterminism::default();
-        assert!(let Err(err) = VM::trace_execution(program, bad_std_in, secret_in));
-        assert!(let InstructionError::AssertionFailed(_) = err.source);
     }
 
     fn instruction_does_not_change_vm_state_when_crashing_vm(

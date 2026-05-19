@@ -2,6 +2,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use dev_util::ProgramToBench;
+use dev_util::example_programs::fibonacci_sequence;
 use triton_vm::config::CacheDecision;
 use triton_vm::prelude::BFieldElement;
 use triton_vm::prelude::bfe_array;
@@ -14,8 +15,8 @@ criterion_group!(
 );
 
 fn prove_fib<const N: u64>(c: &mut Criterion) {
-    let program = triton_vm::example_programs::FIBONACCI_SEQUENCE.clone();
-    let program = ProgramToBench::new(format!("prove_fib_{N}"), program)
+    let name = format!("prove_fib_{N}");
+    let program = ProgramToBench::new(name, fibonacci_sequence())
         .public_input(bfe_array![N])
         .assemble();
 

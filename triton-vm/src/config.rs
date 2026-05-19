@@ -94,8 +94,9 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use dev_util::example_programs::fibonacci_sequence;
+
     use super::*;
-    use crate::example_programs::FIBONACCI_SEQUENCE;
     use crate::prelude::*;
     use crate::shared_tests::TestableProgram;
     use crate::tests::test;
@@ -113,7 +114,7 @@ mod tests {
     }
 
     fn prove_and_verify_a_triton_vm_program() {
-        TestableProgram::new(FIBONACCI_SEQUENCE.clone())
+        TestableProgram::new(fibonacci_sequence())
             .with_input(PublicInput::from(bfe_array![100]))
             .prove_and_verify();
     }

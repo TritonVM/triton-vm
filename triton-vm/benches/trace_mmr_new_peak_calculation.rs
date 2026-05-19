@@ -2,7 +2,7 @@ use criterion::BatchSize;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use triton_vm::example_programs;
+use dev_util::example_programs;
 use triton_vm::prelude::VM;
 
 criterion_main!(benches);
@@ -14,7 +14,7 @@ criterion_group! {
 }
 
 fn run_mmr_new_peak_calculation(criterion: &mut Criterion) {
-    let program = example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+    let program = example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists();
 
     criterion.bench_function("Run finding new peaks for MMR", |bencher| {
         bencher.iter_batched(
@@ -26,7 +26,7 @@ fn run_mmr_new_peak_calculation(criterion: &mut Criterion) {
 }
 
 fn trace_mmr_new_peak_calculation(criterion: &mut Criterion) {
-    let program = example_programs::CALCULATE_NEW_MMR_PEAKS_FROM_APPEND_WITH_SAFE_LISTS.clone();
+    let program = example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists();
 
     criterion.bench_function("Trace execution of finding new peaks for MMR", |bencher| {
         bencher.iter_batched(

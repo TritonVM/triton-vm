@@ -192,7 +192,6 @@ pub mod challenges;
 pub mod config;
 pub mod constraints;
 pub mod error;
-pub mod example_programs;
 pub mod execution_trace_profiler;
 pub mod low_degree_test;
 pub mod memory_layout;
@@ -301,6 +300,7 @@ pub fn verify(stark: Stark, claim: &Claim, proof: &Proof) -> bool {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use assert2::assert;
+    use dev_util::example_programs::fibonacci_sequence;
     use isa::instruction::LabelledInstruction;
     use isa::instruction::TypeHint;
     use proptest::prelude::*;
@@ -521,7 +521,7 @@ mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn prove_then_verify_concurrently() {
-        let program = crate::example_programs::FIBONACCI_SEQUENCE.clone();
+        let program = fibonacci_sequence();
         let input = PublicInput::from(bfe_array![100]);
 
         let (stark, claim, proof) =
