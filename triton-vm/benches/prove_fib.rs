@@ -1,7 +1,7 @@
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-
+use dev_util::ProgramToBench;
 use triton_vm::example_programs::FIBONACCI_SEQUENCE;
 use triton_vm::prelude::*;
 
@@ -17,24 +17,12 @@ criterion_group! {
 /// cargo criterion --bench prove_fib
 fn prove_fib(c: &mut Criterion) {
     let program = FIBONACCI_SEQUENCE.clone();
-    let public_input = PublicInput::new(bfe_vec![FIBONACCI_INDEX]);
-    let claim = Claim::about_program(&program).with_input(public_input.clone());
+    let program = ProgramToBench::new(format!("Prove Fibonacci {FIBONACCI_INDEX}"), program)
+        .public_input(bfe_vec![FIBONACCI_INDEX])
+        .assemble();
 
-    let (aet, output) =
-        VM::trace_execution(program, public_input, NonDeterminism::default()).unwrap();
-    let claim = claim.with_output(output);
-
-    let stark = Stark::default();
-    let bench_id = format!("Prove Fibonacci {FIBONACCI_INDEX}");
-    triton_vm::profiler::start(&bench_id);
-    c.bench_function(&bench_id, |b| b.iter(|| stark.prove(&claim, &aet).unwrap()));
-    let profile = triton_vm::profiler::finish();
-
-    let padded_height = aet.padded_height();
-    let ldt = stark.ldt(padded_height).unwrap();
-    let profile = profile
-        .with_cycle_count(aet.processor_trace.nrows())
-        .with_padded_height(padded_height)
-        .with_ldt_domain_len(ldt.initial_domain().len());
+    triton_vm::profiler::start(&program.name);
+    c.bench_function(&program.name, |b| b.iter(|| program.prove()));
+    let profile = program.fill_performance_profile(triton_vm::profiler::finish());
     eprintln!("{profile}");
 }

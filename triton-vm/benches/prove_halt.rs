@@ -1,8 +1,7 @@
-use air::table::TableId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-
+use dev_util::ProgramToBench;
 use triton_vm::prelude::*;
 
 criterion_main!(benches);
@@ -15,26 +14,9 @@ criterion_group! {
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(c: &mut Criterion) {
-    let program = triton_program!(halt);
-    let claim = Claim::about_program(&program);
-    let (aet, output) =
-        VM::trace_execution(program, PublicInput::default(), NonDeterminism::default()).unwrap();
-
-    let stark = Stark::default();
-    let claim = claim.with_output(output);
-    let proof = stark.prove(&claim, &aet).unwrap();
-
-    triton_vm::profiler::start("Prove Halt");
-    c.bench_function("Prove Halt", |b| {
-        b.iter(|| stark.prove(&claim, &aet).unwrap())
-    });
-    let profile = triton_vm::profiler::finish();
-
-    let padded_height = proof.padded_height().unwrap();
-    let ldt = stark.ldt(padded_height).unwrap();
-    let profile = profile
-        .with_cycle_count(aet.height_of_table(TableId::Processor))
-        .with_padded_height(padded_height)
-        .with_ldt_domain_len(ldt.initial_domain().len());
+    let program = ProgramToBench::new("Prove Halt", triton_program!(halt)).assemble();
+    triton_vm::profiler::start(&program.name);
+    c.bench_function(&program.name, |b| b.iter(|| program.prove()));
+    let profile = program.fill_performance_profile(triton_vm::profiler::finish());
     eprintln!("{profile}");
 }

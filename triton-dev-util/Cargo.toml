@@ -1,0 +1,20 @@
+[package]
+name = "triton-dev-util"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+documentation.workspace = true
+
+publish = false
+
+[dependencies]
+bon.workspace = true
+triton-vm.workspace = true
+
+[lints]
+workspace = true

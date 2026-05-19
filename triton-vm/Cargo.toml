@@ -46,6 +46,7 @@ web-time.workspace = true
 [dev-dependencies]
 assert2.workspace = true
 constraint-circuit.workspace = true
+dev-util.workspace = true
 fs-err.workspace = true
 insta.workspace = true
 macro_rules_attr.workspace = true

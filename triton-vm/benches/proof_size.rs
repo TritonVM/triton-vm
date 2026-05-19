@@ -7,24 +7,15 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::measurement::Measurement;
 use criterion::measurement::ValueFormatter;
+use dev_util::ProgramToBench;
 use itertools::Itertools;
 use strum::Display;
 use strum::EnumCount;
 use strum::EnumIter;
-use triton_vm::aet::AlgebraicExecutionTrace;
 use triton_vm::low_degree_test::ProximityRegime;
 use triton_vm::prelude::*;
 use triton_vm::proof_stream::ProofStream;
 use triton_vm::stark::LdtChoice;
-
-/// Ties together a program with its inputs, name, and the proof system to use.
-struct ProgramToBench {
-    name: String,
-    program: Program,
-    public_input: PublicInput,
-    non_determinism: NonDeterminism,
-    stark: Stark,
-}
 
 /// The measurement unit for Criterion.
 #[derive(Debug, Copy, Clone)]
@@ -58,109 +49,49 @@ fn bench_proof_sizes(
     for log2_padded_height in 8..=11 {
         let program = ProgramToBench::spin(log2_padded_height).with_stark(stark);
         let id = BenchmarkId::new(&program.name, program.log2_ldt_domain_length());
-        group.bench_function(id, |b| b.iter_custom(|n| program.sum_of_proof_lengths(n)));
-        program.print_proof_size_breakdown();
+        group.bench_function(id, |b| b.iter_custom(|n| sum_of_proof_lengths(&program, n)));
+        print_proof_size_breakdown(&program);
     }
 }
 
-impl ProgramToBench {
-    fn spin(log2_padded_height: u64) -> Self {
-        let name = format!("spin_{log2_padded_height}");
-        let program = triton_program!(
-            read_io 1   // _ log₂(padded height)
-            addi -3
-            push 2
-            pow         // _ num_iterations
-            place 5
-            call spin
-            halt
+fn sum_of_proof_lengths(program: &ProgramToBench, num_iterations: u64) -> ProofSize {
+    let sum_of_proof_lengths = (0..num_iterations)
+        .map(|_| program.prove().encode().len())
+        .sum::<usize>();
 
-            spin:
-              pick 5 addi -1 place 5
-              recurse_or_return
-        );
-        let public_input = PublicInput::new(bfe_vec![log2_padded_height]);
+    ProofSize(sum_of_proof_lengths as f64)
+}
 
-        ProgramToBench {
-            name,
-            program,
-            public_input,
-            non_determinism: NonDeterminism::default(),
-            stark: Stark::default(),
-        }
+/// Print a tabular breakdown of the proof size for this
+/// program-to-benchmark.
+//
+// Prints to stderr in order to not interfere with `cargo`.
+fn print_proof_size_breakdown(program: &ProgramToBench) {
+    let proof = program.prove();
+    let proof_stream = ProofStream::try_from(&proof).unwrap();
+    let mut proof_size_breakdown = HashMap::new();
+    for item in &proof_stream.items {
+        *proof_size_breakdown.entry(item.to_string()).or_insert(0) += item.encode().len();
     }
 
-    #[must_use]
-    fn with_stark(mut self, stark: Stark) -> Self {
-        self.stark = stark;
-        self
+    // sort by item's size, in descending order
+    let mut proof_size_breakdown = proof_size_breakdown.into_iter().collect_vec();
+    proof_size_breakdown.sort_by_key(|&(_, size)| size);
+    proof_size_breakdown.reverse();
+    let total_proof_size = proof.encode().len();
+
+    eprintln!();
+    eprintln!("Proof size breakdown for {}:", &program.name);
+    eprintln!(
+        "| {:<30} | {:>10} | {:>6} |",
+        "Category", "Size [bfe]", "[%]"
+    );
+    eprintln!("|:{:-<30}-|-{:->10}:|-{:->6}:|", "", "", "");
+    for (category, size) in proof_size_breakdown {
+        let relative_size = (size as f64) / (total_proof_size as f64) * 100.0;
+        eprintln!("| {category:<30} | {size:>10} | {relative_size:>6.2} |");
     }
-
-    /// The base 2, integer logarithm of the length of the low-degree test domain.
-    fn log2_ldt_domain_length(&self) -> u32 {
-        let (aet, _) = self.trace_execution();
-        let ldt = self.stark.ldt(aet.padded_height()).unwrap();
-
-        ldt.initial_domain().len().ilog2()
-    }
-
-    fn prove(&self) -> Proof {
-        let (aet, public_output) = self.trace_execution();
-        let claim = Claim::about_program(&self.program)
-            .with_input(self.public_input.clone())
-            .with_output(public_output);
-
-        self.stark.prove(&claim, &aet).unwrap()
-    }
-
-    fn trace_execution(&self) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
-        VM::trace_execution(
-            self.program.clone(),
-            self.public_input.clone(),
-            self.non_determinism.clone(),
-        )
-        .unwrap()
-    }
-
-    fn sum_of_proof_lengths(&self, num_iterations: u64) -> ProofSize {
-        let sum_of_proof_lengths = (0..num_iterations)
-            .map(|_| self.prove().encode().len())
-            .sum::<usize>();
-
-        ProofSize(sum_of_proof_lengths as f64)
-    }
-
-    /// Print a tabular breakdown of the proof size for this
-    /// program-to-benchmark.
-    //
-    // Prints to stderr in order to not interfere with `cargo`.
-    fn print_proof_size_breakdown(&self) {
-        let proof = self.prove();
-        let proof_stream = ProofStream::try_from(&proof).unwrap();
-        let mut proof_size_breakdown = HashMap::new();
-        for item in &proof_stream.items {
-            *proof_size_breakdown.entry(item.to_string()).or_insert(0) += item.encode().len();
-        }
-
-        // sort by item's size, in descending order
-        let mut proof_size_breakdown = proof_size_breakdown.into_iter().collect_vec();
-        proof_size_breakdown.sort_by_key(|&(_, size)| size);
-        proof_size_breakdown.reverse();
-        let total_proof_size = proof.encode().len();
-
-        eprintln!();
-        eprintln!("Proof size breakdown for {}:", &self.name);
-        eprintln!(
-            "| {:<30} | {:>10} | {:>6} |",
-            "Category", "Size [bfe]", "[%]"
-        );
-        eprintln!("|:{:-<30}-|-{:->10}:|-{:->6}:|", "", "", "");
-        for (category, size) in proof_size_breakdown {
-            let relative_size = (size as f64) / (total_proof_size as f64) * 100.0;
-            eprintln!("| {category:<30} | {size:>10} | {relative_size:>6.2} |");
-        }
-        eprintln!();
-    }
+    eprintln!();
 }
 
 impl Measurement for ProofSize {
