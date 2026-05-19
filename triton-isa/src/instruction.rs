@@ -965,10 +965,11 @@ pub mod tests {
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
-    use rand::RngExt;
+    use proptest::prop_assert;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use strum::VariantNames;
+    use test_strategy::proptest;
     use twenty_first::prelude::*;
 
     use crate::triton_asm;
@@ -1196,11 +1197,12 @@ pub mod tests {
         }
     }
 
-    #[test]
-    fn instruction_bit_conversion_fails_for_invalid_bit_index() {
-        let invalid_bit_index = rand::rng().random_range(InstructionBit::COUNT..=usize::MAX);
+    #[proptest]
+    fn instruction_bit_conversion_fails_for_invalid_bit_index(
+        #[strategy(InstructionBit::COUNT..)] invalid_bit_index: usize,
+    ) {
         let maybe_instruction_bit = InstructionBit::try_from(invalid_bit_index);
-        assert!(maybe_instruction_bit.is_err());
+        prop_assert!(maybe_instruction_bit.is_err());
     }
 
     #[test]

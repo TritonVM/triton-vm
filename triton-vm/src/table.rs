@@ -129,44 +129,64 @@ mod tests {
     use itertools::Itertools;
     use ndarray::Array2;
     use ndarray::ArrayView2;
-    use rand::prelude::*;
+    use proptest::collection::vec;
+    use proptest_arbitrary_adapter::arb;
     use rand::random;
-
-    use crate::challenges::Challenges;
-    use crate::prelude::Claim;
-    use crate::table::degree_lowering::DegreeLoweringTable;
-    use crate::tests::test;
+    use test_strategy::Arbitrary;
 
     use super::*;
+    use crate::challenges::Challenges;
+    use crate::table::degree_lowering::DegreeLoweringTable;
+    use crate::tests::proptest;
+    use crate::tests::test;
+
+    /// Test-helper for evaluating constraint circuits.
+    #[derive(Debug, Clone, Arbitrary)]
+    struct DummyTableData {
+        #[strategy(vec(arb(), Self::NUM_ROWS * MasterMainTable::NUM_COLUMNS))]
+        main_rows: Vec<BFieldElement>,
+
+        #[strategy(vec(arb(), Self::NUM_ROWS * MasterAuxTable::NUM_COLUMNS))]
+        aux_rows: Vec<XFieldElement>,
+
+        #[strategy(arb())]
+        challenges: Challenges,
+    }
+
+    impl DummyTableData {
+        /// “Current row” and “next row” to facilitate transition constraints.
+        const NUM_ROWS: usize = 2;
+
+        fn main_rows(&self) -> Array2<BFieldElement> {
+            let shape = [Self::NUM_ROWS, MasterMainTable::NUM_COLUMNS];
+            let rows = self.main_rows.clone();
+
+            Array2::from_shape_vec(shape, rows).unwrap()
+        }
+
+        fn aux_rows(&self) -> Array2<XFieldElement> {
+            let shape = [Self::NUM_ROWS, MasterAuxTable::NUM_COLUMNS];
+            let rows = self.aux_rows.clone();
+
+            Array2::from_shape_vec(shape, rows).unwrap()
+        }
+    }
 
     /// Verify that all nodes evaluate to a unique value when given a randomized
     /// input. If this is not the case two nodes that are not equal evaluate
     /// to the same value.
     fn table_constraints_prop<II: InputIndicator>(
-        constraints: &[ConstraintCircuit<II>],
         table_name: &str,
+        constraints: &[ConstraintCircuit<II>],
+        table_data: &DummyTableData,
     ) {
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
+        let main_rows = table_data.main_rows();
+        let aux_rows = table_data.aux_rows();
+        let challenges = &table_data.challenges.challenges;
 
-        let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.random();
-        let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &dummy_claim);
-        let challenges = &challenges.challenges;
-
-        let num_rows = 2;
-        let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
-        let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
-        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.random::<BFieldElement>());
-        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.random::<XFieldElement>());
-        let main_rows = main_rows.view();
-        let aux_rows = aux_rows.view();
-
-        let mut values = HashMap::new();
+        let mut vals = HashMap::new();
         for c in constraints {
-            evaluate_assert_unique(c, challenges, main_rows, aux_rows, &mut values);
+            evaluate_assert_unique(c, challenges, main_rows.view(), aux_rows.view(), &mut vals);
         }
 
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
@@ -215,8 +235,8 @@ mod tests {
         value
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn nodes_are_unique_for_all_constraints() {
+    #[macro_rules_attr::apply(proptest(cases = 2))]
+    fn nodes_are_unique_for_all_constraints(data: DummyTableData) {
         fn build_constraints<II: InputIndicator>(
             multicircuit_builder: &dyn Fn(
                 &ConstraintCircuitBuilder<II>,
@@ -235,10 +255,10 @@ mod tests {
                 let cons = build_constraints(&$table::consistency_constraints);
                 let tran = build_constraints(&$table::transition_constraints);
                 let term = build_constraints(&$table::terminal_constraints);
-                table_constraints_prop(&init, concat!(stringify!($table), " init"));
-                table_constraints_prop(&cons, concat!(stringify!($table), " cons"));
-                table_constraints_prop(&tran, concat!(stringify!($table), " tran"));
-                table_constraints_prop(&term, concat!(stringify!($table), " term"));
+                table_constraints_prop(concat!(stringify!($table), " init"), &init, &data);
+                table_constraints_prop(concat!(stringify!($table), " cons"), &cons, &data);
+                table_constraints_prop(concat!(stringify!($table), " tran"), &tran, &data);
+                table_constraints_prop(concat!(stringify!($table), " term"), &term, &data);
             }};
         }
 
@@ -263,14 +283,11 @@ mod tests {
     fn lower_degree_and_assert_properties<II: InputIndicator>(
         multicircuit: &mut [ConstraintCircuitMonad<II>],
         info: DegreeLoweringInfo,
+        table_data: &DummyTableData,
     ) -> (
         Vec<ConstraintCircuitMonad<II>>,
         Vec<ConstraintCircuitMonad<II>>,
     ) {
-        let seed = random();
-        let mut rng = StdRng::seed_from_u64(seed);
-        println!("seed: {seed}");
-
         let num_constraints = multicircuit.len();
         println!("original multicircuit:");
         for circuit in multicircuit.iter() {
@@ -310,23 +327,13 @@ mod tests {
 
         // Use the Schwartz-Zippel lemma to check that no two substitution rules
         // are equal.
-        let dummy_claim = Claim::default();
-        let challenges: [XFieldElement; Challenges::SAMPLE_COUNT] = rng.random();
-        let challenges = challenges.to_vec();
-        let challenges = Challenges::new(challenges, &dummy_claim);
-        let challenges = &challenges.challenges;
-
-        let num_rows = 2;
-        let main_shape = [num_rows, MasterMainTable::NUM_COLUMNS];
-        let aux_shape = [num_rows, MasterAuxTable::NUM_COLUMNS];
-        let main_rows = Array2::from_shape_simple_fn(main_shape, || rng.random::<BFieldElement>());
-        let aux_rows = Array2::from_shape_simple_fn(aux_shape, || rng.random::<XFieldElement>());
-        let main_rows = main_rows.view();
-        let aux_rows = aux_rows.view();
+        let main_rows = table_data.main_rows();
+        let aux_rows = table_data.aux_rows();
+        let challenges = &table_data.challenges.challenges;
 
         let evaluated_substitution_rules = substitution_rules
             .iter()
-            .map(|c| c.evaluate(main_rows, aux_rows, challenges));
+            .map(|c| c.evaluate(main_rows.view(), aux_rows.view(), challenges));
 
         let mut values_to_index = HashMap::new();
         for (idx, value) in evaluated_substitution_rules.enumerate() {
@@ -390,8 +397,8 @@ mod tests {
         };
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn degree_lowering_works_correctly_for_all_tables() {
+    #[macro_rules_attr::apply(proptest(cases = 2))]
+    fn degree_lowering_works_correctly_for_all_tables(data: DummyTableData) {
         macro_rules! assert_degree_lowering {
             ($table:ident ($main_end:ident, $aux_end:ident)) => {{
                 let degree_lowering_info = DegreeLoweringInfo {
@@ -401,19 +408,19 @@ mod tests {
                 };
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut init = $table::initial_constraints(&circuit_builder);
-                lower_degree_and_assert_properties(&mut init, degree_lowering_info);
+                lower_degree_and_assert_properties(&mut init, degree_lowering_info, &data);
 
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut cons = $table::consistency_constraints(&circuit_builder);
-                lower_degree_and_assert_properties(&mut cons, degree_lowering_info);
+                lower_degree_and_assert_properties(&mut cons, degree_lowering_info, &data);
 
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut tran = $table::transition_constraints(&circuit_builder);
-                lower_degree_and_assert_properties(&mut tran, degree_lowering_info);
+                lower_degree_and_assert_properties(&mut tran, degree_lowering_info, &data);
 
                 let circuit_builder = ConstraintCircuitBuilder::new();
                 let mut term = $table::terminal_constraints(&circuit_builder);
-                lower_degree_and_assert_properties(&mut term, degree_lowering_info);
+                lower_degree_and_assert_properties(&mut term, degree_lowering_info, &data);
             }};
         }
 

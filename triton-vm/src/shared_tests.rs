@@ -11,6 +11,7 @@ use rand::prelude::StdRng;
 use test_strategy::Arbitrary;
 use twenty_first::prelude::*;
 
+use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::VMError;
@@ -143,19 +144,14 @@ impl TestableProgram {
         self
     }
 
-    pub fn public_input(&self) -> PublicInput {
-        self.public_input.clone()
-    }
-
-    pub fn non_determinism(&self) -> NonDeterminism {
-        self.non_determinism.clone()
-    }
-
     /// A thin wrapper around [`VM::run`].
     pub fn run(self) -> Result<Vec<BFieldElement>, VMError> {
-        let public_input = self.public_input();
-        let non_determinism = self.non_determinism();
-        VM::run(self.program, public_input, non_determinism)
+        VM::run(self.program, self.public_input, self.non_determinism)
+    }
+
+    /// A thin wrapper around [`VM::trace_execution`].
+    pub fn trace_execution(self) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>), VMError> {
+        VM::trace_execution(self.program, self.public_input, self.non_determinism)
     }
 
     /// Prove correct execution of the program, then verify said proof.
@@ -246,6 +242,12 @@ impl TestableProgram {
             master_aux_table,
             challenges,
         }
+    }
+}
+
+impl From<Program> for TestableProgram {
+    fn from(program: Program) -> Self {
+        TestableProgram::new(program)
     }
 }
 

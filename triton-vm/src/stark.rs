@@ -2168,6 +2168,8 @@ pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::fmt::Formatter;
+    use std::ops::BitAnd;
+    use std::ops::BitXor;
     use std::ops::RangeInclusive;
 
     use air::AIR;
@@ -2199,10 +2201,13 @@ pub(crate) mod tests {
     use constraint_circuit::ConstraintCircuitBuilder;
     use dev_util::example_programs::calculate_new_mmr_peaks_from_append_with_safe_lists;
     use dev_util::example_programs::fibonacci_sequence;
+    use dev_util::example_programs::merkle_tree_update;
     use dev_util::example_programs::program_with_many_u32_instructions;
     use isa::error::OpStackError;
     use isa::instruction::Instruction;
+    use isa::instruction::LabelledInstruction;
     use isa::op_stack::OpStackElement;
+    use isa::triton_asm;
     use itertools::izip;
     use num_traits::One;
     use proptest::collection::vec;
@@ -2211,6 +2216,7 @@ pub(crate) mod tests {
     use proptest_arbitrary_adapter::arb;
     use rand::prelude::*;
     use strum::EnumCount;
+    use strum::EnumIter;
     use strum::IntoEnumIterator;
     use thiserror::Error;
 
@@ -2219,6 +2225,7 @@ pub(crate) mod tests {
     use crate::config::CacheDecision;
     use crate::error::InstructionError;
     use crate::low_degree_test::tests::LdtStats;
+    use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::TestableProgram;
     use crate::shared_tests::arbitrary_polynomial_of_degree;
     use crate::table::auxiliary_table;
@@ -2229,60 +2236,7 @@ pub(crate) mod tests {
     use crate::triton_program;
     use crate::vm::NonDeterminism;
     use crate::vm::VM;
-    use crate::vm::tests::ProgramForMerkleTreeUpdate;
-    use crate::vm::tests::ProgramForRecurseOrReturn;
-    use crate::vm::tests::ProgramForSpongeAndHashInstructions;
-    use crate::vm::tests::property_based_test_program_for_and;
-    use crate::vm::tests::property_based_test_program_for_assert_vector;
-    use crate::vm::tests::property_based_test_program_for_div_mod;
-    use crate::vm::tests::property_based_test_program_for_eq;
-    use crate::vm::tests::property_based_test_program_for_is_u32;
-    use crate::vm::tests::property_based_test_program_for_log2floor;
-    use crate::vm::tests::property_based_test_program_for_lsb;
-    use crate::vm::tests::property_based_test_program_for_lt;
-    use crate::vm::tests::property_based_test_program_for_pop_count;
-    use crate::vm::tests::property_based_test_program_for_pow;
-    use crate::vm::tests::property_based_test_program_for_random_ram_access;
-    use crate::vm::tests::property_based_test_program_for_split;
-    use crate::vm::tests::property_based_test_program_for_xb_dot_step;
-    use crate::vm::tests::property_based_test_program_for_xor;
-    use crate::vm::tests::property_based_test_program_for_xx_dot_step;
-    use crate::vm::tests::test_program_0_lt_0;
-    use crate::vm::tests::test_program_claim_in_ram_corresponds_to_currently_running_program;
-    use crate::vm::tests::test_program_for_add_mul_invert;
-    use crate::vm::tests::test_program_for_and;
-    use crate::vm::tests::test_program_for_assert_vector;
     use crate::vm::tests::test_program_for_call_recurse_return;
-    use crate::vm::tests::test_program_for_div_mod;
-    use crate::vm::tests::test_program_for_divine;
-    use crate::vm::tests::test_program_for_eq;
-    use crate::vm::tests::test_program_for_halt;
-    use crate::vm::tests::test_program_for_hash;
-    use crate::vm::tests::test_program_for_log2floor;
-    use crate::vm::tests::test_program_for_lsb;
-    use crate::vm::tests::test_program_for_lt;
-    use crate::vm::tests::test_program_for_many_sponge_instructions;
-    use crate::vm::tests::test_program_for_merkle_step_left_sibling;
-    use crate::vm::tests::test_program_for_merkle_step_mem_left_sibling;
-    use crate::vm::tests::test_program_for_merkle_step_mem_right_sibling;
-    use crate::vm::tests::test_program_for_merkle_step_right_sibling;
-    use crate::vm::tests::test_program_for_pop_count;
-    use crate::vm::tests::test_program_for_pow;
-    use crate::vm::tests::test_program_for_push_pop_dup_swap_nop;
-    use crate::vm::tests::test_program_for_read_io_write_io;
-    use crate::vm::tests::test_program_for_recurse_or_return;
-    use crate::vm::tests::test_program_for_skiz;
-    use crate::vm::tests::test_program_for_split;
-    use crate::vm::tests::test_program_for_sponge_instructions;
-    use crate::vm::tests::test_program_for_sponge_instructions_2;
-    use crate::vm::tests::test_program_for_starting_with_pop_count;
-    use crate::vm::tests::test_program_for_write_mem_read_mem;
-    use crate::vm::tests::test_program_for_x_invert;
-    use crate::vm::tests::test_program_for_xb_mul;
-    use crate::vm::tests::test_program_for_xor;
-    use crate::vm::tests::test_program_for_xx_add;
-    use crate::vm::tests::test_program_for_xx_mul;
-    use crate::vm::tests::test_program_hash_nop_nop_lt;
 
     impl Stark {
         pub const LOW_SECURITY_LEVEL: usize = 32;
@@ -2985,8 +2939,10 @@ pub(crate) mod tests {
     check_constraints_fn!(fn check_u32_table_constraints for U32Table);
     check_constraints_fn!(fn check_cross_table_constraints for GrandCrossTableArg);
 
-    fn triton_constraints_evaluate_to_zero(program: TestableProgram) -> ConstraintResult {
-        let artifacts = program.generate_proof_artifacts();
+    fn triton_constraints_evaluate_to_zero(
+        program: impl Into<TestableProgram>,
+    ) -> ConstraintResult {
+        let artifacts = program.into().generate_proof_artifacts();
         let mmt = artifacts.master_main_table.trace_table();
         let mat = artifacts.master_aux_table.trace_table();
         assert!(mmt.nrows() == mat.nrows());
@@ -3020,7 +2976,21 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_halt() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_halt())
+        triton_constraints_evaluate_to_zero(triton_program!(halt))
+    }
+
+    fn test_program_hash_nop_nop_lt() -> TestableProgram {
+        let push_5_zeros = triton_asm![push 0; 5];
+        let program = triton_program! {
+            {&push_5_zeros} hash
+            nop
+            {&push_5_zeros} hash
+            nop nop
+            {&push_5_zeros} hash
+            push 3 push 2 lt assert
+            halt
+        };
+        TestableProgram::new(program)
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3030,17 +3000,26 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_push_pop_dup_swap_nop() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_push_pop_dup_swap_nop())
+        let program = triton_program!(
+            push 1 push 2 pop 1 assert
+            push 1 dup  0 assert assert
+            push 1 push 2 swap 1 assert pop 1
+            nop nop nop halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_divine() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_divine())
+        let program = TestableProgram::new(triton_program!(divine 1 assert halt))
+            .with_non_determinism(bfe_array![1]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_skiz() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_skiz())
+        let program = triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt);
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3050,10 +3029,84 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_recurse_or_return() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_recurse_or_return())
+        let program = triton_program! {
+            push 5 swap 5
+            push 0 swap 5
+            call label
+            halt
+            label:
+                swap 5
+                push 1 add
+                swap 5
+                recurse_or_return
+        };
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(proptest(cases = 20))]
+    /// Test helper for property testing instruction `recurse_or_return`.
+    ///
+    /// The [assembled](Self::assemble) program
+    /// - sets up a loop counter,
+    /// - populates ST6 with some “iteration terminator”,
+    /// - reads successive elements from standard input, and
+    /// - compares them to the iteration terminator using `recurse_or_return`.
+    ///
+    /// The program halts after the loop has run for the expected number of
+    /// iterations, crashing the VM if the number of iterations does not match
+    /// expectations.
+    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    pub struct ProgramForRecurseOrReturn {
+        #[strategy(arb())]
+        iteration_terminator: BFieldElement,
+
+        #[strategy(arb())]
+        #[filter(#other_iterator_values.iter().all(|&v| v != #iteration_terminator))]
+        other_iterator_values: Vec<BFieldElement>,
+    }
+
+    impl ProgramForRecurseOrReturn {
+        pub fn assemble(self) -> TestableProgram {
+            let expected_num_iterations = self.other_iterator_values.len() + 1;
+
+            let program = triton_program! {
+                // set up iteration counter
+                push 0 hint iteration_counter = stack[0]
+
+                // set up termination condition
+                push {self.iteration_terminator}
+                swap 6
+
+                call iteration_loop
+
+                // check iteration counter
+                push {expected_num_iterations}
+                eq assert
+                halt
+
+                iteration_loop:
+                    // increment iteration counter
+                    push 1 add
+
+                    // check loop termination
+                    swap 5
+                    pop 1
+                    read_io 1
+                    swap 5
+                    recurse_or_return
+            };
+
+            let mut input = self.other_iterator_values;
+            input.push(self.iteration_terminator);
+            TestableProgram::new(program).with_input(input)
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn property_based_recurse_or_return_program_sanity_check(program: ProgramForRecurseOrReturn) {
+        program.assemble().run()?;
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_recurse_or_return(
         program: ProgramForRecurseOrReturn,
     ) {
@@ -3062,39 +3115,215 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_write_mem_read_mem() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_write_mem_read_mem())
+        let program = triton_program! {
+            push 3 push 1 push 2    // _ 3 1 2
+            push 7                  // _ 3 1 2 7
+            write_mem 3             // _ 10
+            push -1 add             // _ 9
+            read_mem 2              // _ 3 1 7
+            pop 1                   // _ 3 1
+            assert halt             // _ 3
+        };
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_hash() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_hash())
+        let program = triton_program!(
+            push 0 // filler to keep the OpStack large enough throughout the program
+            push 0 push 0 push 1 push 2 push 3
+            hash
+            read_io 1 eq assert halt
+        );
+        let hash_input = bfe_array![3, 2, 1, 0, 0, 0, 0, 0, 0, 0];
+        let digest = Tip5::hash_10(&hash_input);
+        let program = TestableProgram::new(program).with_input(&digest[..=0]);
+        triton_constraints_evaluate_to_zero(program)
+    }
+
+    /// Represents the leaf's node index for a very small Merkle tree.
+    ///
+    /// The height of the Merkle tree to use for the test program is 1, i.e.,
+    /// the tree has 2 leafs. One of these leafs is the node in question, and
+    /// this type describes which of the two leafs it is.
+    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+    #[repr(u8)]
+    enum MerkleStepTestProgramNodeIndex {
+        Left = 2,
+        Right = 3,
+    }
+
+    fn test_program_for_merkle_step(node_index: MerkleStepTestProgramNodeIndex) -> TestableProgram {
+        let accumulator = Digest::new(bfe_array![2, 12, 22, 32, 42]);
+        let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
+        let expected_digest = match node_index {
+            MerkleStepTestProgramNodeIndex::Left => Tip5::hash_pair(accumulator, sibling_digest),
+            MerkleStepTestProgramNodeIndex::Right => Tip5::hash_pair(sibling_digest, accumulator),
+        };
+        let program = triton_program!(
+            push {node_index as u8}
+            {&push_digest_to_stack_tasm(accumulator)}
+            merkle_step
+
+            {&push_digest_to_stack_tasm(expected_digest)}
+            assert_vector pop 5
+            assert halt
+        );
+
+        let non_determinism = NonDeterminism::default().with_digests(vec![sibling_digest]);
+        TestableProgram::new(program).with_non_determinism(non_determinism)
+    }
+
+    /// Helper function that returns code to push a digest to the stack.
+    fn push_digest_to_stack_tasm(Digest([d0, d1, d2, d3, d4]): Digest) -> Vec<LabelledInstruction> {
+        triton_asm!(push {d4} push {d3} push {d2} push {d1} push {d0})
     }
 
     #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_right_sibling() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_right_sibling())
+    fn run_tvm_merkle_step_sibling() {
+        let program = test_program_for_merkle_step(MerkleStepTestProgramNodeIndex::Left);
+        assert!(let Ok(_) = program.run());
+
+        let program = test_program_for_merkle_step(MerkleStepTestProgramNodeIndex::Right);
+        assert!(let Ok(_) = program.run());
     }
 
     #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_left_sibling() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_left_sibling())
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step() -> ConstraintResult {
+        let program = test_program_for_merkle_step(MerkleStepTestProgramNodeIndex::Left);
+        triton_constraints_evaluate_to_zero(program)?;
+
+        let program = test_program_for_merkle_step(MerkleStepTestProgramNodeIndex::Right);
+        triton_constraints_evaluate_to_zero(program)?;
+
+        Ok(())
+    }
+
+    fn test_program_for_merkle_step_mem(
+        node_index: MerkleStepTestProgramNodeIndex,
+    ) -> TestableProgram {
+        let leaf = Digest::new(bfe_array![2, 12, 22, 32, 42]);
+        let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
+        let expected_digest = match node_index {
+            MerkleStepTestProgramNodeIndex::Left => Tip5::hash_pair(leaf, sibling_digest),
+            MerkleStepTestProgramNodeIndex::Right => Tip5::hash_pair(sibling_digest, leaf),
+        };
+        let auth_path_address = 1337;
+        let program = triton_program!(
+            push {auth_path_address}
+            push 0 // dummy
+            push {node_index as u8}
+            {&push_digest_to_stack_tasm(leaf)}
+            merkle_step_mem
+
+            {&push_digest_to_stack_tasm(expected_digest)}
+            assert_vector pop 5
+            assert halt
+        );
+
+        let ram = (auth_path_address..)
+            .map(BFieldElement::new)
+            .zip(sibling_digest.values())
+            .collect::<HashMap<_, _>>();
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+
+        TestableProgram::new(program).with_non_determinism(non_determinism)
     }
 
     #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_right_sibling()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_right_sibling())
+    fn run_tvm_merkle_step_mem() {
+        let program = test_program_for_merkle_step_mem(MerkleStepTestProgramNodeIndex::Left);
+        assert!(let Ok(_) = program.run());
+
+        let program = test_program_for_merkle_step_mem(MerkleStepTestProgramNodeIndex::Right);
+        assert!(let Ok(_) = program.run());
     }
 
-    // todo: https://github.com/rust-lang/rustfmt/issues/6521
-    #[rustfmt::skip]
     #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem_left_sibling()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_merkle_step_mem_left_sibling())
+    fn constraints_evaluate_to_zero_on_program_for_merkle_step_mem() -> ConstraintResult {
+        let program = test_program_for_merkle_step_mem(MerkleStepTestProgramNodeIndex::Left);
+        triton_constraints_evaluate_to_zero(program)?;
+
+        let program = test_program_for_merkle_step_mem(MerkleStepTestProgramNodeIndex::Right);
+        triton_constraints_evaluate_to_zero(program)?;
+
+        Ok(())
     }
 
-    #[macro_rules_attr::apply(proptest(cases = 15))]
+    /// Test helper for property-testing instruction `merkle_step_mem` in a
+    /// meaningful context, namely, using
+    /// [`MERKLE_TREE_UPDATE`](crate::example_programs::MERKLE_TREE_UPDATE).
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    pub struct ProgramForMerkleTreeUpdate {
+        leaved_merkle_tree: LeavedMerkleTreeTestData,
+
+        #[strategy(0..#leaved_merkle_tree.revealed_indices.len())]
+        #[map(|i| #leaved_merkle_tree.revealed_indices[i])]
+        revealed_leafs_index: usize,
+
+        #[strategy(arb())]
+        new_leaf: Digest,
+
+        #[strategy(arb())]
+        auth_path_address: BFieldElement,
+    }
+
+    impl ProgramForMerkleTreeUpdate {
+        pub fn assemble(self) -> TestableProgram {
+            let auth_path = self.authentication_path();
+            let leaf_index = self.revealed_leafs_index;
+            let merkle_tree = self.leaved_merkle_tree.merkle_tree;
+
+            let ram = (self.auth_path_address.value()..)
+                .map(BFieldElement::new)
+                .zip(auth_path.iter().flat_map(|digest| digest.values()))
+                .collect::<HashMap<_, _>>();
+            let non_determinism = NonDeterminism::default().with_ram(ram);
+
+            let old_leaf = Digest::from(self.leaved_merkle_tree.leaves[leaf_index]);
+            let old_root = merkle_tree.root();
+            let mut public_input =
+                bfe_vec![self.auth_path_address, leaf_index, merkle_tree.height()];
+            public_input.extend(old_leaf.reversed().values());
+            public_input.extend(old_root.reversed().values());
+            public_input.extend(self.new_leaf.reversed().values());
+
+            TestableProgram::new(merkle_tree_update())
+                .with_input(public_input)
+                .with_non_determinism(non_determinism)
+        }
+
+        /// The authentication path for the leaf at `self.revealed_leafs_index`.
+        /// Independent of the leaf's value, _i.e._, is up to date even once the
+        /// leaf has been updated.
+        fn authentication_path(&self) -> Vec<Digest> {
+            self.leaved_merkle_tree
+                .merkle_tree
+                .authentication_structure(&[self.revealed_leafs_index])
+                .unwrap()
+        }
+    }
+
+    /// Checks whether the [`TestableProgram`] generated through
+    /// [`ProgramForMerkleTreeUpdate::assemble`] can
+    /// - be executed without crashing the VM, and
+    /// - produces the correct output.
+    #[macro_rules_attr::apply(proptest)]
+    fn merkle_tree_updating_program_correctly_updates_a_merkle_tree(
+        program: ProgramForMerkleTreeUpdate,
+    ) {
+        let inclusion_proof = MerkleTreeInclusionProof {
+            tree_height: program.leaved_merkle_tree.merkle_tree.height(),
+            indexed_leafs: vec![(program.revealed_leafs_index, program.new_leaf)],
+            authentication_structure: program.authentication_path(),
+        };
+        let new_root = program.assemble().run()?;
+        let new_root = Digest(new_root.try_into().unwrap());
+
+        prop_assert!(inclusion_proof.verify(new_root));
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_merkle_tree_update(
         program: ProgramForMerkleTreeUpdate,
     ) {
@@ -3103,210 +3332,727 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_assert_vector() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_assert_vector())
+        let program = triton_program!(
+            push 1 push 2 push 3 push 4 push 5
+            push 1 push 2 push 3 push 4 push 5
+            assert_vector halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions())
+        let push_10_zeros = triton_asm![push 0; 10];
+        let program = triton_program!(
+            sponge_init
+            {&push_10_zeros} sponge_absorb
+            {&push_10_zeros} sponge_absorb
+            sponge_squeeze halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_sponge_instructions_2() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_sponge_instructions_2())
+        let push_5_zeros = triton_asm![push 0; 5];
+        let program = triton_program! {
+            sponge_init
+            sponge_squeeze sponge_absorb
+            {&push_5_zeros} hash
+            sponge_squeeze sponge_absorb
+            halt
+        };
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_many_sponge_instructions() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_many_sponge_instructions())
+        let push_5_zeros = triton_asm![push 0; 5];
+        let push_10_zeros = triton_asm![push 0; 10];
+        let program = triton_program! {         //  elements on stack
+            sponge_init                         //  0
+            sponge_squeeze sponge_absorb        //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            sponge_squeeze sponge_squeeze       // 20
+            sponge_squeeze sponge_absorb        // 20
+            sponge_init sponge_init sponge_init // 20
+            sponge_absorb                       // 10
+            sponge_init                         // 10
+            sponge_squeeze sponge_squeeze       // 30
+            sponge_init sponge_squeeze          // 40
+            {&push_5_zeros} hash sponge_absorb  // 30
+            {&push_5_zeros} hash sponge_squeeze // 40
+            {&push_5_zeros} hash sponge_absorb  // 30
+            {&push_5_zeros} hash sponge_squeeze // 40
+            sponge_init                         // 40
+            sponge_absorb sponge_absorb         // 20
+            sponge_absorb sponge_absorb         //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            {&push_10_zeros} sponge_absorb      //  0
+            halt
+        };
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_add_mul_invert() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_add_mul_invert())
+        let program = triton_program!(
+            push  2 push -1 add assert
+            push -1 push -1 mul assert
+            push  5 addi -4 assert
+            push  3 dup 0 invert mul assert
+            halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_eq() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_eq())
+        let input = bfe_array![42];
+        let program = triton_program!(read_io 1 divine 1 eq assert halt);
+        let program = TestableProgram::new(program)
+            .with_input(input)
+            .with_non_determinism(input);
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_lsb() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_lsb())
+        let program = triton_program!(
+            push 3 call lsb assert assert halt
+            lsb:
+                push 2 swap 1 div_mod return
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_split() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_split())
+        let program = triton_program!(
+            push -2 split push 4294967295 eq assert push 4294967294 eq assert
+            push -1 split push 0 eq assert push 4294967295 eq assert
+            push  0 split push 0 eq assert push 0 eq assert
+            push  1 split push 1 eq assert push 0 eq assert
+            push  2 split push 2 eq assert push 0 eq assert
+            push 4294967297 split assert assert
+            halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_0_lt_0() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_0_lt_0())
+        let program = triton_program!(push 0 push 0 lt halt);
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_lt() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_lt())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_and() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_and())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xor() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_xor())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_log2floor() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_log2floor())
+        let program = triton_program!(
+            push  1 log_2_floor push  0 eq assert
+            push  2 log_2_floor push  1 eq assert
+            push  3 log_2_floor push  1 eq assert
+            push  4 log_2_floor push  2 eq assert
+            push  7 log_2_floor push  2 eq assert
+            push  8 log_2_floor push  3 eq assert
+            push 15 log_2_floor push  3 eq assert
+            push 16 log_2_floor push  4 eq assert
+            push 31 log_2_floor push  4 eq assert
+            push 32 log_2_floor push  5 eq assert
+            push 33 log_2_floor push  5 eq assert
+            push 4294967295 log_2_floor push 31 eq assert halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_pow() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_pow())
+        let program = triton_program!(
+            // push [exponent] push [base] pow push [result] eq assert
+            push  0 push 0 pow push    1 eq assert
+            push  0 push 1 pow push    1 eq assert
+            push  0 push 2 pow push    1 eq assert
+            push  1 push 0 pow push    0 eq assert
+            push  2 push 0 pow push    0 eq assert
+            push  2 push 5 pow push   25 eq assert
+            push  5 push 2 pow push   32 eq assert
+            push 10 push 2 pow push 1024 eq assert
+            push  3 push 3 pow push   27 eq assert
+            push  3 push 5 pow push  125 eq assert
+            push  9 push 7 pow push 40353607 eq assert
+            push 3040597274 push 05218640216028681988 pow push 11160453713534536216 eq assert
+            push 2378067562 push 13711477740065654150 pow push 06848017529532358230 eq assert
+            push  129856251 push 00218966585049330803 pow push 08283208434666229347 eq assert
+            push 1657936293 push 04999758396092641065 pow push 11426020017566937356 eq assert
+            push 3474149688 push 05702231339458623568 pow push 02862889945380025510 eq assert
+            push 2243935791 push 09059335263701504667 pow push 04293137302922963369 eq assert
+            push 1783029319 push 00037306102533222534 pow push 10002149917806048099 eq assert
+            push 3608140376 push 17716542154416103060 pow push 11885601801443303960 eq assert
+            push 1220084884 push 07207865095616988291 pow push 05544378138345942897 eq assert
+            push 3539668245 push 13491612301110950186 pow push 02612675697712040250 eq assert
+            halt
+        );
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_div_mod() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_div_mod())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 2 push 3 div_mod assert assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_starting_with_pop_count() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_starting_with_pop_count())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            pop_count dup 0 push 0 eq assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_pop_count() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_pop_count())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 10 pop_count push 2 eq assert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xx_add() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_xx_add())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xx_mul() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_xx_mul())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_x_invert() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_x_invert())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 6 push 7 x_invert halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_xb_mul() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_xb_mul())
+        triton_constraints_evaluate_to_zero(triton_program!(
+            push 5 push 6 push 7 push 8 xb_mul halt
+        ))
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_program_for_read_io_write_io() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(test_program_for_read_io_write_io())
+        let program = triton_program!(
+            read_io 1 assert
+            read_io 2 dup 1 dup 1 add write_io 1 mul push 5 write_io 2 halt
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![1, 3, 14]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_assert_vector())
+    #[macro_rules_attr::apply(proptest(cases = 10))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_assert_vector(
+        #[strategy(arb())] st: [BFieldElement; 5],
+    ) -> ConstraintResult {
+        let program = triton_program!(
+            push {st[0]} push {st[1]} push {st[2]} push {st[3]} push {st[4]}
+            read_io 5 assert_vector halt
+        );
+        let program = TestableProgram::new(program).with_input(st);
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_single_sponge_absorb_mem_instructions() -> ConstraintResult {
-        let program = triton_program!(sponge_init sponge_absorb_mem halt);
-        let program = TestableProgram::new(program);
-        triton_constraints_evaluate_to_zero(program)
+        triton_constraints_evaluate_to_zero(triton_program!(
+            sponge_init sponge_absorb_mem halt
+        ))
     }
 
-    #[macro_rules_attr::apply(proptest(cases = 3))]
+    /// Test helper for [`ProgramForSpongeAndHashInstructions`].
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter, test_strategy::Arbitrary)]
+    enum SpongeAndHashInstructions {
+        SpongeInit,
+        SpongeAbsorb(#[strategy(arb())] [BFieldElement; tip5::RATE]),
+        SpongeAbsorbMem(#[strategy(arb())] BFieldElement),
+        SpongeSqueeze,
+        Hash(#[strategy(arb())] [BFieldElement; tip5::RATE]),
+    }
+
+    impl SpongeAndHashInstructions {
+        fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
+            let push_array =
+                |a: [_; tip5::RATE]| a.into_iter().rev().map(Instruction::Push).collect_vec();
+
+            match self {
+                Self::SpongeInit => vec![Instruction::SpongeInit],
+                Self::SpongeAbsorb(input) => {
+                    [push_array(input), vec![Instruction::SpongeAbsorb]].concat()
+                }
+                Self::SpongeAbsorbMem(ram_pointer) => {
+                    vec![Instruction::Push(ram_pointer), Instruction::SpongeAbsorbMem]
+                }
+                Self::SpongeSqueeze => vec![Instruction::SpongeSqueeze],
+                Self::Hash(input) => [push_array(input), vec![Instruction::Hash]].concat(),
+            }
+        }
+
+        fn execute(self, sponge: &mut Tip5, ram: &HashMap<BFieldElement, BFieldElement>) {
+            let ram_read = |p| ram.get(&p).copied().unwrap_or_else(|| bfe!(0));
+            let ram_read_array = |p| {
+                let ram_reads = (0..tip5::RATE as u32).map(|i| ram_read(p + bfe!(i)));
+                ram_reads.collect_vec().try_into().unwrap()
+            };
+
+            match self {
+                Self::SpongeInit => *sponge = Tip5::init(),
+                Self::SpongeAbsorb(input) => sponge.absorb(input),
+                Self::SpongeAbsorbMem(ram_pointer) => sponge.absorb(ram_read_array(ram_pointer)),
+                Self::SpongeSqueeze => _ = sponge.squeeze(),
+                Self::Hash(_) => (), // no effect on Sponge
+            }
+        }
+    }
+
+    /// Test helper for arbitrary sequences of hashing-related instructions.
+    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
+    pub struct ProgramForSpongeAndHashInstructions {
+        instructions: Vec<SpongeAndHashInstructions>,
+
+        #[strategy(arb())]
+        ram: HashMap<BFieldElement, BFieldElement>,
+    }
+
+    impl ProgramForSpongeAndHashInstructions {
+        pub fn assemble(self) -> TestableProgram {
+            let mut sponge = Tip5::init();
+            for instruction in &self.instructions {
+                instruction.execute(&mut sponge, &self.ram);
+            }
+            let expected_rate = sponge.squeeze();
+            let non_determinism = NonDeterminism::default().with_ram(self.ram);
+
+            let sponge_and_hash_instructions = self
+                .instructions
+                .into_iter()
+                .flat_map(|i| i.to_vm_instruction_sequence())
+                .collect_vec();
+            let output_equality_assertions =
+                vec![triton_asm![read_io 1 eq assert]; tip5::RATE].concat();
+
+            let program = triton_program! {
+                sponge_init
+                {&sponge_and_hash_instructions}
+                sponge_squeeze
+                {&output_equality_assertions}
+                halt
+            };
+
+            TestableProgram::new(program)
+                .with_input(expected_rate)
+                .with_non_determinism(non_determinism)
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn property_based_sponge_and_hash_instructions_program_sanity_check(
+        program: ProgramForSpongeAndHashInstructions,
+    ) {
+        program.assemble().run()?;
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 1))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_sponge_instructions(
         program: ProgramForSpongeAndHashInstructions,
     ) {
         triton_constraints_evaluate_to_zero(program.assemble())?;
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_split() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_split())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_split(
+        #[strategy(..=BFieldElement::MAX)] st0: u64,
+    ) -> ConstraintResult {
+        let hi = st0 >> 32;
+        let lo = st0 & 0xffff_ffff;
+
+        let program = triton_program!(
+            push {st0} split read_io 1 eq assert read_io 1 eq assert halt
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![lo, hi]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_eq())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_eq(
+        #[strategy(arb())] st0: BFieldElement,
+    ) -> ConstraintResult {
+        let program = TestableProgram::new(triton_program!(
+            push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt
+        ))
+        .with_input([st0])
+        .with_non_determinism([st0]);
+
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_lsb())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lsb(
+        st0: u32,
+    ) -> ConstraintResult {
+        let lsb = st0 % 2;
+        let st0_shift_right = st0 >> 1;
+
+        let program = triton_program!(
+            push {st0} call lsb read_io 1 eq assert read_io 1 eq assert halt
+            lsb:
+                push 2 swap 1 div_mod return
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![lsb, st0_shift_right]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_lt())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_lt(
+        a: u32,
+        b: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(push {b} push {a} lt read_io 1 eq assert halt);
+        let program = TestableProgram::new(program).with_input(bfe_array![u8::from(a < b)]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_and() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_and())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_and(
+        a: u32,
+        b: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(
+            read_io 1
+            push {b} push {a} and dup 1 eq assert
+            push {a} push {b} and eq assert halt
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![a.bitand(b)]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xor())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xor(
+        a: u32,
+        b: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(
+            read_io 1
+            push {a} push {b} xor dup 1 eq assert
+            push {b} push {a} xor eq assert halt
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![a.bitxor(b)]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_log2floor())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_log2floor(
+        #[filter(#a != 0)] a: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(push {a} log_2_floor read_io 1 eq assert halt);
+        let program = TestableProgram::new(program).with_input(bfe_array![a.ilog2()]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_pow())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pow(
+        #[strategy(arb())] base: BFieldElement,
+        exponent: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(push {exponent} push {base} pow read_io 1 eq assert halt);
+        let program = TestableProgram::new(program).with_input([base.mod_pow_u32(exponent)]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod() -> ConstraintResult
-    {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_div_mod())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_div_mod(
+        denominator: u32,
+        #[filter(#numerator != 0)] numerator: u32,
+    ) -> ConstraintResult {
+        let quotient = numerator / denominator;
+        let remainder = numerator % denominator;
+
+        let program = triton_program!(
+            push {denominator} push {numerator} div_mod read_io 1 eq assert read_io 1 eq assert halt
+        );
+        let program = TestableProgram::new(program).with_input(bfe_array![remainder, quotient]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_pop_count())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_pop_count(
+        st0: u32,
+    ) -> ConstraintResult {
+        let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
+        let program = TestableProgram::new(program).with_input(bfe_array![st0.count_ones()]);
+        triton_constraints_evaluate_to_zero(program)
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32() -> ConstraintResult
-    {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_is_u32())
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_is_u32(
+        a_u32: u32,
+        #[strategy(u64::from(u32::MAX) + 1..)] not_u32: u64,
+    ) -> ConstraintResult {
+        let program = triton_program!(
+            push {a_u32} call is_u32 assert
+            push {not_u32} call is_u32 push 0 eq assert halt
+            is_u32:
+                 split pop 1 push 0 eq return
+        );
+        triton_constraints_evaluate_to_zero(program)
+    }
+
+    /// Test helper for property-testing RAM access patterns.
+    ///
+    /// The [assembled](Self::assemble) program reads and writes random elements
+    /// from random RAM locations and (tries to) to exhibit all possible access
+    /// patterns:
+    /// - read before write
+    /// - write before read
+    /// - read, then read again
+    /// - write, then write again
+    ///
+    /// For any read value, the program checks that it is as expected.
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ProgramForRandomRamAccess {
+        #[strategy(10..50_usize)]
+        num_mem_accesses: usize,
+
+        #[strategy(vec(arb(), #num_mem_accesses))]
+        mem_addresses: Vec<BFieldElement>,
+
+        #[strategy(vec(arb(), #num_mem_accesses))]
+        initial_values: Vec<BFieldElement>,
+
+        #[strategy(vec(arb(), #num_mem_accesses))]
+        final_values: Vec<BFieldElement>,
+
+        #[strategy(vec(0..#num_mem_accesses, #num_mem_accesses))]
+        first_read_permutation_seed: Vec<usize>,
+
+        #[strategy(vec(0..#num_mem_accesses, #num_mem_accesses))]
+        first_write_permutation_seed: Vec<usize>,
+
+        #[strategy(vec(0..#num_mem_accesses, #num_mem_accesses))]
+        second_read_permutation_seed: Vec<usize>,
+    }
+
+    impl ProgramForRandomRamAccess {
+        /// Create a permutation through the Fisher-Yates shuffle.
+        ///
+        /// Given a vector of length `i` containing only elements of range
+        /// `0..i`, create a permutation of the values `0..i`.
+        ///
+        /// For example, given `[2, 1, 2]`, returns `[2, 1, 0]` since
+        /// - `0` is swapped with `2` (first element of the seed),
+        /// - `1` is swapped with `1` (second element of the seed),
+        /// - `2` is swapped with `2` (third element of the seed).
+        ///
+        /// The randomness of the permutation depends on the randomness of the
+        /// seed.
+        fn permutation(seed: &[usize]) -> Vec<usize> {
+            let mut permutation = (0..seed.len()).collect_vec();
+            for (i, &j) in seed.iter().enumerate() {
+                permutation.swap(i, j);
+            }
+
+            permutation
+        }
+
+        fn assemble(mut self) -> TestableProgram {
+            let mut instructions = Vec::new();
+
+            // Read some memory before first write to ensure that the memory is
+            // initialized with 0s. Not all addresses are read to have different
+            // access patterns:
+            // - Some addresses are read before written to.
+            // - Other addresses are written to before read.
+            for address in self.mem_addresses.iter().take(self.num_mem_accesses / 4) {
+                instructions.extend(triton_asm!(push {address} read_mem 1 pop 1 push 0 eq assert));
+            }
+
+            // write everything to RAM
+            for (address, value) in self.mem_addresses.iter().zip_eq(&self.initial_values) {
+                instructions.extend(triton_asm!(push {value} push {address} write_mem 1 pop 1));
+            }
+
+            // read back in random order and check that the values didn't change
+            for idx in Self::permutation(&self.first_read_permutation_seed) {
+                let addr = self.mem_addresses[idx];
+                let val = self.initial_values[idx];
+                instructions.extend(triton_asm!(push {addr} read_mem 1 pop 1 push {val} eq assert));
+            }
+
+            // overwrite half the values with new ones
+            let write_permutation = Self::permutation(&self.first_write_permutation_seed);
+            for &idx in write_permutation.iter().take(self.num_mem_accesses / 2) {
+                let addr = self.mem_addresses[idx];
+                let new_val = self.final_values[idx];
+                self.initial_values[idx] = new_val;
+                instructions.extend(triton_asm!(push {new_val} push {addr} write_mem 1 pop 1));
+            }
+
+            // Read back all, i.e., unchanged and overwritten values in
+            // (different from before) random order and check that the values
+            // did not change.
+            for idx in Self::permutation(&self.second_read_permutation_seed) {
+                let addr = self.mem_addresses[idx];
+                let val = self.initial_values[idx];
+                instructions.extend(triton_asm!(push {addr} read_mem 1 pop 1 push {val} eq assert));
+            }
+
+            TestableProgram::new(triton_program!({&instructions} halt))
+        }
+    }
+
+    /// Sanity check for the relatively complex property-based test for random
+    /// RAM access.
+    #[macro_rules_attr::apply(proptest)]
+    fn run_dont_prove_property_based_test_for_random_ram_access(
+        program: ProgramForRandomRamAccess,
+    ) {
+        program.assemble().run()?;
     }
 
     #[macro_rules_attr::apply(proptest(cases = 1))]
     fn constraints_evaluate_to_zero_on_property_based_test_program_for_random_ram_access(
-        seed: <StdRng as SeedableRng>::Seed,
+        program: ProgramForRandomRamAccess,
     ) -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_random_ram_access(seed))
+        triton_constraints_evaluate_to_zero(program.assemble())
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xx_dot_step())
+    /// Test helper for property testing the instruction `xx_dot_step`
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ProgramForXxDotStep {
+        #[strategy(0..30_usize)]
+        num_steps: usize,
+
+        #[strategy(vec(arb(), #num_steps))]
+        list_0: Vec<XFieldElement>,
+
+        #[strategy(vec(arb(), #num_steps))]
+        list_1: Vec<XFieldElement>,
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step()
-    -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(property_based_test_program_for_xb_dot_step())
+    impl ProgramForXxDotStep {
+        fn assemble(&self) -> TestableProgram {
+            let mut instructions = triton_asm!(push 0); // initial address
+            for &XFieldElement { coefficients } in &self.list_0 {
+                let [c0, c1, c2] = coefficients;
+                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
+            }
+            instructions.extend(triton_asm!(dup 0)); // preserve this address
+            for &XFieldElement { coefficients } in &self.list_1 {
+                let [c0, c1, c2] = coefficients;
+                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
+            }
+            instructions.extend(triton_asm!(pop 1 push 0)); // initial address
+            instructions.extend(triton_asm![xx_dot_step; self.num_steps]);
+            instructions.extend(triton_asm!(pop 2 push 0 push 0));
+
+            let zipped_lists = self.list_0.iter().zip_eq(&self.list_1);
+            let dot_product = zipped_lists.map(|(&l, &r)| l * r).sum();
+            let XFieldElement { coefficients } = dot_product;
+            let [dp0, dp1, dp2] = coefficients;
+            instructions.extend(triton_asm!(push {dp2} push {dp1} push {dp0} push 0 push 0));
+            instructions.extend(triton_asm!(assert_vector halt));
+
+            TestableProgram::new(triton_program!({ &instructions }))
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn run_property_based_test_program_for_xx_dot_step(program: ProgramForXxDotStep) {
+        program.assemble().run().unwrap();
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step(
+        program: ProgramForXxDotStep,
+    ) -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(program.assemble())
+    }
+
+    /// Test helper for property testing the instruction `xb_dot_step`
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ProgramForXbDotStep {
+        #[strategy(0..30_usize)]
+        num_steps: usize,
+
+        #[strategy(vec(arb(), #num_steps))]
+        list_0: Vec<XFieldElement>,
+
+        #[strategy(vec(arb(), #num_steps))]
+        list_1: Vec<BFieldElement>,
+    }
+
+    impl ProgramForXbDotStep {
+        fn assemble(&self) -> TestableProgram {
+            let mut instructions = triton_asm!(push 0); // initial address
+            for &XFieldElement { coefficients } in &self.list_0 {
+                let [c0, c1, c2] = coefficients;
+                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
+            }
+            instructions.extend(triton_asm!(dup 0)); // preserve this address
+            for elem in &self.list_1 {
+                instructions.extend(triton_asm!(push {elem} pick 1 write_mem 1));
+            }
+            instructions.extend(triton_asm!(pop 1 push 0 swap 1));
+            instructions.extend(triton_asm![xb_dot_step; self.num_steps]);
+            instructions.extend(triton_asm!(pop 2 push 0 push 0));
+
+            let zipped_lists = self.list_0.iter().zip_eq(&self.list_1);
+            let dot_product = zipped_lists.map(|(&l, &r)| l * r).sum();
+            let XFieldElement { coefficients } = dot_product;
+            let [dp0, dp1, dp2] = coefficients;
+            instructions.extend(triton_asm!(push {dp2} push {dp1} push {dp0} push 0 push 0));
+            instructions.extend(triton_asm!(assert_vector halt));
+
+            TestableProgram::new(triton_program!({ &instructions }))
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn run_property_based_test_program_for_xb_dot_step(program: ProgramForXbDotStep) {
+        program.assemble().run().unwrap();
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step(
+        program: ProgramForXbDotStep,
+    ) -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(program.assemble())
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3328,20 +4074,39 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    #[macro_rules_attr::apply(test)]
-    fn claim_in_ram_corresponds_to_currently_running_program() -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(
-            test_program_claim_in_ram_corresponds_to_currently_running_program(),
-        )
+    #[macro_rules_attr::apply(proptest(cases = 3))]
+    fn claim_in_ram_corresponds_to_currently_running_program(
+        #[strategy(arb())] write_address: BFieldElement,
+    ) -> ConstraintResult {
+        let read_address = write_address + bfe!(Digest::LEN) - bfe!(1);
+        let program = triton_program! {
+            dup 15 dup 15 dup 15 dup 15 dup 15 // _ [own_digest]
+            push {read_address}
+            read_mem 5 pop 1                   // _ [own_digest] [claim_digest]
+            assert_vector                      // _ [own_digest]
+            halt
+        };
+
+        let program_digest = program.hash();
+        let initial_ram = program_digest
+            .values()
+            .into_iter()
+            .enumerate()
+            .map(|(offset, d)| (write_address + bfe!(offset), d))
+            .collect::<HashMap<_, _>>();
+        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
+        let program = TestableProgram::new(program).with_non_determinism(non_determinism);
+
+        triton_constraints_evaluate_to_zero(program)
     }
 
     #[macro_rules_attr::apply(test)]
     fn derived_constraints_evaluate_to_zero_on_halt() {
-        derived_constraints_evaluate_to_zero(test_program_for_halt());
+        derived_constraints_evaluate_to_zero(triton_program!(halt));
     }
 
-    fn derived_constraints_evaluate_to_zero(program: TestableProgram) {
-        let artifacts = program.generate_proof_artifacts();
+    fn derived_constraints_evaluate_to_zero(program: impl Into<TestableProgram>) {
+        let artifacts = program.into().generate_proof_artifacts();
         let master_main_trace_table = artifacts.master_main_table.trace_table();
         let master_aux_trace_table = artifacts.master_aux_table.trace_table();
         let challenges = artifacts.challenges;
@@ -3418,7 +4183,9 @@ pub(crate) mod tests {
 
     #[test_strategy::proptest(cases = 10)]
     fn prove_and_verify_halt_with_different_stark_parameters(#[strategy(arb())] stark: Stark) {
-        test_program_for_halt().use_stark(stark).prove_and_verify();
+        TestableProgram::new(triton_program!(halt))
+            .use_stark(stark)
+            .prove_and_verify();
     }
 
     #[macro_rules_attr::apply(proptest(cases = 10))]
@@ -3433,7 +4200,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn prove_and_verify_fibonacci_100() {
         TestableProgram::new(fibonacci_sequence())
-            .with_input(PublicInput::from(bfe_array![100]))
+            .with_input(bfe_array![100])
             .prove_and_verify();
     }
 
@@ -3463,8 +4230,7 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_many_u32_operations() -> ConstraintResult {
-        let many_u32_instructions = TestableProgram::new(program_with_many_u32_instructions());
-        triton_constraints_evaluate_to_zero(many_u32_instructions)
+        triton_constraints_evaluate_to_zero(program_with_many_u32_instructions())
     }
 
     #[macro_rules_attr::apply(test)]
@@ -3488,7 +4254,7 @@ pub(crate) mod tests {
         st0: BFieldElement,
     ) {
         let program = triton_program!(push {st0} log_2_floor halt);
-        assert!(let Err(err) = VM::run(program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(program).run());
         assert!(let InstructionError::OpStackError(err) = err.source);
         assert!(let OpStackError::FailedU32Conversion(element) = err);
         assert!(st0 == element);
@@ -3497,7 +4263,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn negative_log_2_floor_of_0() {
         let program = triton_program!(push 0 log_2_floor halt);
-        assert!(let Err(err) = VM::run(program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(program).run());
         assert!(let InstructionError::LogarithmOfZero = err.source);
     }
 

@@ -441,7 +441,6 @@ mod tests {
     use assert2::assert;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
-    use rand::RngExt;
     use test_strategy::proptest;
 
     use crate::triton_program;
@@ -516,9 +515,8 @@ mod tests {
         assert!(program.is_empty());
     }
 
-    #[test]
-    fn create_program_from_code() {
-        let element_3 = rand::rng().random_range(0..BFieldElement::P);
+    #[proptest(cases = 10)]
+    fn create_program_from_code(#[strategy(0..=BFieldElement::MAX)] element_3: u64) {
         let element_2 = 1337_usize;
         let element_1 = "17";
         let element_0 = bfe!(0);

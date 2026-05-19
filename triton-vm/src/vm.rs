@@ -1518,39 +1518,27 @@ impl NonDeterminism {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
-    use std::ops::BitAnd;
-    use std::ops::BitXor;
-
     use assert2::assert;
     use dev_util::example_programs::fibonacci_sequence;
     use dev_util::example_programs::greatest_common_divisor;
     use dev_util::example_programs::merkle_tree_authentication_path_verify;
-    use dev_util::example_programs::merkle_tree_update;
     use isa::instruction::ALL_INSTRUCTIONS;
     use isa::instruction::AnInstruction;
-    use isa::instruction::LabelledInstruction;
     use isa::op_stack::NUM_OP_STACK_REGISTERS;
     use isa::program::Program;
     use isa::triton_asm;
-    use isa::triton_instr;
     use isa::triton_program;
     use itertools::izip;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
-    use rand::Rng;
-    use rand::RngExt;
-    use rand::SeedableRng;
-    use rand::distr::StandardUniform;
-    use rand::prelude::StdRng;
-    use rand::rngs::ThreadRng;
     use strum::EnumCount;
-    use strum::EnumIter;
 
     use super::*;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::TestableProgram;
     use crate::stark::Stark;
+    use crate::stark::tests::ProgramForMerkleTreeUpdate;
     use crate::stark::tests::program_executing_every_instruction;
     use crate::tests::proptest;
     use crate::tests::test;
@@ -1628,10 +1616,10 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn initialise_table() {
-        let program = greatest_common_divisor();
-        let stdin = PublicInput::from([42, 56].map(|b| bfe!(b)));
-        let secret_in = NonDeterminism::default();
-        VM::trace_execution(program, stdin, secret_in).unwrap();
+        TestableProgram::new(greatest_common_divisor())
+            .with_input(bfe_array![42, 56])
+            .trace_execution()
+            .unwrap();
     }
 
     #[macro_rules_attr::apply(test)]
@@ -1650,7 +1638,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn crash_triton_vm_and_print_vm_error() {
         let crashing_program = triton_program!(push 2 assert halt);
-        assert!(let Err(err) = VM::run(crashing_program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(crashing_program).run());
         println!("{err}");
     }
 
@@ -1661,7 +1649,7 @@ pub(crate) mod tests {
             foo: call bar return
             bar: push 2 assert return
         };
-        assert!(let Err(err) = VM::run(crashing_program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(crashing_program).run());
         let err_str = err.to_string();
 
         assert!(let Some(bar_pos) = err_str.find("bar"));
@@ -1722,43 +1710,8 @@ pub(crate) mod tests {
             {labels[12]}: nop
         };
 
-        assert!(let Err(err) = VM::run(crashing_program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(crashing_program).run());
         println!("{err}");
-    }
-
-    pub(crate) fn test_program_hash_nop_nop_lt() -> TestableProgram {
-        let push_5_zeros = triton_asm![push 0; 5];
-        let program = triton_program! {
-            {&push_5_zeros} hash
-            nop
-            {&push_5_zeros} hash
-            nop nop
-            {&push_5_zeros} hash
-            push 3 push 2 lt assert
-            halt
-        };
-        TestableProgram::new(program)
-    }
-
-    pub(crate) fn test_program_for_halt() -> TestableProgram {
-        TestableProgram::new(triton_program!(halt))
-    }
-
-    pub(crate) fn test_program_for_push_pop_dup_swap_nop() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 1 push 2 pop 1 assert
-            push 1 dup  0 assert assert
-            push 1 push 2 swap 1 assert pop 1
-            nop nop nop halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_divine() -> TestableProgram {
-        TestableProgram::new(triton_program!(divine 1 assert halt)).with_non_determinism([bfe!(1)])
-    }
-
-    pub(crate) fn test_program_for_skiz() -> TestableProgram {
-        TestableProgram::new(triton_program!(push 1 skiz push 0 skiz assert push 1 skiz halt))
     }
 
     pub(crate) fn test_program_for_call_recurse_return() -> TestableProgram {
@@ -1774,83 +1727,6 @@ pub(crate) mod tests {
         ))
     }
 
-    pub(crate) fn test_program_for_recurse_or_return() -> TestableProgram {
-        TestableProgram::new(triton_program! {
-            push 5 swap 5
-            push 0 swap 5
-            call label
-            halt
-            label:
-                swap 5
-                push 1 add
-                swap 5
-                recurse_or_return
-        })
-    }
-
-    /// Test helper for property testing instruction `recurse_or_return`.
-    ///
-    /// The [assembled](Self::assemble) program
-    /// - sets up a loop counter,
-    /// - populates ST6 with some “iteration terminator”,
-    /// - reads successive elements from standard input, and
-    /// - compares them to the iteration terminator using `recurse_or_return`.
-    ///
-    /// The program halts after the loop has run for the expected number of
-    /// iterations, crashing the VM if the number of iterations does not match
-    /// expectations.
-    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
-    pub struct ProgramForRecurseOrReturn {
-        #[strategy(arb())]
-        iteration_terminator: BFieldElement,
-
-        #[strategy(arb())]
-        #[filter(#other_iterator_values.iter().all(|&v| v != #iteration_terminator))]
-        other_iterator_values: Vec<BFieldElement>,
-    }
-
-    impl ProgramForRecurseOrReturn {
-        pub fn assemble(self) -> TestableProgram {
-            let expected_num_iterations = self.other_iterator_values.len() + 1;
-
-            let program = triton_program! {
-                // set up iteration counter
-                push 0 hint iteration_counter = stack[0]
-
-                // set up termination condition
-                push {self.iteration_terminator}
-                swap 6
-
-                call iteration_loop
-
-                // check iteration counter
-                push {expected_num_iterations}
-                eq assert
-                halt
-
-                iteration_loop:
-                    // increment iteration counter
-                    push 1 add
-
-                    // check loop termination
-                    swap 5
-                    pop 1
-                    read_io 1
-                    swap 5
-                    recurse_or_return
-            };
-
-            let mut input = self.other_iterator_values;
-            input.push(self.iteration_terminator);
-            TestableProgram::new(program).with_input(input)
-        }
-    }
-
-    #[macro_rules_attr::apply(proptest)]
-    fn property_based_recurse_or_return_program_sanity_check(program: ProgramForRecurseOrReturn) {
-        program.assemble().run()?;
-    }
-
     #[macro_rules_attr::apply(test)]
     fn vm_crashes_when_executing_recurse_or_return_with_empty_jump_stack() {
         let program = triton_program!(recurse_or_return halt);
@@ -1858,836 +1734,10 @@ pub(crate) mod tests {
         assert!(InstructionError::JumpStackIsEmpty == err.source);
     }
 
-    pub(crate) fn test_program_for_write_mem_read_mem() -> TestableProgram {
-        TestableProgram::new(triton_program! {
-            push 3 push 1 push 2    // _ 3 1 2
-            push 7                  // _ 3 1 2 7
-            write_mem 3             // _ 10
-            push -1 add             // _ 9
-            read_mem 2              // _ 3 1 7
-            pop 1                   // _ 3 1
-            assert halt             // _ 3
-        })
-    }
-
-    pub(crate) fn test_program_for_hash() -> TestableProgram {
-        let program = triton_program!(
-            push 0 // filler to keep the OpStack large enough throughout the program
-            push 0 push 0 push 1 push 2 push 3
-            hash
-            read_io 1 eq assert halt
-        );
-        let hash_input = bfe_array![3, 2, 1, 0, 0, 0, 0, 0, 0, 0];
-        let digest = Tip5::hash_10(&hash_input);
-        TestableProgram::new(program).with_input(&digest[..=0])
-    }
-
-    /// Helper function that returns code to push a digest to the top of the
-    /// stack
-    fn push_digest_to_stack_tasm(Digest([d0, d1, d2, d3, d4]): Digest) -> Vec<LabelledInstruction> {
-        triton_asm!(push {d4} push {d3} push {d2} push {d1} push {d0})
-    }
-
-    pub(crate) fn test_program_for_merkle_step_right_sibling() -> TestableProgram {
-        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
-        let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
-        let expected_digest = Tip5::hash_pair(divined_digest, accumulator_digest);
-        let merkle_tree_node_index = 3;
-        let program = triton_program!(
-            push {merkle_tree_node_index}
-            {&push_digest_to_stack_tasm(accumulator_digest)}
-            merkle_step
-
-            {&push_digest_to_stack_tasm(expected_digest)}
-            assert_vector pop 5
-            assert halt
-        );
-
-        let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
-        TestableProgram::new(program).with_non_determinism(non_determinism)
-    }
-
-    pub(crate) fn test_program_for_merkle_step_left_sibling() -> TestableProgram {
-        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
-        let divined_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
-        let expected_digest = Tip5::hash_pair(accumulator_digest, divined_digest);
-        let merkle_tree_node_index = 2;
-        let program = triton_program!(
-            push {merkle_tree_node_index}
-            {&push_digest_to_stack_tasm(accumulator_digest)}
-            merkle_step
-
-            {&push_digest_to_stack_tasm(expected_digest)}
-            assert_vector pop 5
-            assert halt
-        );
-
-        let non_determinism = NonDeterminism::default().with_digests(vec![divined_digest]);
-        TestableProgram::new(program).with_non_determinism(non_determinism)
-    }
-
-    pub(crate) fn test_program_for_merkle_step_mem_right_sibling() -> TestableProgram {
-        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
-        let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
-        let expected_digest = Tip5::hash_pair(sibling_digest, accumulator_digest);
-        let auth_path_address = 1337;
-        let merkle_tree_node_index = 3;
-        let program = triton_program!(
-            push {auth_path_address}
-            push 0 // dummy
-            push {merkle_tree_node_index}
-            {&push_digest_to_stack_tasm(accumulator_digest)}
-            merkle_step_mem
-
-            {&push_digest_to_stack_tasm(expected_digest)}
-            assert_vector pop 5
-            assert halt
-        );
-
-        let ram = (auth_path_address..)
-            .map(BFieldElement::new)
-            .zip(sibling_digest.values())
-            .collect::<HashMap<_, _>>();
-        let non_determinism = NonDeterminism::default().with_ram(ram);
-        TestableProgram::new(program).with_non_determinism(non_determinism)
-    }
-
-    pub(crate) fn test_program_for_merkle_step_mem_left_sibling() -> TestableProgram {
-        let accumulator_digest = Digest::new(bfe_array![2, 12, 22, 32, 42]);
-        let sibling_digest = Digest::new(bfe_array![10, 11, 12, 13, 14]);
-        let expected_digest = Tip5::hash_pair(accumulator_digest, sibling_digest);
-        let auth_path_address = 1337;
-        let merkle_tree_node_index = 2;
-        let program = triton_program!(
-            push {auth_path_address}
-            push 0 // dummy
-            push {merkle_tree_node_index}
-            {&push_digest_to_stack_tasm(accumulator_digest)}
-            merkle_step_mem
-
-            {&push_digest_to_stack_tasm(expected_digest)}
-            assert_vector pop 5
-            assert halt
-        );
-
-        let ram = (auth_path_address..)
-            .map(BFieldElement::new)
-            .zip(sibling_digest.values())
-            .collect::<HashMap<_, _>>();
-        let non_determinism = NonDeterminism::default().with_ram(ram);
-        TestableProgram::new(program).with_non_determinism(non_determinism)
-    }
-
-    /// Test helper for property-testing instruction `merkle_step_mem` in a
-    /// meaningful context, namely, using
-    /// [`MERKLE_TREE_UPDATE`](crate::example_programs::MERKLE_TREE_UPDATE).
-    #[derive(Debug, Clone, test_strategy::Arbitrary)]
-    pub struct ProgramForMerkleTreeUpdate {
-        leaved_merkle_tree: LeavedMerkleTreeTestData,
-
-        #[strategy(0..#leaved_merkle_tree.revealed_indices.len())]
-        #[map(|i| #leaved_merkle_tree.revealed_indices[i])]
-        revealed_leafs_index: usize,
-
-        #[strategy(arb())]
-        new_leaf: Digest,
-
-        #[strategy(arb())]
-        auth_path_address: BFieldElement,
-    }
-
-    impl ProgramForMerkleTreeUpdate {
-        pub fn assemble(self) -> TestableProgram {
-            let auth_path = self.authentication_path();
-            let leaf_index = self.revealed_leafs_index;
-            let merkle_tree = self.leaved_merkle_tree.merkle_tree;
-
-            let ram = (self.auth_path_address.value()..)
-                .map(BFieldElement::new)
-                .zip(auth_path.iter().flat_map(|digest| digest.values()))
-                .collect::<HashMap<_, _>>();
-            let non_determinism = NonDeterminism::default().with_ram(ram);
-
-            let old_leaf = Digest::from(self.leaved_merkle_tree.leaves[leaf_index]);
-            let old_root = merkle_tree.root();
-            let mut public_input =
-                bfe_vec![self.auth_path_address, leaf_index, merkle_tree.height()];
-            public_input.extend(old_leaf.reversed().values());
-            public_input.extend(old_root.reversed().values());
-            public_input.extend(self.new_leaf.reversed().values());
-
-            TestableProgram::new(merkle_tree_update())
-                .with_input(public_input)
-                .with_non_determinism(non_determinism)
-        }
-
-        /// The authentication path for the leaf at `self.revealed_leafs_index`.
-        /// Independent of the leaf's value, _i.e._, is up to date even once the
-        /// leaf has been updated.
-        fn authentication_path(&self) -> Vec<Digest> {
-            self.leaved_merkle_tree
-                .merkle_tree
-                .authentication_structure(&[self.revealed_leafs_index])
-                .unwrap()
-        }
-    }
-
-    pub(crate) fn test_program_for_assert_vector() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 1 push 2 push 3 push 4 push 5
-            push 1 push 2 push 3 push 4 push 5
-            assert_vector halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_sponge_instructions() -> TestableProgram {
-        let push_10_zeros = triton_asm![push 0; 10];
-        TestableProgram::new(triton_program!(
-            sponge_init
-            {&push_10_zeros} sponge_absorb
-            {&push_10_zeros} sponge_absorb
-            sponge_squeeze halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_sponge_instructions_2() -> TestableProgram {
-        let push_5_zeros = triton_asm![push 0; 5];
-        let program = triton_program! {
-            sponge_init
-            sponge_squeeze sponge_absorb
-            {&push_5_zeros} hash
-            sponge_squeeze sponge_absorb
-            halt
-        };
-        TestableProgram::new(program)
-    }
-
-    pub(crate) fn test_program_for_many_sponge_instructions() -> TestableProgram {
-        let push_5_zeros = triton_asm![push 0; 5];
-        let push_10_zeros = triton_asm![push 0; 10];
-        let program = triton_program! {         //  elements on stack
-            sponge_init                         //  0
-            sponge_squeeze sponge_absorb        //  0
-            {&push_10_zeros} sponge_absorb      //  0
-            {&push_10_zeros} sponge_absorb      //  0
-            sponge_squeeze sponge_squeeze       // 20
-            sponge_squeeze sponge_absorb        // 20
-            sponge_init sponge_init sponge_init // 20
-            sponge_absorb                       // 10
-            sponge_init                         // 10
-            sponge_squeeze sponge_squeeze       // 30
-            sponge_init sponge_squeeze          // 40
-            {&push_5_zeros} hash sponge_absorb  // 30
-            {&push_5_zeros} hash sponge_squeeze // 40
-            {&push_5_zeros} hash sponge_absorb  // 30
-            {&push_5_zeros} hash sponge_squeeze // 40
-            sponge_init                         // 40
-            sponge_absorb sponge_absorb         // 20
-            sponge_absorb sponge_absorb         //  0
-            {&push_10_zeros} sponge_absorb      //  0
-            {&push_10_zeros} sponge_absorb      //  0
-            {&push_10_zeros} sponge_absorb      //  0
-            halt
-        };
-        TestableProgram::new(program)
-    }
-
-    pub(crate) fn property_based_test_program_for_assert_vector() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st: [BFieldElement; 5] = rng.random();
-
-        let program = triton_program!(
-            push {st[0]} push {st[1]} push {st[2]} push {st[3]} push {st[4]}
-            read_io 5 assert_vector halt
-        );
-
-        TestableProgram::new(program).with_input(st)
-    }
-
-    /// Test helper for [`ProgramForSpongeAndHashInstructions`].
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumCount, EnumIter, test_strategy::Arbitrary)]
-    enum SpongeAndHashInstructions {
-        SpongeInit,
-        SpongeAbsorb(#[strategy(arb())] [BFieldElement; tip5::RATE]),
-        SpongeAbsorbMem(#[strategy(arb())] BFieldElement),
-        SpongeSqueeze,
-        Hash(#[strategy(arb())] [BFieldElement; tip5::RATE]),
-    }
-
-    impl SpongeAndHashInstructions {
-        fn to_vm_instruction_sequence(self) -> Vec<Instruction> {
-            let push_array =
-                |a: [_; tip5::RATE]| a.into_iter().rev().map(Instruction::Push).collect_vec();
-
-            match self {
-                Self::SpongeInit => vec![Instruction::SpongeInit],
-                Self::SpongeAbsorb(input) => {
-                    [push_array(input), vec![Instruction::SpongeAbsorb]].concat()
-                }
-                Self::SpongeAbsorbMem(ram_pointer) => {
-                    vec![Instruction::Push(ram_pointer), Instruction::SpongeAbsorbMem]
-                }
-                Self::SpongeSqueeze => vec![Instruction::SpongeSqueeze],
-                Self::Hash(input) => [push_array(input), vec![Instruction::Hash]].concat(),
-            }
-        }
-
-        fn execute(self, sponge: &mut Tip5, ram: &HashMap<BFieldElement, BFieldElement>) {
-            let ram_read = |p| ram.get(&p).copied().unwrap_or_else(|| bfe!(0));
-            let ram_read_array = |p| {
-                let ram_reads = (0..tip5::RATE as u32).map(|i| ram_read(p + bfe!(i)));
-                ram_reads.collect_vec().try_into().unwrap()
-            };
-
-            match self {
-                Self::SpongeInit => *sponge = Tip5::init(),
-                Self::SpongeAbsorb(input) => sponge.absorb(input),
-                Self::SpongeAbsorbMem(ram_pointer) => sponge.absorb(ram_read_array(ram_pointer)),
-                Self::SpongeSqueeze => _ = sponge.squeeze(),
-                Self::Hash(_) => (), // no effect on Sponge
-            }
-        }
-    }
-
-    /// Test helper for arbitrary sequences of hashing-related instructions.
-    #[derive(Debug, Clone, Eq, PartialEq, test_strategy::Arbitrary)]
-    pub struct ProgramForSpongeAndHashInstructions {
-        instructions: Vec<SpongeAndHashInstructions>,
-
-        #[strategy(arb())]
-        ram: HashMap<BFieldElement, BFieldElement>,
-    }
-
-    impl ProgramForSpongeAndHashInstructions {
-        pub fn assemble(self) -> TestableProgram {
-            let mut sponge = Tip5::init();
-            for instruction in &self.instructions {
-                instruction.execute(&mut sponge, &self.ram);
-            }
-            let expected_rate = sponge.squeeze();
-            let non_determinism = NonDeterminism::default().with_ram(self.ram);
-
-            let sponge_and_hash_instructions = self
-                .instructions
-                .into_iter()
-                .flat_map(|i| i.to_vm_instruction_sequence())
-                .collect_vec();
-            let output_equality_assertions =
-                vec![triton_asm![read_io 1 eq assert]; tip5::RATE].concat();
-
-            let program = triton_program! {
-                sponge_init
-                {&sponge_and_hash_instructions}
-                sponge_squeeze
-                {&output_equality_assertions}
-                halt
-            };
-
-            TestableProgram::new(program)
-                .with_input(expected_rate)
-                .with_non_determinism(non_determinism)
-        }
-    }
-
-    #[macro_rules_attr::apply(proptest)]
-    fn property_based_sponge_and_hash_instructions_program_sanity_check(
-        program: ProgramForSpongeAndHashInstructions,
-    ) {
-        program.assemble().run()?;
-    }
-
-    pub(crate) fn test_program_for_add_mul_invert() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push  2 push -1 add assert
-            push -1 push -1 mul assert
-            push  5 addi -4 assert
-            push  3 dup 0 invert mul assert
-            halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_split() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.next_u64() % BFieldElement::P;
-        let hi = st0 >> 32;
-        let lo = st0 & 0xffff_ffff;
-
-        let program =
-            triton_program!(push {st0} split read_io 1 eq assert read_io 1 eq assert halt);
-        TestableProgram::new(program).with_input(bfe_array![lo, hi])
-    }
-
-    pub(crate) fn test_program_for_eq() -> TestableProgram {
-        let input = bfe_array![42];
-        TestableProgram::new(triton_program!(read_io 1 divine 1 eq assert halt))
-            .with_input(input)
-            .with_non_determinism(input)
-    }
-
-    pub(crate) fn property_based_test_program_for_eq() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.next_u64() % BFieldElement::P;
-        let input = bfe_array![st0];
-
-        let program =
-            triton_program!(push {st0} dup 0 read_io 1 eq assert dup 0 divine 1 eq assert halt);
-        TestableProgram::new(program)
-            .with_input(input)
-            .with_non_determinism(input)
-    }
-
-    pub(crate) fn test_program_for_lsb() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 3 call lsb assert assert halt
-            lsb:
-                push 2 swap 1 div_mod return
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_lsb() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.next_u32();
-        let lsb = st0 % 2;
-        let st0_shift_right = st0 >> 1;
-
-        let program = triton_program!(
-            push {st0} call lsb read_io 1 eq assert read_io 1 eq assert halt
-            lsb:
-                push 2 swap 1 div_mod return
-        );
-        TestableProgram::new(program).with_input([lsb, st0_shift_right].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_0_lt_0() -> TestableProgram {
-        TestableProgram::new(triton_program!(push 0 push 0 lt halt))
-    }
-
-    pub(crate) fn test_program_for_lt() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_lt() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let st1_0 = rng.next_u32();
-        let st0_0 = rng.next_u32();
-        let result_0 = match st0_0 < st1_0 {
-            true => 1,
-            false => 0,
-        };
-
-        let st1_1 = rng.next_u32();
-        let st0_1 = rng.next_u32();
-        let result_1 = match st0_1 < st1_1 {
-            true => 1,
-            false => 0,
-        };
-
-        let program = triton_program!(
-            push {st1_0} push {st0_0} lt read_io 1 eq assert
-            push {st1_1} push {st0_1} lt read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_for_and() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_and() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let st1_0 = rng.next_u32();
-        let st0_0 = rng.next_u32();
-        let result_0 = st0_0.bitand(st1_0);
-
-        let st1_1 = rng.next_u32();
-        let st0_1 = rng.next_u32();
-        let result_1 = st0_1.bitand(st1_1);
-
-        let program = triton_program!(
-            push {st1_0} push {st0_0} and read_io 1 eq assert
-            push {st1_1} push {st0_1} and read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_for_xor() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_xor() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let st1_0 = rng.next_u32();
-        let st0_0 = rng.next_u32();
-        let result_0 = st0_0.bitxor(st1_0);
-
-        let st1_1 = rng.next_u32();
-        let st0_1 = rng.next_u32();
-        let result_1 = st0_1.bitxor(st1_1);
-
-        let program = triton_program!(
-            push {st1_0} push {st0_0} xor read_io 1 eq assert
-            push {st1_1} push {st0_1} xor read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([result_0, result_1].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_for_log2floor() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push  1 log_2_floor push  0 eq assert
-            push  2 log_2_floor push  1 eq assert
-            push  3 log_2_floor push  1 eq assert
-            push  4 log_2_floor push  2 eq assert
-            push  7 log_2_floor push  2 eq assert
-            push  8 log_2_floor push  3 eq assert
-            push 15 log_2_floor push  3 eq assert
-            push 16 log_2_floor push  4 eq assert
-            push 31 log_2_floor push  4 eq assert
-            push 32 log_2_floor push  5 eq assert
-            push 33 log_2_floor push  5 eq assert
-            push 4294967295 log_2_floor push 31 eq assert halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_log2floor() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let st0_0 = rng.next_u32();
-        let l2f_0 = st0_0.ilog2();
-
-        let st0_1 = rng.next_u32();
-        let l2f_1 = st0_1.ilog2();
-
-        let program = triton_program!(
-            push {st0_0} log_2_floor read_io 1 eq assert
-            push {st0_1} log_2_floor read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([l2f_0, l2f_1].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_for_pow() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            // push [exponent] push [base] pow push [result] eq assert
-            push  0 push 0 pow push    1 eq assert
-            push  0 push 1 pow push    1 eq assert
-            push  0 push 2 pow push    1 eq assert
-            push  1 push 0 pow push    0 eq assert
-            push  2 push 0 pow push    0 eq assert
-            push  2 push 5 pow push   25 eq assert
-            push  5 push 2 pow push   32 eq assert
-            push 10 push 2 pow push 1024 eq assert
-            push  3 push 3 pow push   27 eq assert
-            push  3 push 5 pow push  125 eq assert
-            push  9 push 7 pow push 40353607 eq assert
-            push 3040597274 push 05218640216028681988 pow push 11160453713534536216 eq assert
-            push 2378067562 push 13711477740065654150 pow push 06848017529532358230 eq assert
-            push  129856251 push 00218966585049330803 pow push 08283208434666229347 eq assert
-            push 1657936293 push 04999758396092641065 pow push 11426020017566937356 eq assert
-            push 3474149688 push 05702231339458623568 pow push 02862889945380025510 eq assert
-            push 2243935791 push 09059335263701504667 pow push 04293137302922963369 eq assert
-            push 1783029319 push 00037306102533222534 pow push 10002149917806048099 eq assert
-            push 3608140376 push 17716542154416103060 pow push 11885601801443303960 eq assert
-            push 1220084884 push 07207865095616988291 pow push 05544378138345942897 eq assert
-            push 3539668245 push 13491612301110950186 pow push 02612675697712040250 eq assert
-            halt
-        ))
-    }
-
-    pub(crate) fn property_based_test_program_for_pow() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let base_0: BFieldElement = rng.random();
-        let exp_0 = rng.next_u32();
-        let result_0 = base_0.mod_pow_u32(exp_0);
-
-        let base_1: BFieldElement = rng.random();
-        let exp_1 = rng.next_u32();
-        let result_1 = base_1.mod_pow_u32(exp_1);
-
-        let program = triton_program!(
-            push {exp_0} push {base_0} pow read_io 1 eq assert
-            push {exp_1} push {base_1} pow read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([result_0, result_1])
-    }
-
-    pub(crate) fn test_program_for_div_mod() -> TestableProgram {
-        TestableProgram::new(triton_program!(push 2 push 3 div_mod assert assert halt))
-    }
-
-    pub(crate) fn property_based_test_program_for_div_mod() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-
-        let denominator = rng.next_u32();
-        let numerator = rng.next_u32();
-        let quotient = numerator / denominator;
-        let remainder = numerator % denominator;
-
-        let program = triton_program!(
-            push {denominator} push {numerator} div_mod read_io 1 eq assert read_io 1 eq assert halt
-        );
-        TestableProgram::new(program).with_input([remainder, quotient].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_for_starting_with_pop_count() -> TestableProgram {
-        TestableProgram::new(triton_program!(pop_count dup 0 push 0 eq assert halt))
-    }
-
-    pub(crate) fn test_program_for_pop_count() -> TestableProgram {
-        TestableProgram::new(triton_program!(push 10 pop_count push 2 eq assert halt))
-    }
-
-    pub(crate) fn property_based_test_program_for_pop_count() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.next_u32();
-        let pop_count = st0.count_ones();
-        let program = triton_program!(push {st0} pop_count read_io 1 eq assert halt);
-        TestableProgram::new(program).with_input(bfe_array![pop_count])
-    }
-
-    pub(crate) fn property_based_test_program_for_is_u32() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let st0_u32 = rng.next_u32();
-        let st0_not_u32 = (u64::from(rng.next_u32()) << 32) + u64::from(rng.next_u32());
-        let program = triton_program!(
-            push {st0_u32} call is_u32 assert
-            push {st0_not_u32} call is_u32 push 0 eq assert halt
-            is_u32:
-                 split pop 1 push 0 eq return
-        );
-        TestableProgram::new(program)
-    }
-
-    pub(crate) fn property_based_test_program_for_random_ram_access(
-        seed: <StdRng as SeedableRng>::Seed,
-    ) -> TestableProgram {
-        let mut rng = StdRng::from_seed(seed);
-        let num_memory_accesses = rng.random_range(10..50);
-        let mut random_elements =
-            |n| -> Vec<BFieldElement> { (&mut rng).sample_iter(StandardUniform).take(n).collect() };
-        let memory_addresses = random_elements(num_memory_accesses);
-        let mut memory_values = random_elements(num_memory_accesses);
-        let mut instructions = vec![];
-
-        // Read some memory before first write to ensure that the memory is
-        // initialized with 0s. Not all addresses are read to have different
-        // access patterns:
-        // - Some addresses are read before written to.
-        // - Other addresses are written to before read.
-        for address in memory_addresses.iter().take(num_memory_accesses / 4) {
-            instructions.extend(triton_asm!(push {address} read_mem 1 pop 1 push 0 eq assert));
-        }
-
-        // Write everything to RAM.
-        for (address, value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
-            instructions.extend(triton_asm!(push {value} push {address} write_mem 1 pop 1));
-        }
-
-        // Read back in random order and check that the values did not change.
-        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
-        for i in 0..num_memory_accesses {
-            let j = rng.random_range(0..num_memory_accesses);
-            reading_permutation.swap(i, j);
-        }
-        for idx in reading_permutation {
-            let address = memory_addresses[idx];
-            let value = memory_values[idx];
-            instructions
-                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
-        }
-
-        // Overwrite half the values with new ones.
-        let mut writing_permutation = (0..num_memory_accesses).collect_vec();
-        for i in 0..num_memory_accesses {
-            let j = rng.random_range(0..num_memory_accesses);
-            writing_permutation.swap(i, j);
-        }
-        for idx in 0..num_memory_accesses / 2 {
-            let address = memory_addresses[writing_permutation[idx]];
-            let new_memory_value = rng.random();
-            memory_values[writing_permutation[idx]] = new_memory_value;
-            instructions
-                .extend(triton_asm!(push {new_memory_value} push {address} write_mem 1 pop 1));
-        }
-
-        // Read back all, i.e., unchanged and overwritten values in (different
-        // from before) random order and check that the values did not change.
-        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
-        for i in 0..num_memory_accesses {
-            let j = rng.random_range(0..num_memory_accesses);
-            reading_permutation.swap(i, j);
-        }
-        for idx in reading_permutation {
-            let address = memory_addresses[idx];
-            let value = memory_values[idx];
-            instructions
-                .extend(triton_asm!(push {address} read_mem 1 pop 1 push {value} eq assert));
-        }
-
-        let program = triton_program! { { &instructions } halt };
-        TestableProgram::new(program)
-    }
-
-    /// Sanity check for the relatively complex property-based test for random
-    /// RAM access.
-    #[macro_rules_attr::apply(proptest)]
-    fn run_dont_prove_property_based_test_for_random_ram_access(
-        seed: <StdRng as SeedableRng>::Seed,
-    ) {
-        property_based_test_program_for_random_ram_access(seed).run()?;
-    }
-
     #[macro_rules_attr::apply(test)]
     fn can_compute_dot_product_from_uninitialized_ram() {
         let program = triton_program!(xx_dot_step xb_dot_step halt);
-        VM::run(program, PublicInput::default(), NonDeterminism::default()).unwrap();
-    }
-
-    pub(crate) fn property_based_test_program_for_xx_dot_step() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let n = rng.random_range(0..10);
-
-        let push_xfe = |xfe: XFieldElement| {
-            let [c_0, c_1, c_2] = xfe.coefficients;
-            triton_asm! { push {c_2} push {c_1} push {c_0} }
-        };
-        let push_and_write_xfe = |xfe| {
-            let push_xfe = push_xfe(xfe);
-            triton_asm! {
-                {&push_xfe}
-                dup 3
-                write_mem 3
-                swap 1
-                pop 1
-            }
-        };
-        let into_write_instructions = |elements: Vec<_>| {
-            elements
-                .into_iter()
-                .flat_map(push_and_write_xfe)
-                .collect_vec()
-        };
-
-        let vector_one = (0..n).map(|_| rng.random()).collect_vec();
-        let vector_two = (0..n).map(|_| rng.random()).collect_vec();
-        let inner_product = vector_one
-            .iter()
-            .zip(&vector_two)
-            .map(|(&a, &b)| a * b)
-            .sum();
-        let push_inner_product = push_xfe(inner_product);
-
-        let push_and_write_vector_one = into_write_instructions(vector_one);
-        let push_and_write_vector_two = into_write_instructions(vector_two);
-        let many_dotsteps = (0..n).map(|_| triton_instr!(xx_dot_step)).collect_vec();
-
-        let code = triton_program! {
-            push 0
-            {&push_and_write_vector_one}
-            dup 0
-            {&push_and_write_vector_two}
-            pop 1
-            push 0
-
-            {&many_dotsteps}
-            pop 2
-            push 0 push 0
-
-            {&push_inner_product}
-            push 0 push 0
-            assert_vector
-            halt
-        };
-        TestableProgram::new(code)
-    }
-
-    /// Sanity check
-    #[macro_rules_attr::apply(test)]
-    fn run_dont_prove_property_based_test_program_for_xx_dot_step() {
-        let program = property_based_test_program_for_xx_dot_step();
-        program.run().unwrap();
-    }
-
-    pub(crate) fn property_based_test_program_for_xb_dot_step() -> TestableProgram {
-        let mut rng = ThreadRng::default();
-        let n = rng.random_range(0..10);
-        let push_xfe = |x: XFieldElement| {
-            triton_asm! {
-                push {x.coefficients[2]}
-                push {x.coefficients[1]}
-                push {x.coefficients[0]}
-            }
-        };
-        let push_and_write_xfe = |x: XFieldElement| {
-            triton_asm! {
-                push {x.coefficients[2]}
-                push {x.coefficients[1]}
-                push {x.coefficients[0]}
-                dup 3
-                write_mem 3
-                swap 1
-                pop 1
-            }
-        };
-        let push_and_write_bfe = |x: BFieldElement| {
-            triton_asm! {
-                push {x}
-                dup 1
-                write_mem 1
-                swap 1
-                pop 1
-            }
-        };
-        let vector_one = (0..n).map(|_| rng.random::<XFieldElement>()).collect_vec();
-        let vector_two = (0..n).map(|_| rng.random::<BFieldElement>()).collect_vec();
-        let inner_product = vector_one
-            .iter()
-            .zip(vector_two.iter())
-            .map(|(&a, &b)| a * b)
-            .sum::<XFieldElement>();
-        let push_and_write_vector_one = (0..n)
-            .flat_map(|i| push_and_write_xfe(vector_one[i]))
-            .collect_vec();
-        let push_and_write_vector_two = (0..n)
-            .flat_map(|i| push_and_write_bfe(vector_two[i]))
-            .collect_vec();
-        let push_inner_product = push_xfe(inner_product);
-        let many_dotsteps = (0..n).map(|_| triton_instr!(xb_dot_step)).collect_vec();
-        let code = triton_program! {
-            push 0
-            {&push_and_write_vector_one}
-            dup 0
-            {&push_and_write_vector_two}
-            pop 1
-            push 0
-            swap 1
-            {&many_dotsteps}
-            pop 1
-            pop 1
-            push 0
-            push 0
-            {&push_inner_product}
-            push 0
-            push 0
-            assert_vector
-            halt
-        };
-        TestableProgram::new(code)
-    }
-
-    /// Sanity check
-    #[macro_rules_attr::apply(test)]
-    fn run_dont_prove_property_based_test_program_for_xb_dot_step() {
-        let program = property_based_test_program_for_xb_dot_step();
-        program.run().unwrap();
+        TestableProgram::new(program).run().unwrap();
     }
 
     #[macro_rules_attr::apply(proptest)]
@@ -2706,68 +1756,6 @@ pub(crate) mod tests {
         assert!(let InstructionError::AssertionFailed(_) = err.source);
     }
 
-    pub(crate) fn test_program_for_split() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push -2 split push 4294967295 eq assert push 4294967294 eq assert
-            push -1 split push 0 eq assert push 4294967295 eq assert
-            push  0 split push 0 eq assert push 0 eq assert
-            push  1 split push 1 eq assert push 0 eq assert
-            push  2 split push 2 eq assert push 0 eq assert
-            push 4294967297 split assert assert
-            halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_xx_add() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 6 push 7 push 8 push 9 push 10 xx_add halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_xx_mul() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 6 push 7 push 8 push 9 push 10 xx_mul halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_x_invert() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 6 push 7 x_invert halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_xb_mul() -> TestableProgram {
-        TestableProgram::new(triton_program!(
-            push 5 push 6 push 7 push 8 xb_mul halt
-        ))
-    }
-
-    pub(crate) fn test_program_for_read_io_write_io() -> TestableProgram {
-        let program = triton_program!(
-            read_io 1 assert read_io 2 dup 1 dup 1 add write_io 1 mul push 5 write_io 2 halt
-        );
-        TestableProgram::new(program).with_input([1, 3, 14].map(|b| bfe!(b)))
-    }
-
-    pub(crate) fn test_program_claim_in_ram_corresponds_to_currently_running_program()
-    -> TestableProgram {
-        let program = triton_program! {
-            dup 15 dup 15 dup 15 dup 15 dup 15  // _ [own_digest]
-            push 4 read_mem 5 pop 1             // _ [own_digest] [claim_digest]
-            assert_vector                       // _ [own_digest]
-            halt
-        };
-
-        let program_digest = program.hash();
-        let enumerated_digest_elements = program_digest.values().into_iter().enumerate();
-        let initial_ram = enumerated_digest_elements
-            .map(|(address, d)| (bfe!(u64::try_from(address).unwrap()), d))
-            .collect::<HashMap<_, _>>();
-        let non_determinism = NonDeterminism::default().with_ram(initial_ram);
-
-        TestableProgram::new(program).with_non_determinism(non_determinism)
-    }
-
     #[macro_rules_attr::apply(proptest)]
     fn xx_add(
         #[strategy(arb())] left_operand: XFieldElement,
@@ -2784,7 +1772,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(program, [].into(), [].into())?;
+        let actual_stdout = TestableProgram::new(program).run()?;
         let expected_stdout = (left_operand + right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2805,7 +1793,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(program, [].into(), [].into())?;
+        let actual_stdout = TestableProgram::new(program).run()?;
         let expected_stdout = (left_operand * right_operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2824,7 +1812,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(program, [].into(), [].into())?;
+        let actual_stdout = TestableProgram::new(program).run()?;
         let expected_stdout = operand.inverse().coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2840,7 +1828,7 @@ pub(crate) mod tests {
             write_io 3
             halt
         );
-        let actual_stdout = VM::run(program, [].into(), [].into())?;
+        let actual_stdout = TestableProgram::new(program).run()?;
         let expected_stdout = (scalar * operand).coefficients.to_vec();
         prop_assert_eq!(expected_stdout, actual_stdout);
     }
@@ -2867,56 +1855,35 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn run_tvm_hello_world() {
         let program = triton_program!(
-            push  10 // \n
-            push  33 // !
-            push 100 // d
-            push 108 // l
-            push 114 // r
-            push 111 // o
-            push  87 // W
-            push  32 //
-            push  44 // ,
-            push 111 // o
-            push 108 // l
-            push 108 // l
-            push 101 // e
-            push  72 // H
-            write_io 5 write_io 5 write_io 4
+            push {b'!'}
+            push {b'd'}
+            push {b'l'}
+            push {b'r'}
+            push {b'o'}
+            push {b'W'}
+            push {b' '}
+            push {b','}
+            push {b'o'}
+            push {b'l'}
+            push {b'l'}
+            push {b'e'}
+            push {b'H'}
+            write_io 5 write_io 5 write_io 3
             halt
         );
-        let mut vm_state = VMState::new(program, [].into(), [].into());
-        assert!(let Ok(()) = vm_state.run());
-        assert!(BFieldElement::ZERO == vm_state.op_stack[0]);
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn run_tvm_merkle_step_right_sibling() {
-        let program = test_program_for_merkle_step_right_sibling();
-        assert!(let Ok(_) = program.run());
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn run_tvm_merkle_step_left_sibling() {
-        let program = test_program_for_merkle_step_left_sibling();
-        assert!(let Ok(_) = program.run());
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn run_tvm_merkle_step_mem_right_sibling() {
-        let program = test_program_for_merkle_step_mem_right_sibling();
-        assert!(let Ok(_) = program.run());
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn run_tvm_merkle_step_mem_left_sibling() {
-        let program = test_program_for_merkle_step_mem_left_sibling();
-        assert!(let Ok(_) = program.run());
+        let stdout = TestableProgram::new(program).run().unwrap();
+        let std_out = stdout
+            .into_iter()
+            .map(|bfe| u8::try_from(bfe).unwrap())
+            .collect_vec();
+        let std_out = String::try_from(std_out).unwrap();
+        assert!(std_out == "Hello, World!")
     }
 
     #[macro_rules_attr::apply(test)]
     fn run_tvm_halt_then_do_stuff() {
         let program = triton_program!(halt push 1 push 2 add invert write_io 5);
-        assert!(let Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
+        assert!(let Ok((aet, _)) = TestableProgram::new(program).trace_execution());
 
         assert!(let Some(last_processor_row) = aet.processor_trace.rows().into_iter().next_back());
         let clk_count = last_processor_row[ProcessorMainColumn::CLK.main_index()];
@@ -2941,7 +1908,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let mut vm_state = VMState::new(program, [].into(), [].into());
+        let mut vm_state = VMState::new(program, PublicInput::default(), NonDeterminism::default());
         assert!(let Ok(()) = vm_state.run());
         assert!(4 == vm_state.op_stack[0].value());
         assert!(7 == vm_state.op_stack[1].value());
@@ -2974,7 +1941,7 @@ pub(crate) mod tests {
             halt
         );
 
-        let mut vm_state = VMState::new(program, [].into(), [].into());
+        let mut vm_state = VMState::new(program, PublicInput::default(), NonDeterminism::default());
         assert!(let Ok(()) = vm_state.run());
         assert!(2_u64 == vm_state.op_stack[0].value());
         assert!(5_u64 == vm_state.op_stack[1].value());
@@ -3005,25 +1972,6 @@ pub(crate) mod tests {
 
         let program = merkle_tree_authentication_path_verify();
         assert!(let Ok(_) = VM::run(program, public_input.into(), non_determinism));
-    }
-
-    /// Checks whether the [`TestableProgram`] generated through
-    /// [`ProgramForMerkleTreeUpdate::assemble`] can
-    /// - be executed without crashing the VM, and
-    /// - produces the correct output.
-    #[macro_rules_attr::apply(proptest)]
-    fn merkle_tree_updating_program_correctly_updates_a_merkle_tree(
-        program: ProgramForMerkleTreeUpdate,
-    ) {
-        let inclusion_proof = MerkleTreeInclusionProof {
-            tree_height: program.leaved_merkle_tree.merkle_tree.height(),
-            indexed_leafs: vec![(program.revealed_leafs_index, program.new_leaf)],
-            authentication_structure: program.authentication_path(),
-        };
-        let new_root = program.assemble().run()?;
-        let new_root = Digest(new_root.try_into().unwrap());
-
-        prop_assert!(inclusion_proof.verify(new_root));
     }
 
     #[macro_rules_attr::apply(proptest(cases = 10))]
@@ -3058,8 +2006,9 @@ pub(crate) mod tests {
             write_io 1 halt
         );
 
-        let public_input = vec![p2_x, p1.1, p1.0, p0.1, p0.0];
-        assert!(let Ok(output) = VM::run(get_collinear_y_program, public_input.into(), [].into()));
+        let public_input = [p2_x, p1.1, p1.0, p0.1, p0.0];
+        let program = TestableProgram::new(get_collinear_y_program).with_input(public_input);
+        assert!(let Ok(output) = program.run());
         prop_assert_eq!(p2_y, output[0]);
     }
 
@@ -3081,7 +2030,7 @@ pub(crate) mod tests {
                 halt
         );
 
-        assert!(let Ok(standard_out) = VM::run(countdown_program, [].into(), [].into()));
+        assert!(let Ok(standard_out) = TestableProgram::new(countdown_program).run());
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert!(expected == standard_out);
     }
@@ -3099,21 +2048,21 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn run_tvm_swap() {
         let program = triton_program!(push 1 push 2 swap 1 assert write_io 1 halt);
-        assert!(let Ok(standard_out) = VM::run(program, [].into(), [].into()));
+        assert!(let Ok(standard_out) = TestableProgram::new(program).run());
         assert!(bfe!(2) == standard_out[0]);
     }
 
     #[macro_rules_attr::apply(test)]
     fn swap_st0_is_like_no_op() {
         let program = triton_program!(push 42 swap 0 write_io 1 halt);
-        assert!(let Ok(standard_out) = VM::run(program, [].into(), [].into()));
+        assert!(let Ok(standard_out) = TestableProgram::new(program).run());
         assert!(bfe!(42) == standard_out[0]);
     }
 
     #[macro_rules_attr::apply(test)]
     fn read_mem_uninitialized() {
         let program = triton_program!(read_mem 3 halt);
-        assert!(let Ok((aet, _)) = VM::trace_execution(program, [].into(), [].into()));
+        assert!(let Ok((aet, _)) = TestableProgram::new(program).trace_execution());
         assert!(2 == aet.processor_trace.nrows());
     }
 
@@ -3163,7 +2112,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn program_without_halt() {
         let program = triton_program!(nop);
-        assert!(let Err(err) = VM::trace_execution(program, [].into(), [].into()));
+        assert!(let Err(err) = TestableProgram::new(program).trace_execution());
         assert!(let InstructionError::InstructionPointerOverflow = err.source);
     }
 

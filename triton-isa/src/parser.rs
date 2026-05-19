@@ -900,7 +900,6 @@ pub(crate) mod tests {
     use itertools::Itertools;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
-    use rand::RngExt;
     use strum::EnumCount;
     use test_strategy::Arbitrary;
     use test_strategy::proptest;
@@ -1747,11 +1746,9 @@ pub(crate) mod tests {
         println!("{program}");
     }
 
-    #[test]
-    fn triton_program_macro_interpolates_various_types() {
-        let push_arg = rand::rng().random_range(0..BFieldElement::P);
-        let instruction_push =
-            LabelledInstruction::Instruction(AnInstruction::Push(push_arg.into()));
+    #[proptest(cases = 10)]
+    fn triton_program_macro_interpolates_various_types(#[strategy(arb())] push_arg: BFieldElement) {
+        let instruction_push = LabelledInstruction::Instruction(AnInstruction::Push(push_arg));
         let swap_argument = "1";
         triton_program!({instruction_push} push {push_arg} swap {swap_argument} eq assert halt);
     }

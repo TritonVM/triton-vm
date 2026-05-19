@@ -115,7 +115,7 @@ mod tests {
 
     fn prove_and_verify_a_triton_vm_program() {
         TestableProgram::new(fibonacci_sequence())
-            .with_input(PublicInput::from(bfe_array![100]))
+            .with_input(bfe_array![100])
             .prove_and_verify();
     }
 }
