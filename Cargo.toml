@@ -34,7 +34,7 @@ license = "MIT OR Apache-2.0"
 homepage = "https://triton-vm.org/"
 repository = "https://github.com/TritonVM/triton-vm"
 readme = "README.md"
-documentation = "https://triton-vm.org/spec/"
+documentation = "https://docs.rs/triton-vm/latest/triton_vm/"
 
 [workspace.dependencies.air]
 version = "3.0.0"
