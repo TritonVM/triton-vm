@@ -18,12 +18,12 @@ when running Triton VM.
 
 ## Getting Started
 
-If you want to start writing programs for Triton VM, check out the
-[Triton TUI](https://github.com/TritonVM/triton-tui). If you want to run a Triton assembly program,
-generate or verify proofs of correct execution, or
+If you want to start writing programs for Triton VM, check out the [Triton Assembly Tutorial](tutorial/README.md).
+For running and visualizing Triton VM locally, use the [Triton TUI](https://github.com/TritonVM/triton-tui).
+If you want to run a Triton assembly program, generate or verify proofs of correct execution, or
 [profile the performance](https://github.com/TritonVM/triton-cli#profiling) of either of these,
-check out the [Triton CLI](https://github.com/TritonVM/triton-cli). If you want to use Triton VM as
-a library, check out the [examples](triton-vm/examples).
+check out the [Triton CLI](https://github.com/TritonVM/triton-cli).
+If you want to use Triton VM as a library, check out the [examples](triton-vm/examples).
 
 ## Project Status
 

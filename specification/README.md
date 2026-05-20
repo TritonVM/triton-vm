@@ -4,6 +4,11 @@ Triton VM’s specification comes in the form of an [mdBook](https://rust-lang.g
 For easy access, you can find it [online](https://triton-vm.org/spec/).
 You can also self-host it by following the steps below.
 
+> [!TIP]
+> You can find a tutorial for Triton assembly in the [dedicated book](../tutorial/README.md).
+
+## Build Locally
+
 If you don’t have it already, install [rust](https://rust-lang.org/tools/install/).
 Then, install mdBook as well as the
 [pre-processors](https://rust-lang.github.io/mdBook/format/configuration/preprocessors.html)

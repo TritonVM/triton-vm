@@ -6,6 +6,7 @@ twenty-first
 ### mdBook ###
 specification/book
 specification/*.pdf
+tutorial/book
 
 ### codecoverage ###
 *.profraw

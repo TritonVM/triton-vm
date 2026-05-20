@@ -38,3 +38,9 @@ jobs:
 
       - name: Test mdBook
         run: mdbook test ./specification
+
+      - name: Build mdBook
+        run: mdbook build ./tutorial
+
+      - name: Test mdBook
+        run: mdbook test ./tutorial
