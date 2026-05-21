@@ -1,7 +1,7 @@
 :root {
-  --content-max-width: 50%;
+    --content-max-width: 900px;
 }
 
 table {
-  margin-left: 0em;
+    margin-left: 0;
 }
