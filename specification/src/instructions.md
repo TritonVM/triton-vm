@@ -11,58 +11,57 @@ Triton VM’s instructions are (loosely and informally) grouped into the followi
 - [Input/Output](#inputoutput)
 - [Many-In-One](#many-in-one)
 
-
 The following table is a summary of all instructions.
 For more details, read on below.
 
-| Instruction                               | Description                                          |
-|:------------------------------------------|:-----------------------------------------------------|
-| [`push` + `a`](#push--a)                  | Push `a` onto the stack.                             |
-| [`pop` + `n`](#pop--n)                    | Pop the `n` top elements from the stack.             |
-| [`divine` + `n`](#divine--n)              | Push `n` non-deterministic elements to the stack.    |
-| [`pick` + `i`](#pick--i)                  | Move stack element `i` to the top of the stack.      |
-| [`place` + `i`](#place--i)                | Move the top of the stack to the position `i`.       |
-| [`dup` + `i`](#dup--i)                    | Duplicate stack element `i` onto the stack.          |
-| [`swap` + `i`](#swap--i)                  | Swap stack element `i` with the top of the stack.    |
-| [`halt`](#halt)                           | Indicate graceful shutdown of the VM.                |
-| [`nop`](#nop)                             | Do nothing.                                          |
-| [`skiz`](#skiz)                           | Conditionally skip the next instruction.             |
-| [`call` + `d`](#call--d)                  | Continue execution at address `d`.                   |
-| [`return`](#return)                       | Return to the last `call`-site.                      |
-| [`recurse`](#recurse)                     | Continue execution at the location last `call`ed.    |
-| [`recurse_or_return`](#recurse_or_return) | Either `recurse` or `return`.                        |
-| [`assert`](#assert)                       | Assert that the top of the stack is 1.               |
-| [`read_mem + n`](#read_mem--n)            | Read `n` elements from RAM.                          |
-| [`write_mem + n`](#write_mem--n)          | Write `n` elements to RAM.                           |
-| [`hash`](#hash)                           | Hash the top of the stack.                           |
-| [`assert_vector`](#assert_vector)         | Assert equivalence of the two top quintuples.        |
-| [`sponge_init`](#sponge_init)             | Initialize the Sponge state.                         |
-| [`sponge_absorb`](#sponge_absorb)         | Absorb the top of the stack into the Sponge state.   |
-| [`sponge_absorb_mem`](#sponge_absorb_mem) | Absorb from RAM into the Sponge state.               |
-| [`sponge_squeeze`](#sponge_squeeze)       | Squeeze the Sponge state onto the stack.             |
-| [`add`](#add)                             | Add two base field elements.                         |
-| [`addi` + `a`](#addi--a)                  | Add `a` to the top of the stack.                     |
-| [`mul`](#mul)                             | Multiply two base field elements.                    |
-| [`invert`](#invert)                       | Base-field reciprocal of the top of the stack.       |
-| [`eq`](#eq)                               | Compare the top two stack elements for equality.     |
-| [`split`](#split)                         | Split the top of the stack into 32-bit words.        |
-| [`lt`](#lt)                               | Compare two elements for “less than”.                |
-| [`and`](#and)                             | Bitwise “and”.                                       |
-| [`xor`](#xor)                             | Bitwise “xor”.                                       |
-| [`log_2_floor`](#log_2_floor)             | The log₂ of the top of the stack, rounded down.      |
-| [`pow`](#pow)                             | The top of the stack to the power of its runner-up.  |
-| [`div_mod`](#div_mod)                     | Division with remainder.                             |
-| [`pop_count`](#pop_count)                 | The hamming weight of the top of the stack.          |
-| [`xx_add`](#xx_add)                       | Add two extension field elements.                    |
-| [`xx_mul`](#xx_mul)                       | Multiply two extension field elements.               |
-| [`x_invert`](#x_invert)                   | Extension-field reciprocal of the top of the stack.  |
-| [`xb_mul`](#xb_mul)                       | Multiply elements from the extension and base field. |
-| [`read_io` + `n`](#read_io--n)            | Read `n` elements from standard input.               |
-| [`write_io` + `n`](#write_io--n)          | Write `n` elements to standard output.               |
-| [`merkle_step`](#merkle_step)             | Helps traversing a Merkle tree using secret input.   |
-| [`merkle_step_mem`](#merkle_step_mem)     | Helps traversing a Merkle tree using RAM.            |
-| [`xx_dot_step`](#xx_dot_step)             | Helps computing an extension field dot product.      |
-| [`xb_dot_step`](#xx_dot_step)             | Helps computing a mixed-field dot product.           |
+| Instruction                               | Description                                                       |
+|:------------------------------------------|:------------------------------------------------------------------|
+| [`push` + `a`](#push--a)                  | Push `a` onto the stack.                                          |
+| [`pop` + `n`](#pop--n)                    | Pop the `n` top elements from the stack.                          |
+| [`divine` + `n`](#divine--n)              | Push `n` non-deterministic elements to the stack.                 |
+| [`pick` + `i`](#pick--i)                  | Move stack element `i` to the top of the stack.                   |
+| [`place` + `i`](#place--i)                | Move the top of the stack to the position `i`.                    |
+| [`dup` + `i`](#dup--i)                    | Duplicate stack element `i` onto the stack.                       |
+| [`swap` + `i`](#swap--i)                  | Swap stack element `i` with the top of the stack.                 |
+| [`halt`](#halt)                           | Indicate graceful shutdown of the VM.                             |
+| [`nop`](#nop)                             | Do nothing.                                                       |
+| [`skiz`](#skiz)                           | Conditionally skip the next instruction.                          |
+| [`call` + `d`](#call--d)                  | Continue execution at address `d`.                                |
+| [`return`](#return)                       | Return to the last `call`-site.                                   |
+| [`recurse`](#recurse)                     | Continue execution at the location last `call`ed.                 |
+| [`recurse_or_return`](#recurse_or_return) | Either `recurse` or `return`.                                     |
+| [`assert`](#assert)                       | Assert that the top of the stack is 1.                            |
+| [`read_mem + n`](#read_mem--n)            | Read `n` elements from RAM.                                       |
+| [`write_mem + n`](#write_mem--n)          | Write `n` elements to RAM.                                        |
+| [`hash`](#hash)                           | Hash the top of the stack.                                        |
+| [`assert_vector`](#assert_vector)         | Assert equivalence of the two top quintuples.                     |
+| [`sponge_init`](#sponge_init)             | Initialize the Sponge state.                                      |
+| [`sponge_absorb`](#sponge_absorb)         | Absorb the top of the stack into the Sponge state.                |
+| [`sponge_absorb_mem`](#sponge_absorb_mem) | Absorb from RAM into the Sponge state.                            |
+| [`sponge_squeeze`](#sponge_squeeze)       | Squeeze the Sponge state onto the stack.                          |
+| [`add`](#add)                             | Add two base field elements.                                      |
+| [`addi` + `a`](#addi--a)                  | Add `a` to the top of the stack.                                  |
+| [`mul`](#mul)                             | Multiply two base field elements.                                 |
+| [`invert`](#invert)                       | Base-field reciprocal of the top of the stack.                    |
+| [`eq`](#eq)                               | Compare the top two stack elements for equality.                  |
+| [`split`](#split)                         | Split the top of the stack into 32-bit words.                     |
+| [`lt`](#lt)                               | Compare two elements for “less than”.                             |
+| [`and`](#and)                             | Bitwise “and”.                                                    |
+| [`xor`](#xor)                             | Bitwise “xor”.                                                    |
+| [`log_2_floor`](#log_2_floor)             | The log₂ of the top of the stack, rounded down.                   |
+| [`pow`](#pow)                             | The top of the stack to the power of its runner-up.               |
+| [`div_mod`](#div_mod)                     | Division with remainder.                                          |
+| [`pop_count`](#pop_count)                 | The hamming weight of the top of the stack.                       |
+| [`xx_add`](#xx_add)                       | Add two extension field elements.                                 |
+| [`xx_mul`](#xx_mul)                       | Multiply two extension field elements.                            |
+| [`x_invert`](#x_invert)                   | Extension-field reciprocal of the top of the stack.               |
+| [`xb_mul`](#xb_mul)                       | Multiply elements from the extension and base field.              |
+| [`read_io` + `n`](#read_io--n)            | Read `n` elements from standard input.                            |
+| [`write_io` + `n`](#write_io--n)          | Write `n` elements to standard output.                            |
+| [`merkle_step`](#merkle_step)             | Helps traversing a Merkle tree using secret input.                |
+| [`merkle_step_mem`](#merkle_step_mem)     | Helps traversing a Merkle tree using RAM.                         |
+| [`b_horner_step`](#b_horner_step)         | Helps evaluating univariate polynomials over the base field.      |
+| [`x_horner_step`](#x_horner_step)         | Helps evaluating univariate polynomials over the extension field. |
 
 ## Stack Manipulation
 
@@ -709,37 +708,54 @@ Crashes the VM if `i` is not u32.
 |:----------------|:--------------------------|
 | `_ p f i edcba` | `_ p+5 f (i div 2) zyxwv` |
 
-### xx_dot_step
+### b_horner_step
 
 **Opcode**: 80
 
-Reads two extension field elements from RAM located at the addresses corresponding to the two top
-stack elements, multiplies the extension field elements, and adds the product `(p0, p1, p2)` to an
-accumulator located on stack immediately below the two pointers.
-Also, increases the pointers by the number of words read.
+This instruction facilitates efficient evaluation of a univariate polynomial over the base field in an indeterminate
+from the extension field.
+In order to leverage this instruction most efficiently, the polynomial should be encoded with it's leading coefficient
+at the highest RAM address.
+The instruction corresponds to one “step” in [Horner's method](https://en.wikipedia.org/wiki/Horner%27s_method).
 
-This instruction facilitates efficient computation of the
-[dot product](https://en.wikipedia.org/wiki/Dot_product) of two vectors containing extension field
-elements.
+In particular, it
 
-| old stack       | new stack                    |
-|:----------------|:-----------------------------|
-| `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+3` |
+- interprets stack elements `st0` through `st2` as the indeterminate, `x`
+- interprets stack elements `st7` through `st9` as a partial evaluation (or an accumulator), `e`,
+- uses stack element `st5` as a RAM pointer, from which it reads a coefficient `c`,
+- updates the partial evaluation to be `e·x + c`, and
+- decrements the RAM pointer at `st5` by 1.
 
-### xb_dot_step
+The unused elements (marked by `*` in the stack signature below) allow for efficient use with instruction
+[`recurse_or_return`](#recurse_or_return).
+
+| old stack                      | new stack                       |
+|:-------------------------------|:--------------------------------|
+| `_ e2 e1 e0 * p * * x2 x1 x0 ` | `_ e5 e4 e3 * p-1 * * x2 x1 x0` |
+
+### x_horner_step
 
 **Opcode**: 88
 
-Reads one base field element from RAM located at the addresses corresponding to the top of the
-stack, one extension field element from RAM located at the address of the second stack element,
-multiplies the field elements, and adds the product `(p0, p1, p2)` to an accumulator located on
-stack immediately below the two pointers.
-Also, increase the pointers by the number of words read.
+This instruction facilitates efficient evaluation of a univariate polynomial over the extension field in an
+indeterminate from the extension field.
+In order to leverage this instruction most efficiently, the polynomial should be encoded with its leading coefficient at
+the highest RAM address.
+The instruction corresponds to one “step” in [Horner's method](https://en.wikipedia.org/wiki/Horner%27s_method).
 
-This instruction facilitates efficient computation of the
-[dot product](https://en.wikipedia.org/wiki/Dot_product) of a vector containing base field elements
-with a vector containing extension field elements.
+In particular, it
 
-| old stack       | new stack                    |
-|:----------------|:-----------------------------|
-| `_ z y x *b *a` | `_ z+p2 y+p1 x+p0 *b+3 *a+1` |
+- interprets stack elements `st0` through `st2` as the indeterminate, `x`
+- interprets stack elements `st7` through `st9` as a partial evaluation (or an accumulator), `e`,
+- uses stack element `st5` as a RAM pointer, indicating an extension field coefficient `c`, which it reads from `p`,
+  `p-1`, and `p-2`,
+- updates the partial evaluation to be `e·x + c`, and
+- decrements the RAM pointer at `st5` by 3.
+
+The unused elements (marked by `*` in the stack signature below) allow for efficient use with instruction
+[`recurse_or_return`](#recurse_or_return).
+
+| old stack                      | new stack                       |
+|:-------------------------------|:--------------------------------|
+| `_ e2 e1 e0 * p * * x2 x1 x0 ` | `_ e5 e4 e3 * p-3 * * x2 x1 x0` |
+

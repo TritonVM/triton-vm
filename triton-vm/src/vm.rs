@@ -28,7 +28,6 @@ use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
 use strum::EnumCount;
-use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::util_types::sponge;
 
@@ -335,19 +334,13 @@ impl VMState {
                 }
             }
             Instruction::Eq => hvs[0] = (self.op_stack[1] - self.op_stack[0]).inverse_or_zero(),
-            Instruction::XxDotStep => {
-                hvs[0] = ram_read(self.op_stack[0]);
-                hvs[1] = ram_read(self.op_stack[0] + bfe!(1));
-                hvs[2] = ram_read(self.op_stack[0] + bfe!(2));
-                hvs[3] = ram_read(self.op_stack[1]);
-                hvs[4] = ram_read(self.op_stack[1] + bfe!(1));
-                hvs[5] = ram_read(self.op_stack[1] + bfe!(2));
+            Instruction::BHornerStep => {
+                hvs[0] = ram_read(self.op_stack[5]);
             }
-            Instruction::XbDotStep => {
-                hvs[0] = ram_read(self.op_stack[0]);
-                hvs[1] = ram_read(self.op_stack[1]);
-                hvs[2] = ram_read(self.op_stack[1] + bfe!(1));
-                hvs[3] = ram_read(self.op_stack[1] + bfe!(2));
+            Instruction::XHornerStep => {
+                hvs[2] = ram_read(self.op_stack[5]);
+                hvs[1] = ram_read(self.op_stack[5] - bfe!(1));
+                hvs[0] = ram_read(self.op_stack[5] - bfe!(2));
             }
             _ => (),
         }
@@ -423,8 +416,8 @@ impl VMState {
             Instruction::ReadIo(n) => self.read_io(n)?,
             Instruction::MerkleStep => self.merkle_step_non_determinism()?,
             Instruction::MerkleStepMem => self.merkle_step_mem()?,
-            Instruction::XxDotStep => self.xx_dot_step()?,
-            Instruction::XbDotStep => self.xb_dot_step()?,
+            Instruction::BHornerStep => self.b_horner_step(),
+            Instruction::XHornerStep => self.x_horner_step(),
         };
         let op_stack_calls = self.stop_recording_op_stack_calls();
         co_processor_calls.extend(op_stack_calls);
@@ -964,7 +957,7 @@ impl VMState {
     }
 
     fn x_invert(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
-        let top_of_stack = self.op_stack.peek_at_top_extension_field_element();
+        let top_of_stack = self.op_stack.peek_at_extension_field_element(0);
         if top_of_stack.is_zero() {
             return Err(InstructionError::InverseOfZero);
         }
@@ -1068,45 +1061,53 @@ impl VMState {
         Ok(co_processor_calls)
     }
 
-    fn xx_dot_step(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
+    fn b_horner_step(&mut self) -> Vec<CoProcessorCall> {
         self.start_recording_ram_calls();
-        let mut rhs_address = self.op_stack.pop()?;
-        let mut lhs_address = self.op_stack.pop()?;
-        let mut rhs = xfe!(0);
-        let mut lhs = xfe!(0);
-        for i in 0..EXTENSION_DEGREE {
-            rhs.coefficients[i] = self.ram_read(rhs_address);
-            rhs_address.increment();
-            lhs.coefficients[i] = self.ram_read(lhs_address);
-            lhs_address.increment();
-        }
-        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
-        self.op_stack.push_extension_field_element(accumulator);
-        self.op_stack.push(lhs_address);
-        self.op_stack.push(rhs_address);
+        let mut ram_pointer = self.op_stack[5];
+        let coefficient = self.ram_read(ram_pointer);
+        ram_pointer.decrement();
+        self.op_stack[5] = ram_pointer;
+
+        let indeterminate = self.op_stack.peek_at_extension_field_element(0);
+        let accumulator = self.op_stack.peek_at_extension_field_element(7);
+
+        let accumulator = accumulator * indeterminate + coefficient;
+
+        let XFieldElement { coefficients } = accumulator;
+        let [acc_0, acc_1, acc_2] = coefficients;
+        self.op_stack[7] = acc_0;
+        self.op_stack[8] = acc_1;
+        self.op_stack[9] = acc_2;
+
         self.instruction_pointer += 1;
-        let ram_calls = self.stop_recording_ram_calls();
-        Ok(ram_calls)
+
+        self.stop_recording_ram_calls()
     }
 
-    fn xb_dot_step(&mut self) -> InstructionResult<Vec<CoProcessorCall>> {
+    fn x_horner_step(&mut self) -> Vec<CoProcessorCall> {
         self.start_recording_ram_calls();
-        let mut rhs_address = self.op_stack.pop()?;
-        let mut lhs_address = self.op_stack.pop()?;
-        let rhs = self.ram_read(rhs_address);
-        rhs_address.increment();
-        let mut lhs = xfe!(0);
-        for i in 0..EXTENSION_DEGREE {
-            lhs.coefficients[i] = self.ram_read(lhs_address);
-            lhs_address.increment();
+        let mut ram_pointer = self.op_stack[5];
+        let mut coefficient = XFieldElement::ZERO;
+        for c in coefficient.coefficients.iter_mut().rev() {
+            *c = self.ram_read(ram_pointer);
+            ram_pointer.decrement();
         }
-        let accumulator = self.op_stack.pop_extension_field_element()? + rhs * lhs;
-        self.op_stack.push_extension_field_element(accumulator);
-        self.op_stack.push(lhs_address);
-        self.op_stack.push(rhs_address);
+        self.op_stack[5] = ram_pointer;
+
+        let indeterminate = self.op_stack.peek_at_extension_field_element(0);
+        let accumulator = self.op_stack.peek_at_extension_field_element(7);
+
+        let accumulator = accumulator * indeterminate + coefficient;
+
+        let XFieldElement { coefficients } = accumulator;
+        let [acc_0, acc_1, acc_2] = coefficients;
+        self.op_stack[7] = acc_0;
+        self.op_stack[8] = acc_1;
+        self.op_stack[9] = acc_2;
+
         self.instruction_pointer += 1;
-        let ram_calls = self.stop_recording_ram_calls();
-        Ok(ram_calls)
+
+        self.stop_recording_ram_calls()
     }
 
     pub fn to_processor_row(&self) -> Array1<BFieldElement> {
@@ -1528,13 +1529,12 @@ pub(crate) mod tests {
     use isa::program::Program;
     use isa::triton_asm;
     use isa::triton_program;
-    use itertools::izip;
-    use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
     use strum::EnumCount;
 
     use super::*;
+    use crate::FiniteField;
     use crate::shared_tests::LeavedMerkleTreeTestData;
     use crate::shared_tests::TestableProgram;
     use crate::stark::Stark;
@@ -1542,6 +1542,7 @@ pub(crate) mod tests {
     use crate::stark::tests::program_executing_every_instruction;
     use crate::tests::proptest;
     use crate::tests::test;
+    use crate::vm::x_field_element::EXTENSION_DEGREE;
 
     #[macro_rules_attr::apply(test)]
     fn instructions_act_on_op_stack_as_indicated() {
@@ -1735,8 +1736,8 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
-    fn can_compute_dot_product_from_uninitialized_ram() {
-        let program = triton_program!(xx_dot_step xb_dot_step halt);
+    fn can_compute_horner_step_from_uninitialized_ram() {
+        let program = triton_program!(b_horner_step x_horner_step halt);
         TestableProgram::new(program).run().unwrap();
     }
 
@@ -2296,122 +2297,85 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(proptest)]
-    fn xx_dot_step(
-        #[strategy(0_usize..=25)] n: usize,
-        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
-        #[strategy(vec(arb(), #n))] rhs: Vec<XFieldElement>,
-        #[strategy(arb())] lhs_address: BFieldElement,
-        #[strategy(arb())] rhs_address: BFieldElement,
+    fn b_horner_step(
+        #[strategy(arb())] poly: Polynomial<'static, BFieldElement>,
+        #[strategy(arb())] indeterminate: XFieldElement,
+        #[strategy(arb())] address: BFieldElement,
     ) {
-        let mem_region_size = (n * EXTENSION_DEGREE) as u64;
-        let mem_region = |addr: BFieldElement| addr.value()..addr.value() + mem_region_size;
-        let right_in_left = mem_region(lhs_address).contains(&rhs_address.value());
-        let left_in_right = mem_region(rhs_address).contains(&lhs_address.value());
-        if right_in_left || left_in_right {
-            let reason = "storing into overlapping regions would overwrite";
-            return Err(TestCaseError::Reject(reason.into()));
-        }
-
-        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
-        let rhs_flat = rhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
-        let mut ram = HashMap::new();
-        for (i, &l, &r) in izip!(0.., &lhs_flat, &rhs_flat) {
-            ram.insert(lhs_address + bfe!(i), l);
-            ram.insert(rhs_address + bfe!(i), r);
-        }
-
-        let public_input = PublicInput::default();
-        let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xx_dot_steps = triton_asm![xx_dot_step; n];
+        let read_address = address + bfe!(poly.coefficients().len()) - bfe!(1);
+        let many_b_horner_steps = triton_asm![b_horner_step; poly.coefficients().len()];
         let program = triton_program! {
             push 0 push 0 push 0
+            push 0
+            push {read_address}
+            push 0 push 0
+            push {indeterminate.coefficients[2]}
+            push {indeterminate.coefficients[1]}
+            push {indeterminate.coefficients[0]}
 
-            push {lhs_address}
-            push {rhs_address}
+            {&many_b_horner_steps}
 
-            {&many_xx_dot_steps}
+            pop 5 pop 2
             halt
         };
 
-        let mut vmstate = VMState::new(program, public_input, secret_input);
-        prop_assert!(vmstate.run().is_ok());
+        let ram = write_poly_to_ram(address, &poly);
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+        let mut vm_state = VMState::new(program, PublicInput::default(), non_determinism);
+        prop_assert!(vm_state.run().is_ok());
+        assert!(let Ok(actual) = vm_state.op_stack.pop_extension_field_element());
 
-        prop_assert_eq!(
-            vmstate.op_stack.pop().unwrap(),
-            rhs_address + bfe!(rhs_flat.len() as u64)
-        );
-        prop_assert_eq!(
-            vmstate.op_stack.pop().unwrap(),
-            lhs_address + bfe!(lhs_flat.len() as u64)
-        );
-
-        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
-        let expected_dot_product = lhs
-            .into_iter()
-            .zip(rhs)
-            .map(|(l, r)| l * r)
-            .sum::<XFieldElement>();
-        prop_assert_eq!(expected_dot_product, observed_dot_product);
+        let expected: XFieldElement = poly.evaluate(indeterminate);
+        prop_assert_eq!(expected, actual);
     }
 
     #[macro_rules_attr::apply(proptest)]
-    fn xb_dot_step(
-        #[strategy(0_usize..=25)] n: usize,
-        #[strategy(vec(arb(), #n))] lhs: Vec<XFieldElement>,
-        #[strategy(vec(arb(), #n))] rhs: Vec<BFieldElement>,
-        #[strategy(arb())] lhs_address: BFieldElement,
-        #[strategy(arb())] rhs_address: BFieldElement,
+    fn x_horner_step(
+        #[strategy(arb())] poly: Polynomial<'static, XFieldElement>,
+        #[strategy(arb())] indeterminate: XFieldElement,
+        #[strategy(arb())] address: BFieldElement,
     ) {
-        let mem_region_size_lhs = (n * EXTENSION_DEGREE) as u64;
-        let mem_region_lhs = lhs_address.value()..lhs_address.value() + mem_region_size_lhs;
-        let mem_region_rhs = rhs_address.value()..rhs_address.value() + n as u64;
-        let right_in_left = mem_region_lhs.contains(&rhs_address.value());
-        let left_in_right = mem_region_rhs.contains(&lhs_address.value());
-        if right_in_left || left_in_right {
-            let reason = "storing into overlapping regions would overwrite";
-            return Err(TestCaseError::Reject(reason.into()));
-        }
-
-        let lhs_flat = lhs.iter().flat_map(|&xfe| xfe.coefficients).collect_vec();
-        let mut ram = HashMap::new();
-        for (i, &l) in (0..).zip(&lhs_flat) {
-            ram.insert(lhs_address + bfe!(i), l);
-        }
-        for (i, &r) in (0..).zip(&rhs) {
-            ram.insert(rhs_address + bfe!(i), r);
-        }
-
-        let public_input = PublicInput::default();
-        let secret_input = NonDeterminism::default().with_ram(ram);
-        let many_xb_dot_steps = triton_asm![xb_dot_step; n];
+        let read_address = address + bfe!(poly.coefficients().len() * EXTENSION_DEGREE) - bfe!(1);
+        let many_x_horner_steps = triton_asm![x_horner_step; poly.coefficients().len()];
         let program = triton_program! {
             push 0 push 0 push 0
+            push 0
+            push {read_address}
+            push 0 push 0
+            push {indeterminate.coefficients[2]}
+            push {indeterminate.coefficients[1]}
+            push {indeterminate.coefficients[0]}
 
-            push {lhs_address}
-            push {rhs_address}
+            {&many_x_horner_steps}
 
-            {&many_xb_dot_steps}
+            pop 5 pop 2
             halt
         };
 
-        let mut vmstate = VMState::new(program, public_input, secret_input);
-        prop_assert!(vmstate.run().is_ok());
+        let ram = write_poly_to_ram(address, &poly);
+        let non_determinism = NonDeterminism::default().with_ram(ram);
+        let mut vm_state = VMState::new(program, PublicInput::default(), non_determinism);
+        prop_assert!(vm_state.run().is_ok());
+        assert!(let Ok(actual) = vm_state.op_stack.pop_extension_field_element());
 
-        prop_assert_eq!(
-            vmstate.op_stack.pop().unwrap(),
-            rhs_address + bfe!(rhs.len() as u64)
-        );
-        prop_assert_eq!(
-            vmstate.op_stack.pop().unwrap(),
-            lhs_address + bfe!(lhs_flat.len() as u64)
-        );
-        let observed_dot_product = vmstate.op_stack.pop_extension_field_element().unwrap();
-        let expected_dot_product = lhs
+        let expected: XFieldElement = poly.evaluate(indeterminate);
+        prop_assert_eq!(expected, actual);
+    }
+
+    fn write_poly_to_ram<FF>(
+        address: BFieldElement,
+        poly: &Polynomial<'_, FF>,
+    ) -> HashMap<BFieldElement, BFieldElement>
+    where
+        FF: FiniteField + 'static,
+        FF: twenty_first::prelude::BFieldCodec,
+    {
+        poly.encode()
             .into_iter()
-            .zip(rhs)
-            .map(|(l, r)| l * r)
-            .sum::<XFieldElement>();
-        prop_assert_eq!(expected_dot_product, observed_dot_product);
+            .skip(2) // drop the length indicators
+            .enumerate()
+            .map(|(i, c)| (address + bfe!(i), c))
+            .collect()
     }
 
     #[macro_rules_attr::apply(test)]

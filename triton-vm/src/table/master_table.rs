@@ -2077,8 +2077,8 @@ mod tests {
             let ram_table_influence = |instruction| match instruction {
                 Instruction::ReadMem(st) | Instruction::WriteMem(st) => st.num_words(),
                 Instruction::SpongeAbsorbMem => tip5::RATE,
-                Instruction::XbDotStep => 4,
-                Instruction::XxDotStep => 6,
+                Instruction::BHornerStep => 1,
+                Instruction::XHornerStep => 3,
                 _ => 0,
             };
             let ram = program
@@ -2402,9 +2402,9 @@ mod tests {
         // evaluate polynomial in pseudorandom indeterminate
         let value = polynomial.evaluate(rng.random::<XFieldElement>());
         let expected = xfe!([
-            4257127727783247667_u64,
-            14247257807319917456_u64,
-            14755688034753275481_u64,
+            13756637410982737899_u64,
+            15495562695999869497_u64,
+            4192666552633817024_u64,
         ]);
         assert_eq!(
             expected, value,

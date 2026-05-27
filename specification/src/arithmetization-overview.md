@@ -15,9 +15,9 @@
 | [CascadeTable](cascade-table.md)           |               6 |                2 |              12 |
 | [LookupTable](lookup-table.md)             |               4 |                2 |              10 |
 | [U32Table](u32-table.md)                   |              10 |                1 |              13 |
-| DegreeLowering (-/8/4)                     |       0/118/230 |          0/13/41 |       0/157/353 |
+| DegreeLowering (-/8/4)                     |       0/104/230 |          0/12/41 |       0/140/353 |
 | Randomizers                                |               0 |                1 |               3 |
-| **TOTAL**                                  | **149/267/379** |     **50/63/91** | **299/456/652** |
+| **TOTAL**                                  | **149/253/379** |     **50/62/91** | **299/439/652** |
 <!-- auto-gen info stop table_overview -->
 
 ## Constraints
@@ -44,14 +44,14 @@ Before automatic degree lowering:
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
 | **TOTAL**                                      |   **79** |       **76** |     **151** |    **23** |     **19** |
-| (# nodes)                                      |    (539) |        (624) |      (6797) |     (213) |            |
+| (# nodes)                                      |    (539) |        (624) |      (6781) |     (213) |            |
 
 After lowering degree to 8:
 
 | table name                                     | #initial | #consistency | #transition | #terminal |
 |:-----------------------------------------------|---------:|-------------:|------------:|----------:|
 | [ProgramTable](program-table.md)               |        6 |            4 |          10 |         2 |
-| [ProcessorTable](processor-table.md)           |       29 |           10 |         165 |         1 |
+| [ProcessorTable](processor-table.md)           |       29 |           10 |         150 |         1 |
 | [OpStackTable](operational-stack-table.md)     |        3 |            0 |           5 |         0 |
 | [RamTable](random-access-memory-table.md)      |        7 |            0 |          12 |         1 |
 | [JumpStackTable](jump-stack-table.md)          |        6 |            0 |           6 |         0 |
@@ -60,8 +60,8 @@ After lowering degree to 8:
 | [LookupTable](lookup-table.md)                 |        3 |            1 |           4 |         1 |
 | [U32Table](u32-table.md)                       |        1 |           18 |          24 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
-| **TOTAL**                                      |   **79** |       **80** |     **278** |    **23** |
-| (# nodes)                                      |    (539) |        (635) |      (7071) |     (213) |
+| **TOTAL**                                      |   **79** |       **80** |     **263** |    **23** |
+| (# nodes)                                      |    (539) |        (635) |      (7018) |     (213) |
 
 After lowering degree to 4:
 
@@ -78,7 +78,7 @@ After lowering degree to 4:
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **402** |    **23** |
-| (# nodes)                                      |    (543) |        (676) |      (7372) |     (213) |
+| (# nodes)                                      |    (543) |        (676) |      (7356) |     (213) |
 <!-- auto-gen info stop constraints_overview -->
 
 
@@ -90,8 +90,8 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Type         | Processor | Op Stack |   RAM |
 |:-------------|----------:|---------:|------:|
-| static       |     33869 |    62451 | 24918 |
-| dynamic      |     45428 |    70161 | 28771 |
+| static       |     33773 |    62291 | 24846 |
+| dynamic      |     45299 |    69979 | 28688 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
 
 ## Opcode Pressure

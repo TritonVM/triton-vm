@@ -73,8 +73,8 @@ pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = [
     Instruction::WriteIo(NumberOfWords::N1),
     Instruction::MerkleStep,
     Instruction::MerkleStepMem,
-    Instruction::XxDotStep,
-    Instruction::XbDotStep,
+    Instruction::BHornerStep,
+    Instruction::XHornerStep,
 ];
 
 pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = {
@@ -306,8 +306,8 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // Many-in-One
     MerkleStep,
     MerkleStepMem,
-    XxDotStep,
-    XbDotStep,
+    BHornerStep,
+    XHornerStep,
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -358,8 +358,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::WriteIo(_) => 19,
             AnInstruction::MerkleStep => 36,
             AnInstruction::MerkleStepMem => 44,
-            AnInstruction::XxDotStep => 80,
-            AnInstruction::XbDotStep => 88,
+            AnInstruction::BHornerStep => 80,
+            AnInstruction::XHornerStep => 88,
         }
     }
 
@@ -409,8 +409,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::WriteIo(_) => "write_io",
             AnInstruction::MerkleStep => "merkle_step",
             AnInstruction::MerkleStepMem => "merkle_step_mem",
-            AnInstruction::XxDotStep => "xx_dot_step",
-            AnInstruction::XbDotStep => "xb_dot_step",
+            AnInstruction::BHornerStep => "b_horner_step",
+            AnInstruction::XHornerStep => "x_horner_step",
         }
     }
 
@@ -488,8 +488,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::WriteIo(x) => AnInstruction::WriteIo(*x),
             AnInstruction::MerkleStep => AnInstruction::MerkleStep,
             AnInstruction::MerkleStepMem => AnInstruction::MerkleStepMem,
-            AnInstruction::XxDotStep => AnInstruction::XxDotStep,
-            AnInstruction::XbDotStep => AnInstruction::XbDotStep,
+            AnInstruction::BHornerStep => AnInstruction::BHornerStep,
+            AnInstruction::XHornerStep => AnInstruction::XHornerStep,
         }
     }
 
@@ -539,8 +539,8 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             AnInstruction::WriteIo(n) => -(n.num_words() as i32),
             AnInstruction::MerkleStep => 0,
             AnInstruction::MerkleStepMem => 0,
-            AnInstruction::XxDotStep => 0,
-            AnInstruction::XbDotStep => 0,
+            AnInstruction::BHornerStep => 0,
+            AnInstruction::XHornerStep => 0,
         }
     }
 
