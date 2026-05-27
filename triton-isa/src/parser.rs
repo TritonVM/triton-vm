@@ -342,10 +342,10 @@ fn an_instruction(s: &str) -> ParseResult<'_, AnInstruction<String>> {
     // Many-in-One
     let merkle_step = instruction("merkle_step", AnInstruction::MerkleStep);
     let merkle_step_mem = instruction("merkle_step_mem", AnInstruction::MerkleStepMem);
-    let xx_dot_step = instruction("xx_dot_step", AnInstruction::XxDotStep);
-    let xb_dot_step = instruction("xb_dot_step", AnInstruction::XbDotStep);
+    let b_horner_step = instruction("b_horner_step", AnInstruction::BHornerStep);
+    let x_horner_step = instruction("x_horner_step", AnInstruction::XHornerStep);
 
-    let many_to_one = alt((xx_dot_step, xb_dot_step));
+    let many_to_one = alt((b_horner_step, x_horner_step));
 
     // Because of common prefixes, the following parsers are sensitive to order.
     // Successfully parsing "assert" before trying "assert_vector" can lead to

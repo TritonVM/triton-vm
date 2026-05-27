@@ -62,6 +62,6 @@ For instruction group [`decompose_arg`](instruction-groups.md#group-decompose_ar
 [`eq`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-eq),
 [`merkle_step`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-merkle_step),
 [`merkle_step_mem`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-merkle_step_mem),
-[`xx_dot_step`](instruction-specific-transition-constraints.md#instruction-xx_dot_step), and
-[`xb_dot_step`](instruction-specific-transition-constraints.md#instruction-xb_dot_step),
+[`b_horner_step`](instruction-specific-transition-constraints.md#instruction-b_horner_step), and
+[`x_horner_step`](instruction-specific-transition-constraints.md#instruction-x_horner_step),
 the behavior is defined in the respective sections.

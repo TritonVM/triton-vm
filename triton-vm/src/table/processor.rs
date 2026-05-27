@@ -660,8 +660,8 @@ fn factor_for_ram_table_running_product(
         Instruction::WriteMem(_) => ram::INSTRUCTION_TYPE_WRITE,
         Instruction::SpongeAbsorbMem => ram::INSTRUCTION_TYPE_READ,
         Instruction::MerkleStepMem => ram::INSTRUCTION_TYPE_READ,
-        Instruction::XxDotStep => ram::INSTRUCTION_TYPE_READ,
-        Instruction::XbDotStep => ram::INSTRUCTION_TYPE_READ,
+        Instruction::BHornerStep => ram::INSTRUCTION_TYPE_READ,
+        Instruction::XHornerStep => ram::INSTRUCTION_TYPE_READ,
         _ => return None,
     };
     let mut accesses = vec![];
@@ -712,26 +712,16 @@ fn factor_for_ram_table_running_product(
                 (mem_ptr + bfe!(4), prev_row[MainColumn::HV4.main_index()]),
             ];
         }
-        Instruction::XxDotStep => {
-            let rhs_ptr = prev_row[MainColumn::ST0.main_index()];
-            let lhs_ptr = prev_row[MainColumn::ST1.main_index()];
-            accesses = vec![
-                (rhs_ptr + bfe!(0), prev_row[MainColumn::HV0.main_index()]),
-                (rhs_ptr + bfe!(1), prev_row[MainColumn::HV1.main_index()]),
-                (rhs_ptr + bfe!(2), prev_row[MainColumn::HV2.main_index()]),
-                (lhs_ptr + bfe!(0), prev_row[MainColumn::HV3.main_index()]),
-                (lhs_ptr + bfe!(1), prev_row[MainColumn::HV4.main_index()]),
-                (lhs_ptr + bfe!(2), prev_row[MainColumn::HV5.main_index()]),
-            ];
+        Instruction::BHornerStep => {
+            let ram_ptr = prev_row[MainColumn::ST5.main_index()];
+            accesses = vec![(ram_ptr, prev_row[MainColumn::HV0.main_index()])];
         }
-        Instruction::XbDotStep => {
-            let rhs_ptr = prev_row[MainColumn::ST0.main_index()];
-            let lhs_ptr = prev_row[MainColumn::ST1.main_index()];
+        Instruction::XHornerStep => {
+            let ram_ptr = prev_row[MainColumn::ST5.main_index()];
             accesses = vec![
-                (rhs_ptr + bfe!(0), prev_row[MainColumn::HV0.main_index()]),
-                (lhs_ptr + bfe!(0), prev_row[MainColumn::HV1.main_index()]),
-                (lhs_ptr + bfe!(1), prev_row[MainColumn::HV2.main_index()]),
-                (lhs_ptr + bfe!(2), prev_row[MainColumn::HV3.main_index()]),
+                (ram_ptr - bfe!(2), prev_row[MainColumn::HV0.main_index()]),
+                (ram_ptr - bfe!(1), prev_row[MainColumn::HV1.main_index()]),
+                (ram_ptr - bfe!(0), prev_row[MainColumn::HV2.main_index()]),
             ];
         }
         _ => unreachable!(),
@@ -1588,103 +1578,100 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
-    fn transition_constraints_for_instruction_xb_dot_step() {
+    fn transition_constraints_for_instruction_b_horner_step() {
+        let acc = xfe!([30, 20, 10]);
+        let indeterminate = xfe!([80, 70, 60]);
+        let ram_ptr = bfe!(42);
+        let ram_val = bfe!(2);
+        let expected = acc * indeterminate + ram_val;
+
         let program = triton_program! {
             push 10 push 20 push 30     // accumulator `[30, 20, 10]`
-            push 96                     // pointer to extension-field element `[3, 5, 7]`
-            push 42                     // pointer to base-field element `2`
-            xb_dot_step
-            push 43 eq assert
-            push 99 eq assert
-            push {30 + 2 * 3} eq assert
-            push {20 + 2 * 5} eq assert
-            push {10 + 2 * 7} eq assert
+            push 0                      // dummy
+            push {ram_ptr}              // pointer to base-field element `2`
+            push 0 push 0               // dummy
+            push 60 push 70 push 80     // indeterminate `[80, 70, 60]`
+            b_horner_step
+            push 80 eq assert
+            push 70 eq assert
+            push 60 eq assert           // _ [acc; 3] 0 (p-1) 0 0
+            push 0 eq assert
+            push 0 eq assert            // _ [acc; 3] 0 (p-1)
+            push {ram_ptr - bfe!(1)}
+            eq assert                   // _ [acc; 3] *
+            push 0 eq assert            // _ [acc; 3]
+            push {expected.coefficients[0]} eq assert
+            push {expected.coefficients[1]} eq assert
+            push {expected.coefficients[2]} eq assert
             halt
         };
 
-        let mut ram = HashMap::new();
-        ram.insert(bfe!(42), bfe!(2));
-        ram.insert(bfe!(96), bfe!(3));
-        ram.insert(bfe!(97), bfe!(5));
-        ram.insert(bfe!(98), bfe!(7));
-        let non_determinism = NonDeterminism::default().with_ram(ram);
+        let non_determinism =
+            NonDeterminism::default().with_ram(HashMap::from([(ram_ptr, ram_val)]));
         let program = TestableProgram::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_testable_program(program, 5)];
+        let test_rows = [test_row_from_testable_program(program, 10)];
+
         let debug_info = TestRowsDebugInfo {
-            instruction: Instruction::XbDotStep,
+            instruction: Instruction::BHornerStep,
             debug_cols_curr_row: vec![
-                MainColumn::ST0,
-                MainColumn::ST1,
-                MainColumn::ST2,
-                MainColumn::ST3,
-                MainColumn::ST4,
+                MainColumn::ST5,
                 MainColumn::HV0,
                 MainColumn::HV1,
                 MainColumn::HV2,
                 MainColumn::HV3,
             ],
-            debug_cols_next_row: vec![
-                MainColumn::ST0,
-                MainColumn::ST1,
-                MainColumn::ST2,
-                MainColumn::ST3,
-                MainColumn::ST4,
-            ],
+            debug_cols_next_row: vec![MainColumn::ST5],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }
 
     #[macro_rules_attr::apply(test)]
-    fn transition_constraints_for_instruction_xx_dot_step() {
-        let operand_0 = xfe!([3, 5, 7]);
-        let operand_1 = xfe!([11, 13, 17]);
-        let product = operand_0 * operand_1;
+    fn transition_constraints_for_instruction_x_horner_step() {
+        let acc = xfe!([30, 20, 10]);
+        let indeterminate = xfe!([80, 70, 60]);
+        let ram_ptrs = bfe_array![42, 43, 44];
+        let ram_val = xfe!([2, 3, 4]);
+        let expected = acc * indeterminate + ram_val;
 
         let program = triton_program! {
             push 10 push 20 push 30     // accumulator `[30, 20, 10]`
-            push 96                     // pointer to `operand_1`
-            push 42                     // pointer to `operand_0`
-            xx_dot_step
-            push 45 eq assert
-            push 99 eq assert
-            push {bfe!(30) + product.coefficients[0]} eq assert
-            push {bfe!(20) + product.coefficients[1]} eq assert
-            push {bfe!(10) + product.coefficients[2]} eq assert
+            push 0                      // dummy
+            push {ram_ptrs[2]}          // pointer to ext-field element
+            push 0 push 0               // dummy
+            push 60 push 70 push 80     // indeterminate `[80, 70, 60]`
+            x_horner_step
+            push 80 eq assert
+            push 70 eq assert
+            push 60 eq assert           // _ [acc; 3] 0 (p-1) 0 0
+            push 0 eq assert
+            push 0 eq assert            // _ [acc; 3] 0 (p-1)
+            push {ram_ptrs[0] - bfe!(1)}
+            eq assert                   // _ [acc; 3] *
+            push 0 eq assert            // _ [acc; 3]
+            push {expected.coefficients[0]} eq assert
+            push {expected.coefficients[1]} eq assert
+            push {expected.coefficients[2]} eq assert
             halt
         };
 
-        let mut ram = HashMap::new();
-        ram.insert(bfe!(42), operand_0.coefficients[0]);
-        ram.insert(bfe!(43), operand_0.coefficients[1]);
-        ram.insert(bfe!(44), operand_0.coefficients[2]);
-        ram.insert(bfe!(96), operand_1.coefficients[0]);
-        ram.insert(bfe!(97), operand_1.coefficients[1]);
-        ram.insert(bfe!(98), operand_1.coefficients[2]);
+        let ram = ram_ptrs
+            .into_iter()
+            .zip(ram_val.coefficients)
+            .collect::<HashMap<_, _>>();
         let non_determinism = NonDeterminism::default().with_ram(ram);
         let program = TestableProgram::new(program).with_non_determinism(non_determinism);
-        let test_rows = [test_row_from_testable_program(program, 5)];
+        let test_rows = [test_row_from_testable_program(program, 10)];
+
         let debug_info = TestRowsDebugInfo {
-            instruction: Instruction::XxDotStep,
+            instruction: Instruction::XHornerStep,
             debug_cols_curr_row: vec![
-                MainColumn::ST0,
-                MainColumn::ST1,
-                MainColumn::ST2,
-                MainColumn::ST3,
-                MainColumn::ST4,
+                MainColumn::ST5,
                 MainColumn::HV0,
                 MainColumn::HV1,
                 MainColumn::HV2,
                 MainColumn::HV3,
-                MainColumn::HV4,
-                MainColumn::HV5,
             ],
-            debug_cols_next_row: vec![
-                MainColumn::ST0,
-                MainColumn::ST1,
-                MainColumn::ST2,
-                MainColumn::ST3,
-                MainColumn::ST4,
-            ],
+            debug_cols_next_row: vec![MainColumn::ST5],
         };
         assert_constraints_for_rows_with_debug_info(&test_rows, debug_info);
     }

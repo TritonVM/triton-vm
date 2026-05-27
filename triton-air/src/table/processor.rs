@@ -20,7 +20,6 @@ use isa::op_stack::NUM_OP_STACK_REGISTERS;
 use isa::op_stack::NumberOfWords;
 use isa::op_stack::OpStackElement;
 use itertools::Itertools;
-use itertools::izip;
 use strum::EnumCount;
 use twenty_first::math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
@@ -2073,25 +2072,11 @@ fn xb_product<Indicator: InputIndicator>(
     let z0 = x_0 * y.clone();
     let z1 = x_1 * y.clone();
     let z2 = x_2 * y;
+
     [z0, z1, z2]
 }
 
-fn update_dotstep_accumulator(
-    circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    accumulator_indices: [MainColumn; EXTENSION_DEGREE],
-    difference: [ConstraintCircuitMonad<DualRowIndicator>; EXTENSION_DEGREE],
-) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-    let curr_main_row =
-        |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
-    let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
-    let curr = accumulator_indices.map(curr_main_row);
-    let next = accumulator_indices.map(next_main_row);
-    izip!(curr, next, difference)
-        .map(|(c, n, d)| n - c - d)
-        .collect()
-}
-
-fn instruction_xx_dot_step(
+fn instruction_b_horner_step(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
     let curr_main_row =
@@ -2099,62 +2084,47 @@ fn instruction_xx_dot_step(
     let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
     let constant = |c| circuit_builder.b_constant(c);
 
-    let increment_ram_pointer_st0 =
-        next_main_row(MainColumn::ST0) - curr_main_row(MainColumn::ST0) - constant(3);
-    let increment_ram_pointer_st1 =
-        next_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST1) - constant(3);
+    // RAM access
+    let read_from_ram = read_from_ram_to(
+        circuit_builder,
+        [curr_main_row(MainColumn::ST5)],
+        [curr_main_row(MainColumn::HV0)],
+    );
 
-    let rhs_ptr0 = curr_main_row(MainColumn::ST0);
-    let rhs_ptr1 = rhs_ptr0.clone() + constant(1);
-    let rhs_ptr2 = rhs_ptr0.clone() + constant(2);
-    let lhs_ptr0 = curr_main_row(MainColumn::ST1);
-    let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
-    let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
-    let ram_read_sources = [rhs_ptr0, rhs_ptr1, rhs_ptr2, lhs_ptr0, lhs_ptr1, lhs_ptr2];
-    let ram_read_destinations = [
-        MainColumn::HV0,
-        MainColumn::HV1,
-        MainColumn::HV2,
-        MainColumn::HV3,
-        MainColumn::HV4,
-        MainColumn::HV5,
-    ]
-    .map(curr_main_row);
-    let read_two_xfes_from_ram =
-        read_from_ram_to(circuit_builder, ram_read_sources, ram_read_destinations);
+    // update running evaluation `e' = e·x + c`
+    let indeterminate = [MainColumn::ST0, MainColumn::ST1, MainColumn::ST2].map(curr_main_row);
+    let evaluation = [MainColumn::ST7, MainColumn::ST8, MainColumn::ST9].map(curr_main_row);
+    let [product_0, product_1, product_2] = xx_product(indeterminate, evaluation);
 
-    let ram_pointer_constraints = vec![
-        increment_ram_pointer_st0,
-        increment_ram_pointer_st1,
-        read_two_xfes_from_ram,
-    ];
+    // compress current and next stack
+    let stack_weight = |i| circuit_builder.challenge(stack_weight_by_index(i));
+    let curr_stack_compressed = stack_weight(0) * curr_main_row(MainColumn::ST0)
+        + stack_weight(1) * curr_main_row(MainColumn::ST1)
+        + stack_weight(2) * curr_main_row(MainColumn::ST2)
+        + stack_weight(3) * curr_main_row(MainColumn::ST3)
+        + stack_weight(4) * curr_main_row(MainColumn::ST4)
+        + stack_weight(5) * (curr_main_row(MainColumn::ST5) - constant(1))
+        + stack_weight(6) * curr_main_row(MainColumn::ST6)
+        + stack_weight(7) * (product_0 + curr_main_row(MainColumn::HV0))
+        + stack_weight(8) * product_1
+        + stack_weight(9) * product_2;
+    let next_stack_compressed = (0..=9)
+        .map(|i| stack_weight(i) * next_main_row(ProcessorTable::op_stack_column_by_index(i)))
+        .sum::<ConstraintCircuitMonad<_>>();
+    let stack_changes_correctly = next_stack_compressed - curr_stack_compressed;
 
-    let [hv0, hv1, hv2, hv3, hv4, hv5] = [
-        MainColumn::HV0,
-        MainColumn::HV1,
-        MainColumn::HV2,
-        MainColumn::HV3,
-        MainColumn::HV4,
-        MainColumn::HV5,
-    ]
-    .map(curr_main_row);
-    let hv_product = xx_product([hv0, hv1, hv2], [hv3, hv4, hv5]);
+    let specific_constraints = vec![stack_changes_correctly, read_from_ram];
 
     [
-        ram_pointer_constraints,
-        update_dotstep_accumulator(
-            circuit_builder,
-            [MainColumn::ST2, MainColumn::ST3, MainColumn::ST4],
-            hv_product,
-        ),
-        instruction_group_step_1(circuit_builder),
+        specific_constraints,
         instruction_group_no_io(circuit_builder),
-        instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
+        instruction_group_step_1(circuit_builder),
+        instruction_group_op_stack_remains_except_top_n(circuit_builder, 10),
     ]
     .concat()
 }
 
-fn instruction_xb_dot_step(
+fn instruction_x_horner_step(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
     let curr_main_row =
@@ -2162,51 +2132,43 @@ fn instruction_xb_dot_step(
     let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
     let constant = |c| circuit_builder.b_constant(c);
 
-    let increment_ram_pointer_st0 =
-        next_main_row(MainColumn::ST0) - curr_main_row(MainColumn::ST0) - constant(1);
-    let increment_ram_pointer_st1 =
-        next_main_row(MainColumn::ST1) - curr_main_row(MainColumn::ST1) - constant(3);
+    // RAM access
+    let ram_pointers = [0, 1, 2].map(|i| curr_main_row(MainColumn::ST5) - constant(i));
+    let read_from_ram = read_from_ram_to(
+        circuit_builder,
+        ram_pointers,
+        [MainColumn::HV2, MainColumn::HV1, MainColumn::HV0].map(curr_main_row),
+    );
 
-    let rhs_ptr0 = curr_main_row(MainColumn::ST0);
-    let lhs_ptr0 = curr_main_row(MainColumn::ST1);
-    let lhs_ptr1 = lhs_ptr0.clone() + constant(1);
-    let lhs_ptr2 = lhs_ptr0.clone() + constant(2);
-    let ram_read_sources = [rhs_ptr0, lhs_ptr0, lhs_ptr1, lhs_ptr2];
-    let ram_read_destinations = [
-        MainColumn::HV0,
-        MainColumn::HV1,
-        MainColumn::HV2,
-        MainColumn::HV3,
-    ]
-    .map(curr_main_row);
-    let read_bfe_and_xfe_from_ram =
-        read_from_ram_to(circuit_builder, ram_read_sources, ram_read_destinations);
+    // update running evaluation `e' = e·x + c`
+    let indeterminate = [MainColumn::ST0, MainColumn::ST1, MainColumn::ST2].map(curr_main_row);
+    let evaluation = [MainColumn::ST7, MainColumn::ST8, MainColumn::ST9].map(curr_main_row);
+    let [product_0, product_1, product_2] = xx_product(indeterminate, evaluation);
 
-    let ram_pointer_constraints = vec![
-        increment_ram_pointer_st0,
-        increment_ram_pointer_st1,
-        read_bfe_and_xfe_from_ram,
-    ];
+    // compress current and next stack
+    let stack_weight = |i| circuit_builder.challenge(stack_weight_by_index(i));
+    let curr_stack_compressed = stack_weight(0) * curr_main_row(MainColumn::ST0)
+        + stack_weight(1) * curr_main_row(MainColumn::ST1)
+        + stack_weight(2) * curr_main_row(MainColumn::ST2)
+        + stack_weight(3) * curr_main_row(MainColumn::ST3)
+        + stack_weight(4) * curr_main_row(MainColumn::ST4)
+        + stack_weight(5) * (curr_main_row(MainColumn::ST5) - constant(3))
+        + stack_weight(6) * curr_main_row(MainColumn::ST6)
+        + stack_weight(7) * (product_0 + curr_main_row(MainColumn::HV0))
+        + stack_weight(8) * (product_1 + curr_main_row(MainColumn::HV1))
+        + stack_weight(9) * (product_2 + curr_main_row(MainColumn::HV2));
+    let next_stack_compressed = (0..=9)
+        .map(|i| stack_weight(i) * next_main_row(ProcessorTable::op_stack_column_by_index(i)))
+        .sum::<ConstraintCircuitMonad<_>>();
+    let stack_changes_correctly = next_stack_compressed - curr_stack_compressed;
 
-    let [hv0, hv1, hv2, hv3] = [
-        MainColumn::HV0,
-        MainColumn::HV1,
-        MainColumn::HV2,
-        MainColumn::HV3,
-    ]
-    .map(curr_main_row);
-    let hv_product = xb_product([hv1, hv2, hv3], hv0);
+    let specific_constraints = vec![stack_changes_correctly, read_from_ram];
 
     [
-        ram_pointer_constraints,
-        update_dotstep_accumulator(
-            circuit_builder,
-            [MainColumn::ST2, MainColumn::ST3, MainColumn::ST4],
-            hv_product,
-        ),
-        instruction_group_step_1(circuit_builder),
+        specific_constraints,
         instruction_group_no_io(circuit_builder),
-        instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
+        instruction_group_step_1(circuit_builder),
+        instruction_group_op_stack_remains_except_top_n(circuit_builder, 10),
     ]
     .concat()
 }
@@ -2261,8 +2223,8 @@ pub fn transition_constraints_for_instruction(
         Instruction::WriteIo(_) => instruction_write_io(circuit_builder),
         Instruction::MerkleStep => instruction_merkle_step(circuit_builder),
         Instruction::MerkleStepMem => instruction_merkle_step_mem(circuit_builder),
-        Instruction::XxDotStep => instruction_xx_dot_step(circuit_builder),
-        Instruction::XbDotStep => instruction_xb_dot_step(circuit_builder),
+        Instruction::BHornerStep => instruction_b_horner_step(circuit_builder),
+        Instruction::XHornerStep => instruction_x_horner_step(circuit_builder),
     }
 }
 

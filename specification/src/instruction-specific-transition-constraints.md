@@ -931,24 +931,24 @@ See also [`merkle_step`](#instruction-merkle_step).
 1. `hv0` through `hv4` hold the sibling digest of the node indicated by `st5`, as read from RAM at the address held in `st7`.
 1. `hv5` holds the result of `st5 % 2`, the Merkle tree node index's least significant bit, indicating whether it is a left or right node.
 
-## Instruction `xx_dot_step`
+## Instruction `b_horner_step`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
-1. Store `(RAM[st0], RAM[st0+1], RAM[st0+2])` in `(hv0, hv1, hv2)`.
-1. Store `(RAM[st1], RAM[st1+1], RAM[st1+2])` in `(hv3, hv4, hv5)`.
-1. Add `(hv0 + hv1·x + hv2·x²) · (hv3 + hv4·x + hv5·x²)` into `(st2, st3, st4)`
-1. Increase the pointers: `st0` and `st1` by 3 each.
+1. Store `RAM[st5]` in `hv0`.
+1. Stack elements `st0` through `st4` as well as `st6` do not change.
+1. Decrease RAM pointer `st5` by 1.
+1. Move `(st0 + st1·x + st2·x²) · (st7 + st8·x + st9·x²) + hv0` into `st7` through `st9`.
 
-## Instruction `xb_dot_step`
+## Instruction `x_horner_step`
 
 In addition to its [instruction groups](instruction-groups.md), this instruction has the following constraints.
 
 ### Description
 
-1. Store `RAM[st0]` in `hv0`.
-1. Store `(RAM[st1], RAM[st1+1], RAM[st1+2])` in `(hv1, hv2, hv3)`.
-1. Add `hv0 · (hv1 + hv2·x + hv3·x²)` into `(st1, st2, st3)`
-1. Increase the pointers: `st0` and `st1` by 1 and 3, respectively.
+1. Store `RAM[st5]` in `hv2`, `RAM[st5 - 1]` in `hv1`, and `RAM[st5 - 2]` in `hv0`.
+1. Stack elements `st0` through `st4` as well as `st6` do not change.
+1. Decrease RAM pointer `st5` by 3.
+1. Move `(st0 + st1·x + st2·x²) · (st7 + st8·x + st9·x²) + (hv0 + hv1·x + hv2·x²)` into `st7` through `st9`.
