@@ -912,28 +912,9 @@ impl ToTokens for IOList {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use constraint_circuit::ConstraintCircuitBuilder;
-    use constraint_circuit::SingleRowIndicator;
     use twenty_first::prelude::*;
 
     use super::*;
-
-    pub(crate) fn mini_constraints() -> Constraints {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let challenge = |c: usize| circuit_builder.challenge(c);
-        let constant = |c: u32| circuit_builder.x_constant(c);
-        let main_row = |i| circuit_builder.input(SingleRowIndicator::Main(i));
-        let aux_row = |i| circuit_builder.input(SingleRowIndicator::Aux(i));
-
-        let constraint = main_row(0) * challenge(3) - aux_row(1) * constant(42);
-
-        Constraints {
-            init: vec![constraint],
-            cons: vec![],
-            tran: vec![],
-            term: vec![],
-        }
-    }
 
     pub fn print_constraints<B: Codegen>(constraints: &Constraints) {
         let code = B::constraint_evaluation_code(constraints);
@@ -963,12 +944,12 @@ mod tests {
     }
 
     #[test]
-    fn print_mini_constraints_rust() {
-        print_constraints::<RustBackend>(&mini_constraints());
+    fn print_constraints_rust() {
+        print_constraints::<RustBackend>(&Constraints::all());
     }
 
     #[test]
-    fn print_mini_constraints_tasm() {
-        print_constraints::<TasmBackend>(&mini_constraints());
+    fn print_constraints_tasm() {
+        print_constraints::<TasmBackend>(&Constraints::all());
     }
 }
