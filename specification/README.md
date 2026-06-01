@@ -5,7 +5,7 @@ For easy access, you can find it [online](https://triton-vm.org/spec/).
 You can also self-host it by following the steps below.
 
 > [!TIP]
-> You can find a tutorial for Triton assembly in the [dedicated book](../tutorial/README.md).
+> You can find a tutorial for Triton assembly in the [dedicated book](https://triton-vm.org/tutorial/).
 
 ## Build Locally
 

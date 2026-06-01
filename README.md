@@ -18,7 +18,8 @@ when running Triton VM.
 
 ## Getting Started
 
-If you want to start writing programs for Triton VM, check out the [Triton Assembly Tutorial](tutorial/README.md).
+If you want to start writing programs for Triton VM, check out the
+[Triton Assembly Tutorial](https://triton-vm.org/tutorial/).
 For running and visualizing Triton VM locally, use the [Triton TUI](https://github.com/TritonVM/triton-tui).
 If you want to run a Triton assembly program, generate or verify proofs of correct execution, or
 [profile the performance](https://github.com/TritonVM/triton-cli#profiling) of either of these,
