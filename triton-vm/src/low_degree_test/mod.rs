@@ -350,7 +350,7 @@ impl ReedSolomonCode {
                 1.0 / (2.0 * self.rate()?.sqrt() * self.slackness_factor()?)
             }
             ProximityRegime::Conjectured => {
-                1_f64.powf(f64::from(log2_poly_degree))
+                2_f64.powf(f64::from(log2_poly_degree))
                     / (self.q_ary_entropy()? * self.slackness_factor()?)
             }
         };
