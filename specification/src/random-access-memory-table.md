@@ -179,7 +179,7 @@ None.
 1. If the current row is a padding row, then the next row is a padding row.
 1. The “inverse of `ram_pointer` difference” `iord` is 0 or `iord` is the inverse of the difference between current and next row's `ram_pointer`.
 1. The `ram_pointer` changes or `iord` is the inverse of the difference between current and next row's `ram_pointer`.
-1. The `ram_pointer` changes or `instruction_type` is “write” or the `ram_value` remains unchanged.
+1. The `ram_pointer` changes or the next row's `instruction_type` is “write” or the `ram_value` remains unchanged.
 1. The `bcbp0` changes if and only if the `ram_pointer` changes.
 1. The `bcbp1` changes if and only if the `ram_pointer` changes.
 1. If the `ram_pointer` changes, the `RunningProductOfRAMP` accumulates next `ram_pointer`.<br />
@@ -200,7 +200,7 @@ None.
 1. `(instruction_type - 0)·(instruction_type - 1)·(instruction_type' - 2)`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·iord`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(ram_pointer' - ram_pointer)`
-1. `(iord·(ram_pointer' - ram_pointer) - 1)·(instruction_type - 0)·(ram_value' - ram_value)`
+1. `(iord·(ram_pointer' - ram_pointer) - 1)·(instruction_type' - 0)·(ram_value' - ram_value)`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bcpc0' - bcpc0)`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(bcpc1' - bcpc1)`
 1. `(iord·(ram_pointer' - ram_pointer) - 1)·(RunningProductOfRAMP' - RunningProductOfRAMP)`<br />
