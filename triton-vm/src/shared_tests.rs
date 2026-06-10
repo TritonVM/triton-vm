@@ -161,6 +161,25 @@ impl TestableProgram {
     ///
     /// [profile]: crate::profiler::VMPerformanceProfile
     pub fn prove_and_verify(self) {
+        let (stark, claim, proof, aet) = self.prove();
+
+        profiler!(start "Verify");
+        assert!(let Ok(()) = stark.verify(&claim, &proof));
+        profiler!(stop "Verify");
+        let profile = crate::profiler::finish();
+
+        assert!(let Ok(padded_height) = proof.padded_height());
+        assert!(aet.padded_height() == padded_height);
+
+        let ldt = stark.ldt(padded_height).unwrap();
+        let profile = profile
+            .with_cycle_count(aet.height_of_table(TableId::Processor))
+            .with_padded_height(padded_height)
+            .with_ldt_domain_len(ldt.initial_domain().len());
+        println!("{profile}");
+    }
+
+    pub fn prove(self) -> (Stark, Claim, Proof, AlgebraicExecutionTrace) {
         let Self {
             program,
             public_input,
@@ -187,20 +206,7 @@ impl TestableProgram {
         dbg!(Tip5::hash(&claim));
         dbg!(Tip5::hash(&proof));
 
-        profiler!(start "Verify");
-        assert!(let Ok(()) = stark.verify(&claim, &proof));
-        profiler!(stop "Verify");
-        let profile = crate::profiler::finish();
-
-        assert!(let Ok(padded_height) = proof.padded_height());
-        assert!(aet.padded_height() == padded_height);
-
-        let ldt = stark.ldt(padded_height).unwrap();
-        let profile = profile
-            .with_cycle_count(aet.height_of_table(TableId::Processor))
-            .with_padded_height(padded_height)
-            .with_ldt_domain_len(ldt.initial_domain().len());
-        println!("{profile}");
+        (stark, claim, proof, aet)
     }
 
     pub fn generate_proof_artifacts(self) -> ProofArtifacts {

@@ -221,6 +221,9 @@ pub enum VerificationError {
     #[error("the number of received auxiliary table rows does not match the parameters")]
     IncorrectNumberOfAuxTableRows,
 
+    #[error("the proof contains trailing items that are not needed for verification")]
+    SuperfluousProofItems,
+
     #[error(transparent)]
     ProofStreamError(#[from] ProofStreamError),
 

@@ -27,6 +27,7 @@ use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::error::LdtParameterError;
+use crate::error::ProofStreamError;
 use crate::error::ProvingError;
 use crate::error::U32_TO_USIZE_ERR;
 use crate::error::USIZE_TO_U64_ERR;
@@ -1741,6 +1742,11 @@ impl Verifier {
             profiler!(stop "combination codeword equality");
         }
         profiler!(stop "linear combination");
+
+        let Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue() else {
+            return Err(VerificationError::SuperfluousProofItems);
+        };
+
         Ok(())
     }
 
@@ -4795,5 +4801,17 @@ pub(crate) mod tests {
             s.log2_final_degree_plus_1()
         });
         print_table("proof size [KiB]", 8..=20, &|s| s.proof_size());
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn proof_with_spurious_trailing_item_is_rejected() {
+        let program = TestableProgram::new(triton_program!(halt));
+        let (stark, claim, proof, _) = program.prove();
+
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
+        proof_stream.enqueue(ProofItem::MerkleRoot(Digest::default()));
+        let proof = proof_stream.into();
+
+        assert!(let Err(VerificationError::SuperfluousProofItems) = stark.verify(&claim, &proof));
     }
 }
