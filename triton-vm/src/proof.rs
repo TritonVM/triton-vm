@@ -30,7 +30,7 @@ use crate::proof_stream::ProofStream;
 ///
 /// This version is separate from the crate's semantic version to allow software
 /// upgrades with no semantic changes to both, the ISA and the proof system.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
@@ -217,11 +217,11 @@ mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"03679712315797441546,\
-              11839395418856928549,\
-              03557811864671638150,\
-              07068928384145787880,\
-              05899970860911282282",
+            @"11848503304930305445,\
+            08275093751810098399,\
+            11743323661792730174,\
+            15654996850042523990,\
+            10969690232326332373",
         );
     }
 }

@@ -1470,17 +1470,30 @@ fn instruction_sponge_absorb(
 fn instruction_sponge_absorb_mem(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-    let curr_main_row =
-        |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
-    let next_main_row = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
+    let curr = |col: MainColumn| circuit_builder.input(CurrentMain(col.master_main_index()));
+    let next = |col: MainColumn| circuit_builder.input(NextMain(col.master_main_index()));
     let constant = |c| circuit_builder.b_constant(c);
 
-    let increment_ram_pointer = next_main_row(MainColumn::ST0)
-        - curr_main_row(MainColumn::ST0)
-        - constant(tip5::RATE as u32);
+    let increment_ram_pointer =
+        next(MainColumn::ST0) - curr(MainColumn::ST0) - constant(tip5::RATE as u32);
+
+    let ram_pointers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(|i| curr(MainColumn::ST0) + constant(i));
+    let ram_read_destinations = [
+        next(MainColumn::ST1),
+        next(MainColumn::ST2),
+        next(MainColumn::ST3),
+        next(MainColumn::ST4),
+        curr(MainColumn::HV0),
+        curr(MainColumn::HV1),
+        curr(MainColumn::HV2),
+        curr(MainColumn::HV3),
+        curr(MainColumn::HV4),
+        curr(MainColumn::HV5),
+    ];
+    let read_from_ram = read_from_ram_to(circuit_builder, ram_pointers, ram_read_destinations);
 
     [
-        vec![increment_ram_pointer],
+        vec![increment_ram_pointer, read_from_ram],
         instruction_group_step_1(circuit_builder),
         instruction_group_op_stack_remains_except_top_n(circuit_builder, 5),
         instruction_group_no_io(circuit_builder),
