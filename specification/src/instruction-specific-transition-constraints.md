@@ -544,6 +544,8 @@ Beyond that, correct transition is guaranteed by the [Hash Table](hash-table.md)
 ### Description
 
 1. `st0` is incremented by 10.
+1. `st1'` through `st4'` holds `RAM[st0 + 0]` through `RAM[st0 + 3]`.
+1. `hv0` through `hv5` holds `RAM[st0 + 4]` through `RAM[st0 + 9]`.
 
 ## Instruction `sponge_squeeze`
 
