@@ -3,6 +3,12 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [4.0.0](https://github.com/TritonVM/triton-vm/compare/v3.0.0..v4.0.0) - 2026-06-10
+
+### 🐛 Bug Fixes
+
+- *(AIR)* Enforce RAM read for `sponge_absorb_mem` ([ef9d9e72](https://github.com/TritonVM/triton-vm/commit/ef9d9e72))
+
 ## [3.0.0](https://github.com/TritonVM/triton-vm/compare/v2.0.0..v3.0.0) - 2026-05-11
 
 ### ✨ Features
