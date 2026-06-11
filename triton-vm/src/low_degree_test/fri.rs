@@ -406,6 +406,10 @@ impl FriVerifier<'_> {
         self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
         self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_polynomial()?;
 
+        if self.last_round_codeword.len() != self.rounds.last().unwrap().domain.len() {
+            return Err(LdtVerificationError::LastCodewordMismatch);
+        }
+
         Ok(())
     }
 
@@ -1159,7 +1163,7 @@ mod tests {
         seed: u64,
     ) -> ProofStream {
         let mut proof_items = proof_stream.items.iter_mut();
-        let last_round_codeword = proof_items.find_map(fri_codeword_filter()).unwrap();
+        let last_round_codeword = proof_items.find_map(fri_codeword_filter).unwrap();
 
         let mut rng = StdRng::seed_from_u64(seed);
         let modification_index = rng.random_range(0..last_round_codeword.len());
@@ -1169,8 +1173,8 @@ mod tests {
         proof_stream
     }
 
-    fn fri_codeword_filter() -> fn(&mut ProofItem) -> Option<&mut Vec<XFieldElement>> {
-        |proof_item| match proof_item {
+    fn fri_codeword_filter(proof_item: &mut ProofItem) -> Option<&mut Vec<XFieldElement>> {
+        match proof_item {
             ProofItem::FriCodeword(codeword) => Some(codeword),
             _ => None,
         }
@@ -1203,7 +1207,7 @@ mod tests {
         seed: u64,
     ) -> ProofStream {
         let proof_items = proof_stream.items.iter_mut();
-        let fri_responses = proof_items.filter_map(fri_response_filter());
+        let fri_responses = proof_items.filter_map(fri_response_filter);
 
         let mut rng = StdRng::seed_from_u64(seed);
         let fri_response = fri_responses.choose(&mut rng).unwrap();
@@ -1218,8 +1222,8 @@ mod tests {
         proof_stream
     }
 
-    fn fri_response_filter() -> fn(&mut ProofItem) -> Option<&mut FriResponse> {
-        |proof_item| match proof_item {
+    fn fri_response_filter(proof_item: &mut ProofItem) -> Option<&mut FriResponse> {
+        match proof_item {
             ProofItem::FriResponse(fri_response) => Some(fri_response),
             _ => None,
         }
@@ -1256,7 +1260,7 @@ mod tests {
         seed: u64,
     ) -> ProofStream {
         let proof_items = proof_stream.items.iter_mut();
-        let auth_structures = proof_items.filter_map(non_trivial_auth_structure_filter());
+        let auth_structures = proof_items.filter_map(non_trivial_auth_structure_filter);
 
         let mut rng = StdRng::seed_from_u64(seed);
         let auth_structure = auth_structures.choose(&mut rng).unwrap();
@@ -1271,13 +1275,38 @@ mod tests {
         proof_stream
     }
 
-    fn non_trivial_auth_structure_filter()
-    -> fn(&mut ProofItem) -> Option<&mut AuthenticationStructure> {
-        |proof_item| match proof_item {
+    fn non_trivial_auth_structure_filter(
+        proof_item: &mut ProofItem,
+    ) -> Option<&mut AuthenticationStructure> {
+        match proof_item {
             ProofItem::FriResponse(fri_response) if fri_response.auth_structure.is_empty() => None,
             ProofItem::FriResponse(fri_response) => Some(&mut fri_response.auth_structure),
             _ => None,
         }
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 50))]
+    fn too_short_last_round_codeword_doesnt_panic(
+        fri: Fri,
+        #[strategy(arbitrary_polynomial().no_shrink())] fri_polynomial: XfePoly,
+    ) {
+        let codeword = fri.domain.evaluate(&fri_polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        let last_round_codeword = proof_stream
+            .items
+            .iter_mut()
+            .find_map(fri_codeword_filter)
+            .unwrap();
+        let Some(_) = last_round_codeword.pop() else {
+            return Err(TestCaseError::Reject("empty last round codeword".into()));
+        };
+
+        proof_stream.reset_sponge();
+        let verdict = fri.verify(&mut proof_stream);
+
+        assert!(let Err(LdtVerificationError::LastCodewordMismatch) = verdict);
     }
 
     #[macro_rules_attr::apply(proptest(cases = 50))]
