@@ -1313,9 +1313,21 @@ impl Verifier {
             revealed_fri_indices_and_elements.into_iter().unzip();
         profiler!(stop "FRI");
 
+        // Check the number of revealed elements against the parameters before
+        // using them.
+        if self.parameters.num_collinearity_checks != revealed_current_row_indices.len() {
+            return Err(VerificationError::IncorrectNumberOfRowIndices);
+        }
+        if self.parameters.num_collinearity_checks != revealed_fri_values.len() {
+            return Err(VerificationError::IncorrectNumberOfFRIValues);
+        }
+
         profiler!(start "check leafs");
         profiler!(start "dequeue main elements");
         let main_table_rows = proof_stream.dequeue()?.try_into_master_main_table_rows()?;
+        if self.parameters.num_collinearity_checks != main_table_rows.len() {
+            return Err(VerificationError::IncorrectNumberOfMainTableRows);
+        }
         let main_authentication_structure = proof_stream
             .dequeue()?
             .try_into_authentication_structure()?;
@@ -1342,6 +1354,9 @@ impl Verifier {
 
         profiler!(start "dequeue auxiliary elements");
         let aux_table_rows = proof_stream.dequeue()?.try_into_master_aux_table_rows()?;
+        if self.parameters.num_collinearity_checks != aux_table_rows.len() {
+            return Err(VerificationError::IncorrectNumberOfAuxTableRows);
+        }
         let aux_authentication_structure = proof_stream
             .dequeue()?
             .try_into_authentication_structure()?;
@@ -1367,6 +1382,9 @@ impl Verifier {
         profiler!(start "dequeue quotient segments' elements");
         let revealed_quotient_segments_elements =
             proof_stream.dequeue()?.try_into_quot_segments_elements()?;
+        if self.parameters.num_collinearity_checks != revealed_quotient_segments_elements.len() {
+            return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
+        }
         let revealed_quotient_segments_digests = revealed_quotient_segments_elements
             .iter()
             .map(|row| row.as_slice())
@@ -1391,22 +1409,6 @@ impl Verifier {
         profiler!(stop "check leafs");
 
         profiler!(start "linear combination");
-        if self.parameters.num_collinearity_checks != revealed_current_row_indices.len() {
-            return Err(VerificationError::IncorrectNumberOfRowIndices);
-        };
-        if self.parameters.num_collinearity_checks != revealed_fri_values.len() {
-            return Err(VerificationError::IncorrectNumberOfFRIValues);
-        };
-        if self.parameters.num_collinearity_checks != revealed_quotient_segments_elements.len() {
-            return Err(VerificationError::IncorrectNumberOfQuotientSegmentElements);
-        };
-        if self.parameters.num_collinearity_checks != main_table_rows.len() {
-            return Err(VerificationError::IncorrectNumberOfMainTableRows);
-        };
-        if self.parameters.num_collinearity_checks != aux_table_rows.len() {
-            return Err(VerificationError::IncorrectNumberOfAuxTableRows);
-        };
-
         for (row_idx, main_row, aux_row, quotient_segments_elements, fri_value) in izip!(
             revealed_current_row_indices,
             main_table_rows,
@@ -1946,6 +1948,84 @@ pub(crate) mod tests {
 
         let verdict = stark.verify(&claim, &proof);
         let_assert!(Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn proof_with_too_few_main_rows_doesnt_panic() {
+        let program = triton_program!(halt);
+        let claim = Claim::about_program(&program);
+        let (aet, _) =
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
+        let stark = Stark::low_security();
+        let proof = stark.prove(&claim, &aet).unwrap();
+
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
+        let main_rows = proof_stream
+            .items
+            .iter_mut()
+            .find(|item| matches!(item, ProofItem::MasterMainTableRows(_)))
+            .unwrap();
+        let ProofItem::MasterMainTableRows(main_rows) = main_rows else {
+            unreachable!()
+        };
+        main_rows.pop();
+        let proof = Proof::from(proof_stream);
+
+        let verdict = stark.verify(&claim, &proof);
+        let_assert!(Err(VerificationError::IncorrectNumberOfMainTableRows) = verdict);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn proof_with_too_few_aux_rows_doesnt_panic() {
+        let program = triton_program!(halt);
+        let claim = Claim::about_program(&program);
+        let (aet, _) =
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
+        let stark = Stark::low_security();
+        let proof = stark.prove(&claim, &aet).unwrap();
+
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
+        let aux_rows = proof_stream
+            .items
+            .iter_mut()
+            .find(|item| matches!(item, ProofItem::MasterAuxTableRows(_)))
+            .unwrap();
+        let ProofItem::MasterAuxTableRows(aux_rows) = aux_rows else {
+            unreachable!()
+        };
+        aux_rows.pop();
+        let proof = Proof::from(proof_stream);
+
+        let verdict = stark.verify(&claim, &proof);
+        let_assert!(Err(VerificationError::IncorrectNumberOfAuxTableRows) = verdict);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn proof_with_too_few_quotient_segment_elements_doesnt_panic() {
+        let program = triton_program!(halt);
+        let claim = Claim::about_program(&program);
+        let (aet, _) =
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
+        let stark = Stark::low_security();
+        let proof = stark.prove(&claim, &aet).unwrap();
+
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
+        let quot_seg_elems = proof_stream
+            .items
+            .iter_mut()
+            .find(|item| matches!(item, ProofItem::QuotientSegmentsElements(_)))
+            .unwrap();
+        let ProofItem::QuotientSegmentsElements(quot_seg_elems) = quot_seg_elems else {
+            unreachable!()
+        };
+        quot_seg_elems.pop();
+        let proof = Proof::from(proof_stream);
+
+        let verdict = stark.verify(&claim, &proof);
+        let_assert!(Err(VerificationError::IncorrectNumberOfQuotientSegmentElements) = verdict);
     }
 
     #[macro_rules_attr::apply(test)]
