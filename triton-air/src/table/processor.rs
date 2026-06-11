@@ -1,4 +1,5 @@
 use std::cmp::max;
+use std::ops::Add;
 use std::ops::Mul;
 
 use constraint_circuit::ConstraintCircuitBuilder;
@@ -302,17 +303,29 @@ impl AIR for ProcessorTable {
         let is_padding_is_0_or_does_not_change = curr_main_row(MainColumn::IsPadding)
             * (next_main_row(MainColumn::IsPadding) - curr_main_row(MainColumn::IsPadding));
 
-        let instruction_independent_constraints =
-            vec![clk_increases_by_1, is_padding_is_0_or_does_not_change];
+        let all_instruction_deselectors = ALL_INSTRUCTIONS
+            .map(|instr| instruction_deselector_current_row(circuit_builder, instr));
+        let exactly_one_instruction_deselector_must_be_inactive = all_instruction_deselectors
+            .iter()
+            .cloned()
+            .fold(constant(0), ConstraintCircuitMonad::add)
+            - constant(1);
+
+        let instruction_independent_constraints = vec![
+            clk_increases_by_1,
+            is_padding_is_0_or_does_not_change,
+            exactly_one_instruction_deselector_must_be_inactive,
+        ];
 
         // instruction-specific constraints
         let transition_constraints_for_instruction =
             |instr| transition_constraints_for_instruction(circuit_builder, instr);
-        let all_instructions_and_their_transition_constraints =
-            ALL_INSTRUCTIONS.map(|instr| (instr, transition_constraints_for_instruction(instr)));
+        let all_instruction_transition_constraints =
+            ALL_INSTRUCTIONS.map(transition_constraints_for_instruction);
         let deselected_transition_constraints = combine_instruction_constraints_with_deselectors(
             circuit_builder,
-            all_instructions_and_their_transition_constraints,
+            all_instruction_deselectors,
+            all_instruction_transition_constraints,
         );
 
         // if next row is padding row: disable transition constraints, enable
@@ -372,17 +385,10 @@ impl AIR for ProcessorTable {
 /// combined transition constraint polynomials.
 fn combine_instruction_constraints_with_deselectors(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
-    instr_tc_polys_tuples: [(Instruction, Vec<ConstraintCircuitMonad<DualRowIndicator>>);
+    all_instruction_deselectors: [ConstraintCircuitMonad<DualRowIndicator>; Instruction::COUNT],
+    all_tc_polys_for_all_instructions: [Vec<ConstraintCircuitMonad<DualRowIndicator>>;
         Instruction::COUNT],
 ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-    let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<_>) =
-        instr_tc_polys_tuples.into_iter().unzip();
-
-    let all_instruction_deselectors = all_instructions
-        .into_iter()
-        .map(|instr| instruction_deselector_current_row(circuit_builder, instr))
-        .collect_vec();
-
     let max_number_of_constraints = all_tc_polys_for_all_instructions
         .iter()
         .map(|tc_polys_for_instr| tc_polys_for_instr.len())
@@ -740,7 +746,8 @@ fn instruction_deselector_common_functionality<II: InputIndicator>(
     instruction: Instruction,
     instruction_bit_polynomials: [ConstraintCircuitMonad<II>; InstructionBit::COUNT],
 ) -> ConstraintCircuitMonad<II> {
-    let one = || circuit_builder.b_constant(1);
+    let constant = |c| circuit_builder.b_constant(c);
+    let one = || constant(bfe!(1));
 
     let selector_bits: [_; InstructionBit::COUNT] = [
         instruction.ib(InstructionBit::IB0),
@@ -751,17 +758,44 @@ fn instruction_deselector_common_functionality<II: InputIndicator>(
         instruction.ib(InstructionBit::IB5),
         instruction.ib(InstructionBit::IB6),
     ];
-    let deselector_polynomials = selector_bits.map(|b| one() - circuit_builder.b_constant(b));
 
     instruction_bit_polynomials
         .into_iter()
-        .zip_eq(deselector_polynomials)
-        .map(|(instruction_bit_poly, deselector_poly)| instruction_bit_poly - deselector_poly)
+        .zip_eq(selector_bits)
+        .map(|(x_ib, ib_of_instr)| {
+            x_ib.clone() * constant(ib_of_instr) + (one() - x_ib) * constant(bfe!(1) - ib_of_instr)
+        })
         .fold(one(), ConstraintCircuitMonad::mul)
 }
 
-/// A polynomial that has no solutions when `ci` is `instruction`.
-/// The number of variables in the polynomial corresponds to two rows.
+/// The current-row deselector polynomial for the given instruction.
+///
+/// The deselector polynomial will evaluate to
+/// - 1 on the point corresponding to the chosen instruction opcode's
+///   decomposition, _i.e._, if `ci` is `instruction`, and
+/// - 0 otherwise.
+///
+/// # Example
+///
+/// Consider some instruction `instr` with opcode 43 = 0101011₂. The deselector
+/// polynomial is:
+///
+/// ```text
+///   deselector_instr(x_ib_0, x_ib_1, x_ib_2, x_ib_3, x_ib_4, x_ib_5, x_ib_6)
+///   Π_i x_ib_i · ib_i(instr) + (1 - x_ib_i)·(1 - ib_i(instr))
+/// = x_ib_0·x_ib_1·(1 - x_ib2)·x_ib_3·(1 - x_ib4)·x_ib_5·(1 - x_ib6)
+/// ```
+///
+/// Evaluating the deselector polynomial on (the bit-decomposed opcode of)
+/// `instr` gives:
+///
+/// ```text
+///   deselector_instr(1, 1, 0, 1, 0, 1, 0)
+/// = 1·1·(1-0)·1·(1-0)·1·(1-0)
+/// = 1
+/// ```
+///
+/// Any other combination of instruction bits causes one of the factors to be 0.
 fn instruction_deselector_current_row(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     instruction: Instruction,
@@ -786,8 +820,9 @@ fn instruction_deselector_current_row(
     )
 }
 
-/// A polynomial that has no solutions when `ci_next` is `instruction`.
-/// The number of variables in the polynomial corresponds to two rows.
+/// The next-row deselector polynomial for the given instruction.
+///
+/// For more explanation, see [`instruction_deselector_current_row`].
 fn instruction_deselector_next_row(
     circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     instruction: Instruction,
@@ -811,8 +846,9 @@ fn instruction_deselector_next_row(
     )
 }
 
-/// A polynomial that has no solutions when `ci` is `instruction`.
-/// The number of variables in the polynomial corresponds to a single row.
+/// The deselector polynomial for the given instruction.
+///
+/// For more explanation, see [`instruction_deselector_current_row`].
 fn instruction_deselector_single_row(
     circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     instruction: Instruction,
@@ -3275,7 +3311,8 @@ fn helper_variable(
 mod tests {
     use ndarray::Array2;
     use ndarray::s;
-    use num_traits::identities::Zero;
+    use num_traits::One;
+    use num_traits::Zero;
     use proptest::prop_assert_eq;
     use proptest_arbitrary_adapter::arb;
     use test_strategy::proptest;
@@ -3329,11 +3366,11 @@ mod tests {
                     &dummy_challenges,
                 );
 
+                let opcode = other_instruction.opcode();
                 assert!(
                     result.is_zero(),
                     "Deselector for {instruction} should return 0 for all other instructions, \
-                    including {other_instruction} whose opcode is {}",
-                    other_instruction.opcode()
+                    including {other_instruction} whose opcode is {opcode}",
                 )
             }
 
@@ -3351,10 +3388,12 @@ mod tests {
                 master_aux_table.view(),
                 &dummy_challenges,
             );
+            let result = result.unlift().unwrap();
+
+            let opcode = instruction.opcode();
             assert!(
-                !result.is_zero(),
-                "Deselector for {instruction} should be non-zero when CI is {}",
-                instruction.opcode()
+                result.is_one(),
+                "Deselector for {instruction} should be 1 (not {result}) when CI is {opcode}",
             )
         }
     }
