@@ -30,7 +30,7 @@ use crate::proof_stream::ProofStream;
 ///
 /// This version is separate from the crate's semantic version to allow software
 /// upgrades with no semantic changes to both, the ISA and the proof system.
-pub const CURRENT_VERSION: u32 = 3;
+pub const CURRENT_VERSION: u32 = 4;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
