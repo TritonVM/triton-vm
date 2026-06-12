@@ -1256,19 +1256,27 @@ fn instruction_recurse_or_return(
         || curr_row(MainColumn::HV0) * (curr_row(MainColumn::ST6) - curr_row(MainColumn::ST5));
     let st5_neq_st6 = || one() - st5_eq_st6();
 
+    // hv0 must be the multiplicative inverse-or-zero of (ST6 - ST5):
+    // - (1 - hv0·(st6 - st5))·hv0
+    // - (1 - hv0·(st6 - st5))·(st6 - st5)
+    let hv0_is_inverse_of_st6_minus_st5_or_hv0_is_zero = st5_neq_st6() * curr_row(MainColumn::HV0);
+    let hv0_is_inverse_of_st6_minus_st5_or_st6_minus_st5_is_zero =
+        st5_neq_st6() * (curr_row(MainColumn::ST6) - curr_row(MainColumn::ST5));
+
+    let mut specific_constraints = vec![
+        hv0_is_inverse_of_st6_minus_st5_or_hv0_is_zero,
+        hv0_is_inverse_of_st6_minus_st5_or_st6_minus_st5_is_zero,
+    ];
+
     let maybe_return = vec![
-        // hv0 is inverse-or-zero of the difference of ST6 and ST5.
-        st5_neq_st6() * curr_row(MainColumn::HV0),
-        st5_neq_st6() * (curr_row(MainColumn::ST6) - curr_row(MainColumn::ST5)),
         st5_neq_st6() * (next_row(MainColumn::IP) - curr_row(MainColumn::JSO)),
         st5_neq_st6() * (next_row(MainColumn::JSP) - curr_row(MainColumn::JSP) + one()),
     ];
     let maybe_recurse = vec![
-        // constraints are ordered to line up nicely with group “maybe_return”
-        st5_eq_st6() * (next_row(MainColumn::JSO) - curr_row(MainColumn::JSO)),
-        st5_eq_st6() * (next_row(MainColumn::JSD) - curr_row(MainColumn::JSD)),
         st5_eq_st6() * (next_row(MainColumn::IP) - curr_row(MainColumn::JSD)),
         st5_eq_st6() * (next_row(MainColumn::JSP) - curr_row(MainColumn::JSP)),
+        st5_eq_st6() * (next_row(MainColumn::JSO) - curr_row(MainColumn::JSO)),
+        st5_eq_st6() * (next_row(MainColumn::JSD) - curr_row(MainColumn::JSD)),
     ];
 
     // The two constraint groups are mutually exclusive: the stack element is
@@ -1276,8 +1284,10 @@ fn instruction_recurse_or_return(
     // `st5_neq_st6`. Therefore, it is safe (and sound) to combine the groups
     // into a single set of constraints.
     let constraint_groups = vec![maybe_return, maybe_recurse];
-    let specific_constraints =
-        combine_mutually_exclusive_constraint_groups(circuit_builder, constraint_groups);
+    specific_constraints.extend(combine_mutually_exclusive_constraint_groups(
+        circuit_builder,
+        constraint_groups,
+    ));
 
     [
         specific_constraints,
