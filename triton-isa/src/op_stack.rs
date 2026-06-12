@@ -147,8 +147,8 @@ impl OpStack {
         Ok(elements)
     }
 
-    pub fn peek_at_top_extension_field_element(&self) -> XFieldElement {
-        xfe!([self[0], self[1], self[2]])
+    pub fn peek_at_extension_field_element(&self, idx: usize) -> XFieldElement {
+        xfe!([self[idx], self[idx + 1], self[idx + 2]])
     }
 
     pub fn would_be_too_shallow(&self, stack_delta: i32) -> bool {

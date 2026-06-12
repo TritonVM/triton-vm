@@ -1,3 +1,4 @@
+use core::ops::Range;
 use std::collections::HashSet;
 use std::ops::AddAssign;
 use std::ops::Mul;
@@ -390,9 +391,14 @@ impl Prover {
         profiler!(start "Fiat-Shamir" ("hash"));
         proof_stream.enqueue(ProofItem::MerkleRoot(aux_merkle_tree.root()));
 
-        // Get the weights with which to compress the many quotients into one.
-        let quotient_combination_weights =
-            proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
+        // Sample, compute, and cache the weights with which to compress the
+        // many quotients into one.
+        let initial_quotient_combination_weight = proof_stream.sample_scalars(1)[0];
+        let num_constraints = u32::try_from(MasterAuxTable::NUM_CONSTRAINTS)
+            .expect("internal error: number of constraints too big");
+        let quotient_combination_weights = (0..num_constraints)
+            .map(|i| initial_quotient_combination_weight.mod_pow_u32(i))
+            .collect_vec();
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
 
@@ -489,7 +495,7 @@ impl Prover {
         profiler!(stop "out-of-domain rows");
 
         profiler!(start "Fiat-Shamir" ("hash"));
-        let weights = LinearCombinationWeights::sample(&mut proof_stream);
+        let weights = CombinationCodewordWeights::sample(&mut proof_stream);
         profiler!(stop "Fiat-Shamir");
 
         let ldt_domain_is_short_domain = domains.ldt.len() <= domains.quotient.len();
@@ -1418,8 +1424,12 @@ impl Verifier {
         // Sample weights for quotient codeword, which is a part of the
         // combination codeword. See corresponding part in the prover for a more
         // detailed explanation.
-        let quot_codeword_weights = proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
-        let quot_codeword_weights = Array1::from(quot_codeword_weights);
+        let initial_quot_codeword_weight = proof_stream.sample_scalars(1)[0];
+        let num_constraints = u32::try_from(MasterAuxTable::NUM_CONSTRAINTS)
+            .expect("internal error: number of constraints too big");
+        let quot_codeword_weights = (0..num_constraints)
+            .map(|i| initial_quot_codeword_weight.mod_pow_u32(i))
+            .collect::<Array1<_>>();
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.try_into_merkle_root()?;
         profiler!(stop "Fiat-Shamir 1");
 
@@ -1531,7 +1541,7 @@ impl Verifier {
         profiler!(stop "verify quotient's segments");
 
         profiler!(start "Fiat-Shamir 2" ("hash"));
-        let weights = LinearCombinationWeights::sample(&mut proof_stream);
+        let weights = CombinationCodewordWeights::sample(&mut proof_stream);
         let main_and_aux_codeword_weights = weights.main_and_aux();
         profiler!(stop "Fiat-Shamir 2");
 
@@ -1547,7 +1557,6 @@ impl Verifier {
             main_and_aux_codeword_weights.view(),
         );
 
-        let quot_segment_weights = weights.quot_segments.to_vec();
         let ood_curr_row_pow_num_segments_randomized_quotient_segment_value =
             ood_curr_row_pow_num_segments_randomized_quot_segments
                 .into_iter()
@@ -1693,14 +1702,15 @@ impl Verifier {
             ] = quotient_segments_elements;
             let shared_part = middle_quotient_segments
                 .into_iter()
-                .zip_eq(quot_segment_weights.iter().skip(1).dropping_back(1))
+                .zip_eq(weights.quot_segments.iter().skip(1).dropping_back(1))
                 .map(|(x, &w)| x * w)
                 .sum::<XFieldElement>();
             let quotient_segments_curr_row_element_for_p =
-                quot_segment_weights.first().copied().unwrap() * first_quotient_segment
+                weights.quot_segments.first().copied().unwrap() * first_quotient_segment
                     + shared_part;
             let quotient_segments_curr_row_element_for_r =
-                quot_segment_weights.last().copied().unwrap() * last_quotient_segment + shared_part;
+                weights.quot_segments.last().copied().unwrap() * last_quotient_segment
+                    + shared_part;
             profiler!(stop "quotient elements");
 
             profiler!(start "DEEP update");
@@ -2129,7 +2139,17 @@ impl<'a> Arbitrary<'a> for Stark {
 
 /// Fiat-Shamir-sampled challenges to compress a row into a single
 /// [extension field element][XFieldElement].
-struct LinearCombinationWeights {
+///
+/// Rows are compressed using “univariate batching”, that is, the entries of a
+/// row are interpreted as the coefficients of a univariate polynomial. The
+/// “batching” step then evaluates that polynomial in a given indeterminate. In
+/// the case of the STARK, the indeterminates are “supplied by the verifier.”
+/// (This implementation uses the Fiat-Shamir heuristic to make the STARK
+/// non-interactive.)
+///
+/// For performance reasons, all powers of the indeterminates are pre-computed
+/// and cached in this struct.
+struct CombinationCodewordWeights {
     /// of length [`MasterMainTable::NUM_COLUMNS`]
     main: Array1<XFieldElement>,
 
@@ -2143,24 +2163,48 @@ struct LinearCombinationWeights {
     deep: Array1<XFieldElement>,
 }
 
-impl LinearCombinationWeights {
-    const NUM: usize = MasterMainTable::NUM_COLUMNS
-        + MasterAuxTable::NUM_COLUMNS
-        + NUM_RANDOMIZED_QUOTIENT_SEGMENTS
-        + NUM_DEEP_CODEWORD_COMPONENTS;
-
+impl CombinationCodewordWeights {
     fn sample(proof_stream: &mut ProofStream) -> Self {
-        const MAIN_END: usize = MasterMainTable::NUM_COLUMNS;
-        const AUX_END: usize = MAIN_END + MasterAuxTable::NUM_COLUMNS;
-        const QUOT_END: usize = AUX_END + NUM_RANDOMIZED_QUOTIENT_SEGMENTS;
+        let as_u32 = |x: usize| u32::try_from(x).unwrap();
+        let num_main_columns = as_u32(MasterMainTable::NUM_COLUMNS);
+        let num_aux_columns = as_u32(MasterAuxTable::NUM_COLUMNS);
+        let num_quot_segments = as_u32(NUM_RANDOMIZED_QUOTIENT_SEGMENTS);
+        let num_deep_codeword_components = as_u32(NUM_DEEP_CODEWORD_COMPONENTS);
 
-        let weights = proof_stream.sample_scalars(Self::NUM);
+        // To simplify the security proof for Triton VM's STARK, sample one
+        // initial weight per batching “category” for the components of the
+        // combination codeword:
+        // - Main & aux table rows, which are always treated together once
+        //   the aux table is created. Even though technically, they are defined
+        //   over different fields, the main table is simply implicitly
+        //   interpreted as being embedded in the extension field
+        // - (Randomized) quotient segments.
+        // - Most critically, DEEP codeword components. The operands for this
+        //   batching “category” are already compressed using powers of some
+        //   other initial; if we were to re-use an initial instead, we'd need
+        //   to prove that the derived powers don't interfere with previous
+        //   batching steps.
+        let initial_weights = proof_stream.sample_scalars(3);
 
-        Self {
-            main: weights[..MAIN_END].to_vec().into(),
-            aux: weights[MAIN_END..AUX_END].to_vec().into(),
-            quot_segments: weights[AUX_END..QUOT_END].to_vec().into(),
-            deep: weights[QUOT_END..].to_vec().into(),
+        let initial_weight_main = initial_weights[0];
+        let initial_weight_quot_segments = initial_weights[1];
+        let initial_weight_deep = initial_weights[2];
+
+        // Pre-compute the needed powers of the various initial weights.
+        let powers = |x: XFieldElement, range: Range<_>| range.map(|i| x.mod_pow_u32(i)).collect();
+        let main = powers(initial_weight_main, 0..num_main_columns);
+        let aux = powers(
+            initial_weight_main,
+            num_main_columns..num_main_columns + num_aux_columns,
+        );
+        let quot_segments = powers(initial_weight_quot_segments, 0..num_quot_segments);
+        let deep = powers(initial_weight_deep, 0..num_deep_codeword_components);
+
+        CombinationCodewordWeights {
+            main,
+            aux,
+            quot_segments,
+            deep,
         }
     }
 
@@ -2407,11 +2451,11 @@ pub(crate) mod tests {
 
         insta::assert_snapshot!(
             Tip5::hash(&proof),
-            @"09154914546588803232,\
-            03484247511939340070,\
-            02079899324225976720,\
-            12757805010850077597,\
-            17626748174583016524",
+            @"12796390068119952240,\
+            09509493504576945613,\
+            05426045099390884224,\
+            02438341643134020743,\
+            00169532124683813876",
         );
     }
 
@@ -3960,126 +4004,152 @@ pub(crate) mod tests {
         triton_constraints_evaluate_to_zero(program.assemble())
     }
 
-    /// Test helper for property testing the instruction `xx_dot_step`
+    /// Test helper for property testing the instruction `b_horner_step`
     #[derive(Debug, Clone, test_strategy::Arbitrary)]
-    struct ProgramForXxDotStep {
-        #[strategy(0..30_usize)]
-        num_steps: usize,
+    struct ProgramForBHornerStep {
+        #[strategy(arb())]
+        poly: Polynomial<'static, BFieldElement>,
 
-        #[strategy(vec(arb(), #num_steps))]
-        list_0: Vec<XFieldElement>,
+        #[strategy(arb())]
+        indeterminate: XFieldElement,
 
-        #[strategy(vec(arb(), #num_steps))]
-        list_1: Vec<XFieldElement>,
+        #[strategy(arb())]
+        ram_address: BFieldElement,
     }
 
-    impl ProgramForXxDotStep {
+    impl ProgramForBHornerStep {
         fn assemble(&self) -> TestableProgram {
-            let mut instructions = triton_asm!(push 0); // initial address
-            for &XFieldElement { coefficients } in &self.list_0 {
-                let [c0, c1, c2] = coefficients;
-                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
-            }
-            instructions.extend(triton_asm!(dup 0)); // preserve this address
-            for &XFieldElement { coefficients } in &self.list_1 {
-                let [c0, c1, c2] = coefficients;
-                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
-            }
-            instructions.extend(triton_asm!(pop 1 push 0)); // initial address
-            instructions.extend(triton_asm![xx_dot_step; self.num_steps]);
-            instructions.extend(triton_asm!(pop 2 push 0 push 0));
+            let ram_ptr_start = self.ram_address + bfe!(self.poly.coefficients().len()) - bfe!(1);
+            let ram_ptr_end = self.ram_address - bfe!(1);
+            let expected: XFieldElement = self.poly.evaluate(self.indeterminate);
 
-            let zipped_lists = self.list_0.iter().zip_eq(&self.list_1);
-            let dot_product = zipped_lists.map(|(&l, &r)| l * r).sum();
-            let XFieldElement { coefficients } = dot_product;
-            let [dp0, dp1, dp2] = coefficients;
-            instructions.extend(triton_asm!(push {dp2} push {dp1} push {dp0} push 0 push 0));
-            instructions.extend(triton_asm!(assert_vector halt));
+            let program = triton_program!(
+                push 0 push 0 push 0    // _ [acc; 3]
+                push {ram_ptr_end}      // _ [acc; 3] e
+                push {ram_ptr_start}    // _ [acc; 3] e p
+                push 0 push 0           // _ [acc; 3] e p * *
+                push {self.indeterminate.coefficients[2]}
+                push {self.indeterminate.coefficients[1]}
+                push {self.indeterminate.coefficients[0]}
+                                        // _ [acc; 3] e p * * x2 x1 x0
+                dup 6 dup 6 eq          // _ [acc; 3] e p * * x2 x1 x0 (e==p)
+                push 0 eq               // _ [acc; 3] e p * * x2 x1 x0 (e!=p)
+                skiz
+                call evaluate
+                pop 5 pop 2             // _ [eval; 3]
 
-            TestableProgram::new(triton_program!({ &instructions }))
-        }
-    }
-
-    #[macro_rules_attr::apply(proptest)]
-    fn run_property_based_test_program_for_xx_dot_step(program: ProgramForXxDotStep) {
-        program.assemble().run().unwrap();
-    }
-
-    #[macro_rules_attr::apply(proptest(cases = 5))]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xx_dot_step(
-        program: ProgramForXxDotStep,
-    ) -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(program.assemble())
-    }
-
-    /// Test helper for property testing the instruction `xb_dot_step`
-    #[derive(Debug, Clone, test_strategy::Arbitrary)]
-    struct ProgramForXbDotStep {
-        #[strategy(0..30_usize)]
-        num_steps: usize,
-
-        #[strategy(vec(arb(), #num_steps))]
-        list_0: Vec<XFieldElement>,
-
-        #[strategy(vec(arb(), #num_steps))]
-        list_1: Vec<BFieldElement>,
-    }
-
-    impl ProgramForXbDotStep {
-        fn assemble(&self) -> TestableProgram {
-            let mut instructions = triton_asm!(push 0); // initial address
-            for &XFieldElement { coefficients } in &self.list_0 {
-                let [c0, c1, c2] = coefficients;
-                instructions.extend(triton_asm!(push {c2} push {c1} push {c0} pick 3 write_mem 3));
-            }
-            instructions.extend(triton_asm!(dup 0)); // preserve this address
-            for elem in &self.list_1 {
-                instructions.extend(triton_asm!(push {elem} pick 1 write_mem 1));
-            }
-            instructions.extend(triton_asm!(pop 1 push 0 swap 1));
-            instructions.extend(triton_asm![xb_dot_step; self.num_steps]);
-            instructions.extend(triton_asm!(pop 2 push 0 push 0));
-
-            let zipped_lists = self.list_0.iter().zip_eq(&self.list_1);
-            let dot_product = zipped_lists.map(|(&l, &r)| l * r).sum();
-            let XFieldElement { coefficients } = dot_product;
-            let [dp0, dp1, dp2] = coefficients;
-            instructions.extend(triton_asm!(push {dp2} push {dp1} push {dp0} push 0 push 0));
-            instructions.extend(triton_asm!(assert_vector halt));
-
-            TestableProgram::new(triton_program!({ &instructions }))
-        }
-    }
-
-    #[macro_rules_attr::apply(proptest)]
-    fn run_property_based_test_program_for_xb_dot_step(program: ProgramForXbDotStep) {
-        program.assemble().run().unwrap();
-    }
-
-    #[macro_rules_attr::apply(proptest(cases = 5))]
-    fn constraints_evaluate_to_zero_on_property_based_test_program_for_xb_dot_step(
-        program: ProgramForXbDotStep,
-    ) -> ConstraintResult {
-        triton_constraints_evaluate_to_zero(program.assemble())
-    }
-
-    #[macro_rules_attr::apply(test)]
-    fn can_read_twice_from_same_ram_address_within_one_cycle() -> ConstraintResult {
-        for i in 0..x_field_element::EXTENSION_DEGREE {
-            // This program reads from the same address twice, even if the stack
-            // is not well-initialized.
-            let program = triton_program! {
-                dup 0
-                addi {i}
-                xx_dot_step
+                push {expected.coefficients[0]} eq assert
+                push {expected.coefficients[1]} eq assert
+                push {expected.coefficients[2]} eq assert
                 halt
-            };
-            let program = TestableProgram::new(program);
-            debug_assert!(program.clone().run().is_ok());
-            triton_constraints_evaluate_to_zero(program)?;
-        }
 
-        Ok(())
+                // BEFORE: _ [zero; 3] e p * * x2 x1 x0
+                // AFTER:  _ [eval; 3] e e * * x2 x1 x0
+                evaluate:
+                    b_horner_step
+                    recurse_or_return
+            );
+
+            let ram = write_poly_to_ram(self.ram_address, &self.poly);
+            let non_determinism = NonDeterminism::default().with_ram(ram);
+
+            TestableProgram::new(program).with_non_determinism(non_determinism)
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn run_property_based_test_program_for_b_horner_step(program: ProgramForBHornerStep) {
+        program.assemble().run().unwrap();
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_b_horner_step(
+        program: ProgramForBHornerStep,
+    ) -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(program.assemble())
+    }
+
+    /// Test helper for property testing the instruction `x_horner_step`
+    #[derive(Debug, Clone, test_strategy::Arbitrary)]
+    struct ProgramForXHornerStep {
+        #[strategy(arb())]
+        poly: Polynomial<'static, XFieldElement>,
+
+        #[strategy(arb())]
+        indeterminate: XFieldElement,
+
+        #[strategy(arb())]
+        ram_address: BFieldElement,
+    }
+
+    impl ProgramForXHornerStep {
+        fn assemble(&self) -> TestableProgram {
+            let ram_ptr_start = self.ram_address
+                + bfe!(self.poly.coefficients().len() * x_field_element::EXTENSION_DEGREE)
+                - bfe!(1);
+            let ram_ptr_end = self.ram_address - bfe!(1);
+            let expected: XFieldElement = self.poly.evaluate(self.indeterminate);
+
+            let program = triton_program!(
+                push 0 push 0 push 0    // _ [acc; 3]
+                push {ram_ptr_end}      // _ [acc; 3] e
+                push {ram_ptr_start}    // _ [acc; 3] e p
+                push 0 push 0           // _ [acc; 3] e p * *
+                push {self.indeterminate.coefficients[2]}
+                push {self.indeterminate.coefficients[1]}
+                push {self.indeterminate.coefficients[0]}
+                                        // _ [acc; 3] e p * * x2 x1 x0
+                dup 6 dup 6 eq          // _ [acc; 3] e p * * x2 x1 x0 (e==p)
+                push 0 eq               // _ [acc; 3] e p * * x2 x1 x0 (e!=p)
+                skiz
+                call evaluate
+                pop 5 pop 2             // _ [eval; 3]
+
+                push {expected.coefficients[0]} eq assert
+                push {expected.coefficients[1]} eq assert
+                push {expected.coefficients[2]} eq assert
+                halt
+
+                // BEFORE: _ [zero; 3] e p * * x2 x1 x0
+                // AFTER:  _ [eval; 3] e e * * x2 x1 x0
+                evaluate:
+                    x_horner_step
+                    recurse_or_return
+            );
+
+            let ram = write_poly_to_ram(self.ram_address, &self.poly);
+            let non_determinism = NonDeterminism::default().with_ram(ram);
+
+            TestableProgram::new(program).with_non_determinism(non_determinism)
+        }
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn run_property_based_test_program_for_x_horner_step(program: ProgramForXHornerStep) {
+        program.assemble().run().unwrap();
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 5))]
+    fn constraints_evaluate_to_zero_on_property_based_test_program_for_x_horner_step(
+        program: ProgramForXHornerStep,
+    ) -> ConstraintResult {
+        triton_constraints_evaluate_to_zero(program.assemble())
+    }
+
+    fn write_poly_to_ram<FF>(
+        address: BFieldElement,
+        poly: &Polynomial<'_, FF>,
+    ) -> HashMap<BFieldElement, BFieldElement>
+    where
+        FF: FiniteField + 'static,
+        FF: twenty_first::prelude::BFieldCodec,
+    {
+        poly.encode()
+            .into_iter()
+            .skip(2) // drop the length indicators
+            .enumerate()
+            .map(|(i, coeff)| (address + bfe!(i), coeff))
+            .collect()
     }
 
     #[macro_rules_attr::apply(proptest(cases = 3))]
@@ -4527,10 +4597,30 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(proptest)]
-    fn linear_combination_weights_samples_correct_number_of_elements(
-        mut proof_stream: ProofStream,
-    ) {
-        let weights = LinearCombinationWeights::sample(&mut proof_stream);
+    fn combination_weights_are_distinct(mut proof_stream: ProofStream) {
+        proof_stream.sponge.permutation(); // scramble
+        let weights = CombinationCodewordWeights::sample(&mut proof_stream);
+        let CombinationCodewordWeights {
+            main,
+            aux,
+            quot_segments,
+            deep,
+        } = weights;
+
+        // the weights for both the quotient segments and the DEEP segments
+        // are explicitly allowed to contain a zeroth-power
+        let mut all_weights = main
+            .into_iter()
+            .chain(aux)
+            .chain(quot_segments.into_iter().skip(1))
+            .chain(deep.into_iter().skip(1));
+
+        prop_assert!(all_weights.all_unique());
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn combination_weights_computes_correct_number_of_elements(mut proof_stream: ProofStream) {
+        let weights = CombinationCodewordWeights::sample(&mut proof_stream);
 
         prop_assert_eq!(MasterMainTable::NUM_COLUMNS, weights.main.len());
         prop_assert_eq!(MasterAuxTable::NUM_COLUMNS, weights.aux.len());
@@ -4578,12 +4668,15 @@ pub(crate) mod tests {
             addi -1 assert          // _  1
             assert                  // _
 
-            // dot_step
+            // horner_step
             push 0 push 0 push 0    // _ [accumulator; 3]
-            push 500                // _ [accumulator; 3] addr_0
-            push 800                // _ [accumulator; 3] addr_0 addr_1
-            xb_dot_step             // _ [accumulator; 3] addr_0 addr_1
-            xx_dot_step             // _ [accumulator; 3] addr_0 addr_1
+            push 0                  // _ [accumulator; 3] *
+            push 500                // _ [accumulator; 3] * addr
+            push 0 push 0           // _ [accumulator; 3] * addr * *
+            push 1 push 1 push 1    // _ [accumulator; 3] * addr * * [x; 3]
+            b_horner_step           // _ [accumulator; 3] * addr * * [x; 3]
+            x_horner_step           // _ [accumulator; 3] * addr * * [x; 3]
+            pop 5                   // _ [accumulator; 3] * addr
             write_io 5              // _
 
             // extension field arithmetic
@@ -4736,11 +4829,11 @@ pub(crate) mod tests {
     fn program_hash_is_unchanged() {
         insta::assert_snapshot!(
             program_executing_every_instruction().program.hash(),
-            @"16249222752446630867,\
-              09491561388146595314,\
-              17212103075750520093,\
-              13456916676490887543,\
-              03342244920869747600",
+            @"16104359835754349618,\
+              14381287807966156775,\
+              14760563195542097310,\
+              02080121037799184588,\
+              13105746022149139394",
         );
     }
 
