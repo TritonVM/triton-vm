@@ -955,6 +955,15 @@ impl AIR for HashTable {
                 * (round_number.clone() - constant(NUM_ROUNDS as u64))
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
+        // The increment constraint above is disabled in `sponge_init` rows.
+        // Enforce the corresponding reset to round number 0 explicitly; without
+        // it, the round number could leave its legal range `0..=NUM_ROUNDS`
+        // after a `sponge_init` row, which would collapse the round-number-
+        // gated evaluation-argument constraints (e.g. the hash digest).
+        let if_ci_is_sponge_init_then_round_number_next_is_0 =
+            Self::instruction_deselector(circuit_builder, &ci, Instruction::SpongeInit)
+                * round_number_next.clone();
+
         // compress the digest by computing the terminal of an evaluation
         // argument
         let compressed_digest = state_current[..Digest::LEN].iter().fold(
@@ -1137,6 +1146,7 @@ impl AIR for HashTable {
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
+            if_ci_is_sponge_init_then_round_number_next_is_0,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
             if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,
