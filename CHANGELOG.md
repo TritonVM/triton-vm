@@ -3,6 +3,17 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [5.0.0](https://github.com/TritonVM/triton-vm/compare/v4.0.0..v5.0.0) - 2026-06-12
+
+### 🐛 Bug Fixes
+
+- Enforce that executed opcodes are valid ([a4ab6adb](https://github.com/TritonVM/triton-vm/commit/a4ab6adb))
+- Correct constraints of `recurse_or_return` ([533b66b5](https://github.com/TritonVM/triton-vm/commit/533b66b5))
+
+### ⚙️ Miscellaneous
+
+- (!) Bump proof version ([49dc66f5](https://github.com/TritonVM/triton-vm/commit/58d772f8))
+
 ## [4.0.0](https://github.com/TritonVM/triton-vm/compare/v3.0.0..v4.0.0) - 2026-06-10
 
 ### 🐛 Bug Fixes
