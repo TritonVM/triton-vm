@@ -1381,3 +1381,63 @@ impl From<HashTableMode> for BFieldElement {
         discriminant.into()
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod cascade_log_derivative_tests {
+    use ndarray::Array2;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+    type AuxColumn = <HashTable as AIR>::AuxColumn;
+
+    /// Evaluate the cascade log-derivative update constraint on the two-row window
+    /// whose next row is a padding row (mode `Pad`, round number 0, instruction
+    /// `hash`), with `cld` in the current row and `cld_next` in the next row of one
+    /// cascade client log-derivative column.
+    fn cascade_update_on_pad_boundary(cld: u64, cld_next: u64) -> XFieldElement {
+        let builder = ConstraintCircuitBuilder::new();
+        let monad = HashTable::cascade_log_derivative_update_circuit(
+            &builder,
+            MainColumn::State0HighestLkIn,
+            MainColumn::State0HighestLkOut,
+            AuxColumn::CascadeState0HighestClientLogDerivative,
+        );
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect_vec();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[1, MainColumn::Mode.master_main_index()]] = HashTableMode::Pad.into();
+        main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(0);
+        main[[1, MainColumn::CI.master_main_index()]] = Instruction::Hash.opcode_b();
+
+        let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let cld_col = AuxColumn::CascadeState0HighestClientLogDerivative.master_aux_index();
+        aux[[0, cld_col]] = xfe!(cld);
+        aux[[1, cld_col]] = xfe!(cld_next);
+
+        monad.consume().evaluate(main.view(), aux.view(), &challenges)
+    }
+
+    /// No cascade lookup happens on a padding row, so the cascade log-derivative
+    /// must remain unchanged across the transition into padding: the update
+    /// constraint evaluates to zero iff `cld_next == cld`.
+    #[test]
+    fn cascade_log_derivative_remains_on_padding_rows() {
+        assert_ne!(
+            xfe!(0),
+            cascade_update_on_pad_boundary(7, 8),
+            "a changing cascade log-derivative on a padding row must be rejected",
+        );
+        assert_eq!(
+            xfe!(0),
+            cascade_update_on_pad_boundary(7, 7),
+            "an unchanged cascade log-derivative on a padding row must be accepted",
+        );
+    }
+}
