@@ -1068,7 +1068,7 @@ impl AIR for HashTable {
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
-                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                + (circuit_builder.b_constant(HashTableMode::Hash) - mode_next.clone())
                     * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the
