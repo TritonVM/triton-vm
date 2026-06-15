@@ -1444,3 +1444,89 @@ mod cascade_log_derivative_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod round_number_range_tests {
+    use ndarray::Array2;
+    use isa::instruction::Instruction;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+
+    /// Evaluate all transition constraints on the two-row window
+    ///   curr = `sponge_init` row (mode `Sponge`, round number 0)
+    ///   next = mode `Sponge`, instruction `sponge_absorb`, round number `rn_next`
+    /// which is the shape exploited by the round-number-range soundness gap, and
+    /// report whether some constraint that depends *only on the main columns*
+    /// rejects the window.
+    ///
+    /// The round-number transition constraints are functions of the main columns
+    /// alone. The evaluation-argument and cascade-lookup constraints additionally
+    /// read auxiliary columns; we exclude them by ignoring any constraint whose
+    /// value changes when the auxiliary columns change. This isolates the
+    /// round-number behaviour from the (independent) auxiliary arguments, which
+    /// are perturbed by the spurious row for unrelated reasons.
+    fn window_rejected_by_a_main_only_constraint(rn_next: u64) -> bool {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = HashTable::transition_constraints(&builder);
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect_vec();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::Mode.master_main_index()]] = HashTableMode::Sponge.into();
+        main[[0, MainColumn::CI.master_main_index()]] = Instruction::SpongeInit.opcode_b();
+        main[[0, MainColumn::RoundNumber.master_main_index()]] = bfe!(0);
+        main[[1, MainColumn::Mode.master_main_index()]] = HashTableMode::Sponge.into();
+        main[[1, MainColumn::CI.master_main_index()]] = Instruction::SpongeAbsorb.opcode_b();
+        main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(rn_next);
+
+        // Two distinct auxiliary tables, used to detect main-column-only constraints.
+        let aux_zeros = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let aux_other =
+            Array2::from_shape_fn([2, NUM_AUX_COLUMNS], |(r, c)| xfe!((r * NUM_AUX_COLUMNS + c + 1) as u64));
+
+        constraints.iter().any(|c| {
+            let circuit = c.consume();
+            let v_zeros = circuit.evaluate(main.view(), aux_zeros.view(), &challenges);
+            let v_other = circuit.evaluate(main.view(), aux_other.view(), &challenges);
+            let is_main_only = v_zeros == v_other;
+            is_main_only && v_zeros != xfe!(0)
+        })
+    }
+
+    /// A `sponge_init` row must force the next round number to 0; in particular
+    /// the next round number may not leave the legal range `0..=NUM_ROUNDS`.
+    ///
+    /// Regression test for the round-number-range soundness gap: without an
+    /// explicit constraint, the transition constraints permit `rn' = NUM_ROUNDS+1`
+    /// after `sponge_init` (the increment constraint is disabled there and the
+    /// wrap-at-`NUM_ROUNDS` constraint is vacuous because the `sponge_init` row
+    /// has round number 0). At such an out-of-range round number the hash-digest
+    /// evaluation-argument constraint collapses, freeing `HashDigestRunningEvaluation`.
+    #[test]
+    fn round_number_cannot_leave_legal_range_after_sponge_init() {
+        // Soundness: out-of-range round numbers after `sponge_init` are rejected.
+        assert!(
+            window_rejected_by_a_main_only_constraint(NUM_ROUNDS as u64 + 1),
+            "round number {} after sponge_init must be rejected",
+            NUM_ROUNDS + 1,
+        );
+        assert!(
+            window_rejected_by_a_main_only_constraint(NUM_ROUNDS as u64 + 2),
+            "round number {} after sponge_init must be rejected",
+            NUM_ROUNDS + 2,
+        );
+
+        // Completeness: the honest reset to round number 0 is accepted.
+        assert!(
+            !window_rejected_by_a_main_only_constraint(0),
+            "honest round number reset 0 -> 0 after sponge_init must be accepted",
+        );
+    }
+}
