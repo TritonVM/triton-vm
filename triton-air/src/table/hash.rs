@@ -479,11 +479,14 @@ impl HashTable {
             Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let current_instruction_next_is_not_sponge_init =
             Self::instruction_deselector(circuit_builder, &ci_next, Instruction::SpongeInit);
+        let next_row_is_padding_row =
+            Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Pad);
 
         next_row_is_padding_row_or_round_number_next_is_max_or_ci_next_is_sponge_init
             * cascade_log_derivative_updates
             + round_number_next_is_not_num_rounds * cascade_log_derivative_remains.clone()
-            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains
+            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains.clone()
+            + next_row_is_padding_row * cascade_log_derivative_remains
     }
 }
 
