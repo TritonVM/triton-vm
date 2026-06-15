@@ -14,6 +14,8 @@ use crate::table::program::ProgramTable;
 use crate::table::ram::RamTable;
 use crate::table::u32::U32Table;
 
+#[cfg(test)]
+mod accumulator_pinning;
 pub mod cascade;
 pub mod hash;
 pub mod jump_stack;

@@ -479,11 +479,14 @@ impl HashTable {
             Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let current_instruction_next_is_not_sponge_init =
             Self::instruction_deselector(circuit_builder, &ci_next, Instruction::SpongeInit);
+        let next_row_is_padding_row =
+            Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Pad);
 
         next_row_is_padding_row_or_round_number_next_is_max_or_ci_next_is_sponge_init
             * cascade_log_derivative_updates
             + round_number_next_is_not_num_rounds * cascade_log_derivative_remains.clone()
-            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains
+            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains.clone()
+            + next_row_is_padding_row * cascade_log_derivative_remains
     }
 }
 
@@ -955,6 +958,15 @@ impl AIR for HashTable {
                 * (round_number.clone() - constant(NUM_ROUNDS as u64))
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
+        // The increment constraint above is disabled in `sponge_init` rows.
+        // Enforce the corresponding reset to round number 0 explicitly; without
+        // it, the round number could leave its legal range `0..=NUM_ROUNDS`
+        // after a `sponge_init` row, which would collapse the round-number-
+        // gated evaluation-argument constraints (e.g. the hash digest).
+        let if_ci_is_sponge_init_then_round_number_next_is_0 =
+            Self::instruction_deselector(circuit_builder, &ci, Instruction::SpongeInit)
+                * round_number_next.clone();
+
         // compress the digest by computing the terminal of an evaluation
         // argument
         let compressed_digest = state_current[..Digest::LEN].iter().fold(
@@ -1056,7 +1068,18 @@ impl AIR for HashTable {
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
-                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                // The "remains" guard is the sum of this term's coefficient and
+                // the `round_number_next` coefficient above; it must vanish only
+                // at the update point (round_number_next = 0, mode_next = Hash).
+                // `round_number_next` is ≥ 0 over the legal range and zero only
+                // at rn' = 0, so the mode guard must also be ≥ 0 and zero only at
+                // mode' = Hash. Using `mode_next - Hash` (≤ 0) instead gives the
+                // two guards opposite signs, so their sum cancels at the reachable
+                // interior rows where rn' + mode' = 3 — (ProgramHashing, rn' = 2)
+                // and (Sponge, rn' = 1) — leaving the running evaluation free.
+                // Hence `Hash - mode_next`, mirroring the digest constraint's
+                // same-sign guards `(rn' - NUM_ROUNDS) + (mode' - Hash)`.
+                + (circuit_builder.b_constant(HashTableMode::Hash) - mode_next.clone())
                     * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the
@@ -1137,6 +1160,7 @@ impl AIR for HashTable {
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
+            if_ci_is_sponge_init_then_round_number_next_is_0,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
             if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,
@@ -1379,5 +1403,231 @@ impl From<HashTableMode> for BFieldElement {
     fn from(mode: HashTableMode) -> Self {
         let discriminant: u32 = mode.into();
         discriminant.into()
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod cascade_log_derivative_tests {
+    use ndarray::Array2;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+    type AuxColumn = <HashTable as AIR>::AuxColumn;
+
+    /// Evaluate the cascade log-derivative update constraint on the two-row window
+    /// whose next row is a padding row (mode `Pad`, round number 0, instruction
+    /// `hash`), with `cld` in the current row and `cld_next` in the next row of one
+    /// cascade client log-derivative column.
+    fn cascade_update_on_pad_boundary(cld: u64, cld_next: u64) -> XFieldElement {
+        let builder = ConstraintCircuitBuilder::new();
+        let monad = HashTable::cascade_log_derivative_update_circuit(
+            &builder,
+            MainColumn::State0HighestLkIn,
+            MainColumn::State0HighestLkOut,
+            AuxColumn::CascadeState0HighestClientLogDerivative,
+        );
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect_vec();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[1, MainColumn::Mode.master_main_index()]] = HashTableMode::Pad.into();
+        main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(0);
+        main[[1, MainColumn::CI.master_main_index()]] = Instruction::Hash.opcode_b();
+
+        let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let cld_col = AuxColumn::CascadeState0HighestClientLogDerivative.master_aux_index();
+        aux[[0, cld_col]] = xfe!(cld);
+        aux[[1, cld_col]] = xfe!(cld_next);
+
+        monad.consume().evaluate(main.view(), aux.view(), &challenges)
+    }
+
+    /// No cascade lookup happens on a padding row, so the cascade log-derivative
+    /// must remain unchanged across the transition into padding: the update
+    /// constraint evaluates to zero iff `cld_next == cld`.
+    #[test]
+    fn cascade_log_derivative_remains_on_padding_rows() {
+        assert_ne!(
+            xfe!(0),
+            cascade_update_on_pad_boundary(7, 8),
+            "a changing cascade log-derivative on a padding row must be rejected",
+        );
+        assert_eq!(
+            xfe!(0),
+            cascade_update_on_pad_boundary(7, 7),
+            "an unchanged cascade log-derivative on a padding row must be accepted",
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod round_number_range_tests {
+    use ndarray::Array2;
+    use isa::instruction::Instruction;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+
+    /// Evaluate all transition constraints on the two-row window
+    ///   curr = `sponge_init` row (mode `Sponge`, round number 0)
+    ///   next = mode `Sponge`, instruction `sponge_absorb`, round number `rn_next`
+    /// which is the shape exploited by the round-number-range soundness gap, and
+    /// report whether some constraint that depends *only on the main columns*
+    /// rejects the window.
+    ///
+    /// The round-number transition constraints are functions of the main columns
+    /// alone. The evaluation-argument and cascade-lookup constraints additionally
+    /// read auxiliary columns; we exclude them by ignoring any constraint whose
+    /// value changes when the auxiliary columns change. This isolates the
+    /// round-number behaviour from the (independent) auxiliary arguments, which
+    /// are perturbed by the spurious row for unrelated reasons.
+    fn window_rejected_by_a_main_only_constraint(rn_next: u64) -> bool {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = HashTable::transition_constraints(&builder);
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect_vec();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::Mode.master_main_index()]] = HashTableMode::Sponge.into();
+        main[[0, MainColumn::CI.master_main_index()]] = Instruction::SpongeInit.opcode_b();
+        main[[0, MainColumn::RoundNumber.master_main_index()]] = bfe!(0);
+        main[[1, MainColumn::Mode.master_main_index()]] = HashTableMode::Sponge.into();
+        main[[1, MainColumn::CI.master_main_index()]] = Instruction::SpongeAbsorb.opcode_b();
+        main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(rn_next);
+
+        // Two distinct auxiliary tables, used to detect main-column-only constraints.
+        let aux_zeros = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let aux_other =
+            Array2::from_shape_fn([2, NUM_AUX_COLUMNS], |(r, c)| xfe!((r * NUM_AUX_COLUMNS + c + 1) as u64));
+
+        constraints.iter().any(|c| {
+            let circuit = c.consume();
+            let v_zeros = circuit.evaluate(main.view(), aux_zeros.view(), &challenges);
+            let v_other = circuit.evaluate(main.view(), aux_other.view(), &challenges);
+            let is_main_only = v_zeros == v_other;
+            is_main_only && v_zeros != xfe!(0)
+        })
+    }
+
+    /// A `sponge_init` row must force the next round number to 0; in particular
+    /// the next round number may not leave the legal range `0..=NUM_ROUNDS`.
+    ///
+    /// Regression test for the round-number-range soundness gap: without an
+    /// explicit constraint, the transition constraints permit `rn' = NUM_ROUNDS+1`
+    /// after `sponge_init` (the increment constraint is disabled there and the
+    /// wrap-at-`NUM_ROUNDS` constraint is vacuous because the `sponge_init` row
+    /// has round number 0). At such an out-of-range round number the hash-digest
+    /// evaluation-argument constraint collapses, freeing `HashDigestRunningEvaluation`.
+    #[test]
+    fn round_number_cannot_leave_legal_range_after_sponge_init() {
+        // Soundness: out-of-range round numbers after `sponge_init` are rejected.
+        assert!(
+            window_rejected_by_a_main_only_constraint(NUM_ROUNDS as u64 + 1),
+            "round number {} after sponge_init must be rejected",
+            NUM_ROUNDS + 1,
+        );
+        assert!(
+            window_rejected_by_a_main_only_constraint(NUM_ROUNDS as u64 + 2),
+            "round number {} after sponge_init must be rejected",
+            NUM_ROUNDS + 2,
+        );
+
+        // Completeness: the honest reset to round number 0 is accepted.
+        assert!(
+            !window_rejected_by_a_main_only_constraint(0),
+            "honest round number reset 0 -> 0 after sponge_init must be accepted",
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod hash_input_evaluation_tests {
+    use itertools::Itertools;
+    use ndarray::Array2;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+    type AuxColumn = <HashTable as AIR>::AuxColumn;
+
+    /// Does some transition constraint reject changing `HashInputRunningEvaluation`
+    /// in the next row, when the next row has the given `(mode, round_number)`?
+    /// Returns true if the change is rejected (the column is pinned at that row),
+    /// false if every transition constraint is invariant to it (the column is FREE).
+    ///
+    /// `HashInputRunningEvaluation` must only ever change at its update point —
+    /// the row where a `hash` instruction's input is absorbed, i.e.
+    /// `(mode = Hash, round_number = 0)`. On every other reachable row it must
+    /// remain unchanged, so changing it there must be rejected.
+    fn hash_input_change_rejected(mode_next: HashTableMode, round_number_next: u64) -> bool {
+        let challenges = (0..ChallengeId::COUNT).map(|i| xfe!(i as u64 + 1)).collect_vec();
+        let col = AuxColumn::HashInputRunningEvaluation.master_aux_index();
+
+        let constraint_values = |delta: u64| -> Vec<XFieldElement> {
+            let builder = ConstraintCircuitBuilder::new();
+            let constraints = HashTable::transition_constraints(&builder);
+            let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+            main[[1, MainColumn::Mode.master_main_index()]] = mode_next.into();
+            main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(round_number_next);
+            let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+            aux[[0, col]] = xfe!(7);
+            aux[[1, col]] = xfe!(7 + delta);
+            constraints
+                .iter()
+                .map(|c| c.clone().consume().evaluate(main.view(), aux.view(), &challenges))
+                .collect_vec()
+        };
+        let unchanged = constraint_values(0);
+        let changed = constraint_values(1);
+        unchanged
+            .iter()
+            .zip_eq(changed.iter())
+            .any(|(u, c)| *u == xfe!(0) && *c != xfe!(0))
+    }
+
+    /// Regression test for the `HashInputRunningEvaluation` under-constraint.
+    ///
+    /// Discovered by huuhait. The "hash input" running evaluation may only be
+    /// updated at `(mode = Hash, round_number = 0)`; everywhere else it must
+    /// remain unchanged. Its transition constraint guards the "remains" branch
+    /// with `round_number_next + (mode_next - Hash)`, whose two summands have
+    /// opposite sign over the legal domain and therefore CANCEL at the reachable
+    /// interior rows `(ProgramHashing, rn = 2)` and `(Sponge, rn = 1)` (both
+    /// satisfy `rn + mode = 3`). At those rows the constraint vanishes regardless
+    /// of the column, so a malicious prover can shift `HashInputRunningEvaluation`
+    /// by an arbitrary amount that propagates to the cross-table terminal,
+    /// breaking the Processor <-> Hash hash-input binding.
+    #[test]
+    fn hash_input_running_evaluation_is_pinned_off_its_update_point() {
+        // The exploitable interior rows: must be rejected.
+        assert!(
+            hash_input_change_rejected(HashTableMode::ProgramHashing, 2),
+            "HashInputRunningEvaluation must be pinned at (ProgramHashing, rn=2)",
+        );
+        assert!(
+            hash_input_change_rejected(HashTableMode::Sponge, 1),
+            "HashInputRunningEvaluation must be pinned at (Sponge, rn=1)",
+        );
+        // Sanity: a row that is correctly pinned even by the buggy constraint.
+        assert!(
+            hash_input_change_rejected(HashTableMode::Sponge, 0),
+            "HashInputRunningEvaluation must be pinned at (Sponge, rn=0)",
+        );
     }
 }

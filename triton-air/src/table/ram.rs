@@ -97,10 +97,25 @@ impl AIR for RamTable {
     }
 
     fn consistency_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no further constraints
-        vec![]
+        let constant = |c| circuit_builder.b_constant(c);
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+
+        // Confine `InstructionType` to its legal set {WRITE=0, READ=1,
+        // PADDING=2} on every row. Without this, the column is constrained only
+        // indirectly through the permutation argument, whose coefficient of
+        // `RunningProductPermArg_next` is `type_next² − 2`; that coefficient
+        // vanishes at the out-of-set value `type_next = √2` (which exists since
+        // the prime is 1 mod 8), freeing the perm-arg terminal at the
+        // real→padding boundary.
+        let instruction_type = main_row(Self::MainColumn::InstructionType);
+        let instruction_type_is_legal = instruction_type.clone()
+            * (instruction_type.clone() - constant(INSTRUCTION_TYPE_READ))
+            * (instruction_type - constant(PADDING_INDICATOR));
+
+        vec![instruction_type_is_legal]
     }
 
     fn transition_constraints(
@@ -226,15 +241,19 @@ impl AIR for RamTable {
             clock_jump_diff_log_derivative_next - clock_jump_diff_log_derivative.clone();
 
         let log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row =
-            log_derivative_accumulates * ram_pointer_changes.clone() * next_row_is_padding_row;
-        let log_derivative_remains_or_ram_pointer_doesnt_change =
-            log_derivative_remains.clone() * ram_pointer_difference.clone();
+            log_derivative_accumulates
+                * ram_pointer_changes.clone()
+                * next_row_is_padding_row.clone();
+        let log_derivative_remains_or_ram_pointer_doesnt_change_or_next_row_is_padding_row =
+            log_derivative_remains.clone()
+                * ram_pointer_difference.clone()
+                * next_row_is_padding_row;
         let log_derivative_remains_or_next_row_is_not_padding_row =
             log_derivative_remains * next_row_is_not_padding_row;
 
         let log_derivative_updates_correctly =
             log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row
-                + log_derivative_remains_or_ram_pointer_doesnt_change
+                + log_derivative_remains_or_ram_pointer_doesnt_change_or_next_row_is_padding_row
                 + log_derivative_remains_or_next_row_is_not_padding_row;
 
         vec![
@@ -267,5 +286,120 @@ impl AIR for RamTable {
             - constant(1);
 
         vec![bezout_relation_holds]
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod clock_jump_difference_log_derivative_tests {
+    use ndarray::Array2;
+    use strum::EnumCount;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <RamTable as AIR>::MainColumn;
+    type AuxColumn = <RamTable as AIR>::AuxColumn;
+
+    /// Evaluate the constraint governing the clock-jump-difference lookup
+    /// log-derivative on a transition from a real row into a padding row, for the
+    /// given `(cjd, cjd_next)` of the `ClockJumpDifferenceLookupClientLogDerivative`
+    /// column. The current row decreases the RAM pointer by two across the
+    /// boundary.
+    ///
+    /// `log_derivative_updates_correctly` is the last (and only) transition
+    /// constraint governing that column.
+    fn cjd_update_on_real_to_pad_boundary(cjd: u64, cjd_next: u64) -> XFieldElement {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = RamTable::transition_constraints(&builder);
+        let cjd_constraint = constraints.last().unwrap();
+
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect::<Vec<_>>();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::InstructionType.master_main_index()]] = INSTRUCTION_TYPE_READ;
+        main[[0, MainColumn::RamPointer.master_main_index()]] = bfe!(5);
+        main[[1, MainColumn::InstructionType.master_main_index()]] = PADDING_INDICATOR;
+        main[[1, MainColumn::RamPointer.master_main_index()]] = bfe!(3);
+        main[[0, MainColumn::InverseOfRampDifference.master_main_index()]] =
+            (bfe!(3) - bfe!(5)).inverse();
+
+        let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let cjd_col = AuxColumn::ClockJumpDifferenceLookupClientLogDerivative.master_aux_index();
+        aux[[0, cjd_col]] = xfe!(cjd);
+        aux[[1, cjd_col]] = xfe!(cjd_next);
+
+        cjd_constraint
+            .consume()
+            .evaluate(main.view(), aux.view(), &challenges)
+    }
+
+    /// No clock-jump-difference lookup happens on a transition into a padding row,
+    /// so the lookup log-derivative must remain unchanged there — even when the RAM
+    /// pointer changes across the boundary. The constraint must reject a changing
+    /// value and accept an unchanged one.
+    #[test]
+    fn clock_jump_difference_log_derivative_remains_on_padding_rows() {
+        assert_ne!(
+            xfe!(0),
+            cjd_update_on_real_to_pad_boundary(7, 8),
+            "a changing clock-jump-difference log-derivative entering padding must be rejected",
+        );
+        assert_eq!(
+            xfe!(0),
+            cjd_update_on_real_to_pad_boundary(7, 7),
+            "an unchanged clock-jump-difference log-derivative entering padding must be accepted",
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod instruction_type_range_tests {
+    use itertools::Itertools;
+    use ndarray::Array2;
+    use strum::EnumCount;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <RamTable as AIR>::MainColumn;
+
+    /// Is a row whose `InstructionType` is `t` rejected by some consistency
+    /// constraint? Returns true if rejected (some constraint != 0).
+    fn type_rejected(t: BFieldElement) -> bool {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = RamTable::consistency_constraints(&builder);
+        let challenges = (0..ChallengeId::COUNT).map(|i| xfe!(i as u64 + 1)).collect_vec();
+        let mut main = Array2::<BFieldElement>::zeros([1, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::InstructionType.master_main_index()]] = t;
+        let aux = Array2::<XFieldElement>::zeros([1, NUM_AUX_COLUMNS]);
+        constraints
+            .iter()
+            .any(|c| c.clone().consume().evaluate(main.view(), aux.view(), &challenges) != xfe!(0))
+    }
+
+    /// `InstructionType` must be locally confined to `{WRITE, READ, PADDING}` =
+    /// {0,1,2}. Without a consistency constraint it is confined only indirectly,
+    /// via the permutation argument — but the perm-arg coefficient of
+    /// `RunningProductPermArg_next` is `type_next^2 - 2`, which is zero at
+    /// `type_next = sqrt(2)` (sqrt(2) exists since the field prime is 1 mod 8).
+    /// An out-of-set type at the real->padding boundary then frees the perm-arg
+    /// terminal, letting a prover forge the RAM<->Processor memory permutation.
+    #[test]
+    fn instruction_type_is_confined_to_legal_set() {
+        let sqrt2 = bfe!(18446742969919734017u64);
+        assert_eq!(sqrt2 * sqrt2, bfe!(2));
+        assert!(type_rejected(bfe!(3)), "out-of-set InstructionType 3 must be rejected");
+        assert!(type_rejected(sqrt2), "out-of-set InstructionType sqrt(2) must be rejected");
+        for legal in [INSTRUCTION_TYPE_WRITE, INSTRUCTION_TYPE_READ, PADDING_INDICATOR] {
+            assert!(!type_rejected(legal), "legal InstructionType {legal} must be accepted");
+        }
     }
 }
