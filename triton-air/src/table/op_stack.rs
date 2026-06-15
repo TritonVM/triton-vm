@@ -198,3 +198,50 @@ impl AIR for OpStackTable {
         vec![]
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod ib1_shrink_stack_range_tests {
+    use itertools::Itertools;
+    use ndarray::Array2;
+    use strum::EnumCount;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <OpStackTable as AIR>::MainColumn;
+
+    /// Is a row whose `IB1ShrinkStack` is `v` rejected by some consistency
+    /// constraint? Returns true if rejected (some constraint != 0).
+    fn ib1_rejected(v: BFieldElement) -> bool {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = OpStackTable::consistency_constraints(&builder);
+        let challenges = (0..ChallengeId::COUNT).map(|i| xfe!(i as u64 + 1)).collect_vec();
+        let mut main = Array2::<BFieldElement>::zeros([1, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::IB1ShrinkStack.master_main_index()]] = v;
+        let aux = Array2::<XFieldElement>::zeros([1, NUM_AUX_COLUMNS]);
+        constraints
+            .iter()
+            .any(|c| c.clone().consume().evaluate(main.view(), aux.view(), &challenges) != xfe!(0))
+    }
+
+    /// `IB1ShrinkStack` must be locally confined to {0, 1, PADDING=2}. Without a
+    /// consistency constraint it is confined only indirectly via the permutation
+    /// argument, whose coefficient of `RunningProductPermArg_next` is
+    /// `ib1_next^2 - 2` — zero at `ib1_next = sqrt(2)` (which exists since the
+    /// field prime is 1 mod 8). An out-of-set value at the real->padding boundary
+    /// then frees the perm-arg terminal, letting a prover forge the
+    /// OpStack <-> Processor permutation.
+    #[test]
+    fn ib1_shrink_stack_is_confined_to_legal_set() {
+        let sqrt2 = bfe!(18446742969919734017u64);
+        assert_eq!(sqrt2 * sqrt2, bfe!(2));
+        assert!(ib1_rejected(bfe!(3)), "out-of-set IB1ShrinkStack 3 must be rejected");
+        assert!(ib1_rejected(sqrt2), "out-of-set IB1ShrinkStack sqrt(2) must be rejected");
+        for legal in [bfe!(0), bfe!(1), PADDING_VALUE] {
+            assert!(!ib1_rejected(legal), "legal IB1ShrinkStack {legal} must be accepted");
+        }
+    }
+}
