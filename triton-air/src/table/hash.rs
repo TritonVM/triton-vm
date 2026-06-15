@@ -1068,7 +1068,18 @@ impl AIR for HashTable {
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
-                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                // The "remains" guard is the sum of this term's coefficient and
+                // the `round_number_next` coefficient above; it must vanish only
+                // at the update point (round_number_next = 0, mode_next = Hash).
+                // `round_number_next` is ≥ 0 over the legal range and zero only
+                // at rn' = 0, so the mode guard must also be ≥ 0 and zero only at
+                // mode' = Hash. Using `mode_next - Hash` (≤ 0) instead gives the
+                // two guards opposite signs, so their sum cancels at the reachable
+                // interior rows where rn' + mode' = 3 — (ProgramHashing, rn' = 2)
+                // and (Sponge, rn' = 1) — leaving the running evaluation free.
+                // Hence `Hash - mode_next`, mirroring the digest constraint's
+                // same-sign guards `(rn' - NUM_ROUNDS) + (mode' - Hash)`.
+                + (circuit_builder.b_constant(HashTableMode::Hash) - mode_next.clone())
                     * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the
