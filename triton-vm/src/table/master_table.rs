@@ -2358,9 +2358,9 @@ mod tests {
         // evaluate polynomial in pseudorandom indeterminate
         let value = polynomial.evaluate(rng.random::<XFieldElement>());
         let expected = xfe!([
-            18050617150159873267_u64,
-            14286535855344438144_u64,
-            17390880052886433697_u64,
+            15619091687401045032_u64,
+            7717354355477733200_u64,
+            11634096793650904922_u64,
         ]);
         assert_eq!(
             expected, value,
