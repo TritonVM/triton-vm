@@ -1540,3 +1540,83 @@ mod round_number_range_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod hash_input_evaluation_tests {
+    use itertools::Itertools;
+    use ndarray::Array2;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <HashTable as AIR>::MainColumn;
+    type AuxColumn = <HashTable as AIR>::AuxColumn;
+
+    /// Does some transition constraint reject changing `HashInputRunningEvaluation`
+    /// in the next row, when the next row has the given `(mode, round_number)`?
+    /// Returns true if the change is rejected (the column is pinned at that row),
+    /// false if every transition constraint is invariant to it (the column is FREE).
+    ///
+    /// `HashInputRunningEvaluation` must only ever change at its update point —
+    /// the row where a `hash` instruction's input is absorbed, i.e.
+    /// `(mode = Hash, round_number = 0)`. On every other reachable row it must
+    /// remain unchanged, so changing it there must be rejected.
+    fn hash_input_change_rejected(mode_next: HashTableMode, round_number_next: u64) -> bool {
+        let challenges = (0..ChallengeId::COUNT).map(|i| xfe!(i as u64 + 1)).collect_vec();
+        let col = AuxColumn::HashInputRunningEvaluation.master_aux_index();
+
+        let constraint_values = |delta: u64| -> Vec<XFieldElement> {
+            let builder = ConstraintCircuitBuilder::new();
+            let constraints = HashTable::transition_constraints(&builder);
+            let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+            main[[1, MainColumn::Mode.master_main_index()]] = mode_next.into();
+            main[[1, MainColumn::RoundNumber.master_main_index()]] = bfe!(round_number_next);
+            let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+            aux[[0, col]] = xfe!(7);
+            aux[[1, col]] = xfe!(7 + delta);
+            constraints
+                .iter()
+                .map(|c| c.clone().consume().evaluate(main.view(), aux.view(), &challenges))
+                .collect_vec()
+        };
+        let unchanged = constraint_values(0);
+        let changed = constraint_values(1);
+        unchanged
+            .iter()
+            .zip_eq(changed.iter())
+            .any(|(u, c)| *u == xfe!(0) && *c != xfe!(0))
+    }
+
+    /// Regression test for the `HashInputRunningEvaluation` under-constraint.
+    ///
+    /// Discovered by huuhait. The "hash input" running evaluation may only be
+    /// updated at `(mode = Hash, round_number = 0)`; everywhere else it must
+    /// remain unchanged. Its transition constraint guards the "remains" branch
+    /// with `round_number_next + (mode_next - Hash)`, whose two summands have
+    /// opposite sign over the legal domain and therefore CANCEL at the reachable
+    /// interior rows `(ProgramHashing, rn = 2)` and `(Sponge, rn = 1)` (both
+    /// satisfy `rn + mode = 3`). At those rows the constraint vanishes regardless
+    /// of the column, so a malicious prover can shift `HashInputRunningEvaluation`
+    /// by an arbitrary amount that propagates to the cross-table terminal,
+    /// breaking the Processor <-> Hash hash-input binding.
+    #[test]
+    fn hash_input_running_evaluation_is_pinned_off_its_update_point() {
+        // The exploitable interior rows: must be rejected.
+        assert!(
+            hash_input_change_rejected(HashTableMode::ProgramHashing, 2),
+            "HashInputRunningEvaluation must be pinned at (ProgramHashing, rn=2)",
+        );
+        assert!(
+            hash_input_change_rejected(HashTableMode::Sponge, 1),
+            "HashInputRunningEvaluation must be pinned at (Sponge, rn=1)",
+        );
+        // Sanity: a row that is correctly pinned even by the buggy constraint.
+        assert!(
+            hash_input_change_rejected(HashTableMode::Sponge, 0),
+            "HashInputRunningEvaluation must be pinned at (Sponge, rn=0)",
+        );
+    }
+}
