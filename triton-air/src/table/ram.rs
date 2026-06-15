@@ -269,3 +269,71 @@ impl AIR for RamTable {
         vec![bezout_relation_holds]
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod clock_jump_difference_log_derivative_tests {
+    use ndarray::Array2;
+    use strum::EnumCount;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <RamTable as AIR>::MainColumn;
+    type AuxColumn = <RamTable as AIR>::AuxColumn;
+
+    /// Evaluate the constraint governing the clock-jump-difference lookup
+    /// log-derivative on a transition from a real row into a padding row, for the
+    /// given `(cjd, cjd_next)` of the `ClockJumpDifferenceLookupClientLogDerivative`
+    /// column. The current row decreases the RAM pointer by two across the
+    /// boundary.
+    ///
+    /// `log_derivative_updates_correctly` is the last (and only) transition
+    /// constraint governing that column.
+    fn cjd_update_on_real_to_pad_boundary(cjd: u64, cjd_next: u64) -> XFieldElement {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = RamTable::transition_constraints(&builder);
+        let cjd_constraint = constraints.last().unwrap();
+
+        let challenges = (0..ChallengeId::COUNT)
+            .map(|i| xfe!(i as u64 + 1))
+            .collect::<Vec<_>>();
+
+        let mut main = Array2::<BFieldElement>::zeros([2, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::InstructionType.master_main_index()]] = INSTRUCTION_TYPE_READ;
+        main[[0, MainColumn::RamPointer.master_main_index()]] = bfe!(5);
+        main[[1, MainColumn::InstructionType.master_main_index()]] = PADDING_INDICATOR;
+        main[[1, MainColumn::RamPointer.master_main_index()]] = bfe!(3);
+        main[[0, MainColumn::InverseOfRampDifference.master_main_index()]] =
+            (bfe!(3) - bfe!(5)).inverse();
+
+        let mut aux = Array2::<XFieldElement>::zeros([2, NUM_AUX_COLUMNS]);
+        let cjd_col = AuxColumn::ClockJumpDifferenceLookupClientLogDerivative.master_aux_index();
+        aux[[0, cjd_col]] = xfe!(cjd);
+        aux[[1, cjd_col]] = xfe!(cjd_next);
+
+        cjd_constraint
+            .consume()
+            .evaluate(main.view(), aux.view(), &challenges)
+    }
+
+    /// No clock-jump-difference lookup happens on a transition into a padding row,
+    /// so the lookup log-derivative must remain unchanged there — even when the RAM
+    /// pointer changes across the boundary. The constraint must reject a changing
+    /// value and accept an unchanged one.
+    #[test]
+    fn clock_jump_difference_log_derivative_remains_on_padding_rows() {
+        assert_ne!(
+            xfe!(0),
+            cjd_update_on_real_to_pad_boundary(7, 8),
+            "a changing clock-jump-difference log-derivative entering padding must be rejected",
+        );
+        assert_eq!(
+            xfe!(0),
+            cjd_update_on_real_to_pad_boundary(7, 7),
+            "an unchanged clock-jump-difference log-derivative entering padding must be accepted",
+        );
+    }
+}
