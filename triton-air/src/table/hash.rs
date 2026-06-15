@@ -479,11 +479,14 @@ impl HashTable {
             Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS);
         let current_instruction_next_is_not_sponge_init =
             Self::instruction_deselector(circuit_builder, &ci_next, Instruction::SpongeInit);
+        let next_row_is_padding_row =
+            Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Pad);
 
         next_row_is_padding_row_or_round_number_next_is_max_or_ci_next_is_sponge_init
             * cascade_log_derivative_updates
             + round_number_next_is_not_num_rounds * cascade_log_derivative_remains.clone()
-            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains
+            + current_instruction_next_is_not_sponge_init * cascade_log_derivative_remains.clone()
+            + next_row_is_padding_row * cascade_log_derivative_remains
     }
 }
 
@@ -955,6 +958,15 @@ impl AIR for HashTable {
                 * (round_number.clone() - constant(NUM_ROUNDS as u64))
                 * (round_number_next.clone() - round_number.clone() - constant(1));
 
+        // The increment constraint above is disabled in `sponge_init` rows.
+        // Enforce the corresponding reset to round number 0 explicitly; without
+        // it, the round number could leave its legal range `0..=NUM_ROUNDS`
+        // after a `sponge_init` row, which would collapse the round-number-
+        // gated evaluation-argument constraints (e.g. the hash digest).
+        let if_ci_is_sponge_init_then_round_number_next_is_0 =
+            Self::instruction_deselector(circuit_builder, &ci, Instruction::SpongeInit)
+                * round_number_next.clone();
+
         // compress the digest by computing the terminal of an evaluation
         // argument
         let compressed_digest = state_current[..Digest::LEN].iter().fold(
@@ -1056,7 +1068,7 @@ impl AIR for HashTable {
                 * Self::mode_deselector(circuit_builder, &mode_next, HashTableMode::Hash)
                 * running_evaluation_hash_input_updates
                 + round_number_next.clone() * running_evaluation_hash_input_remains.clone()
-                + Self::select_mode(circuit_builder, &mode_next, HashTableMode::Hash)
+                + (circuit_builder.b_constant(HashTableMode::Hash) - mode_next.clone())
                     * running_evaluation_hash_input_remains;
 
         // If (and only if) the row number in the next row is NUM_ROUNDS and the
@@ -1137,6 +1149,7 @@ impl AIR for HashTable {
         let constraints = vec![
             round_number_is_0_through_4_or_round_number_next_is_0,
             next_mode_is_padding_mode_or_round_number_is_num_rounds_or_increments_by_one,
+            if_ci_is_sponge_init_then_round_number_next_is_0,
             receive_chunk_of_instructions_iff_next_mode_is_prog_hashing_and_next_round_number_is_0,
             if_mode_changes_from_program_hashing_then_current_digest_is_expected_program_digest,
             if_mode_is_program_hashing_and_next_mode_is_sponge_then_ci_next_is_sponge_init,

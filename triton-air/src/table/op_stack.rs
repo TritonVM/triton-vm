@@ -85,10 +85,16 @@ impl AIR for OpStackTable {
     }
 
     fn consistency_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no further constraints
-        vec![]
+        let constant = |c| circuit_builder.b_constant(c);
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+
+        let ib1 = || main_row(Self::MainColumn::IB1ShrinkStack);
+        let ib1_is_legal = ib1() * (ib1() - constant(bfe!(1))) * (ib1() - constant(PADDING_VALUE));
+
+        vec![ib1_is_legal]
     }
 
     fn transition_constraints(
