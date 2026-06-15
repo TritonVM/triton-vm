@@ -65,9 +65,19 @@
 //!   cascade_log_derivative_remains` term in
 //!   `HashTable::cascade_log_derivative_update_circuit`) makes
 //!   `hash_accumulators_are_pinned` flag all sixteen cascade client
-//!   log-derivative columns on the `hash: * -> Pad, rn'=0, ci'=hash` windows.
+//!   log-derivative columns on the `hash: * -> Pad, rn'=0, ci'=hash` windows;
+//! - reverting the RAM/OpStack type-range fix (drop the `InstructionType` /
+//!   `IB1ShrinkStack` range consistency constraint) makes the respective table
+//!   flag its `RunningProductPermArg` column on the `out-of-set type ±sqrt(2)`
+//!   windows, where the perm-arg coefficient `type_next² − 2` vanishes.
+//!
+//! Reachability honours both transition AND consistency constraints: an
+//! out-of-domain selector value is unreachable exactly because a (main-only)
+//! consistency constraint rejects it, so these windows are silently dropped once
+//! the range constraint is present and flag the gap once it is removed.
 
 use ndarray::Array2;
+use ndarray::s;
 use twenty_first::prelude::*;
 
 use crate::AIR;
@@ -155,6 +165,16 @@ fn unpinned_columns<T: AIR>(
         .into_iter()
         .map(|c| c.consume())
         .collect::<Vec<_>>();
+
+    // Consistency constraints are single-row and main-only-checkable per row.
+    // They participate in reachability: a window assigning an out-of-domain
+    // selector/type value (e.g. a RAM `InstructionType` of `sqrt(2)`) is
+    // unreachable precisely because a consistency constraint rejects it.
+    let consistency_builder = ConstraintCircuitBuilder::new();
+    let consistency_circuits = T::consistency_constraints(&consistency_builder)
+        .into_iter()
+        .map(|c| c.consume())
+        .collect::<Vec<_>>();
     let challenges = generic_challenges();
 
     // Two probe values for the cell under test and their (nonzero) difference.
@@ -189,13 +209,26 @@ fn unpinned_columns<T: AIR>(
         // Reject windows whose main part is itself rejected by a main-only
         // transition constraint: such windows are unreachable, so a pinning gap
         // there would be spurious.
-        let window_is_reachable = circuits.iter().all(|circuit| {
+        let transition_reachable = circuits.iter().all(|circuit| {
             let va = circuit.evaluate(main.view(), aux_probe_a.view(), &challenges);
             let vb = circuit.evaluate(main.view(), aux_probe_b.view(), &challenges);
             let is_main_only = va == vb;
             !(is_main_only && va != xfe!(0))
         });
-        if !window_is_reachable {
+        // Consistency constraints are single-row; check each of the two rows
+        // independently (the single-row evaluator reads row 0 of its argument).
+        let consistency_reachable = [0usize, 1].into_iter().all(|r| {
+            let main_r = main.slice(s![r..=r, ..]);
+            let aux_a_r = aux_probe_a.slice(s![r..=r, ..]);
+            let aux_b_r = aux_probe_b.slice(s![r..=r, ..]);
+            consistency_circuits.iter().all(|circuit| {
+                let va = circuit.evaluate(main_r, aux_a_r, &challenges);
+                let vb = circuit.evaluate(main_r, aux_b_r, &challenges);
+                let is_main_only = va == vb;
+                !(is_main_only && va != xfe!(0))
+            })
+        });
+        if !(transition_reachable && consistency_reachable) {
             continue;
         }
 
@@ -316,6 +349,23 @@ mod op_stack_windows {
                 .curr_main(M::StackPointer, bfe!(5))
                 .next_main(M::StackPointer, bfe!(3)),
         );
+        // Out-of-set IB1ShrinkStack at the boundary: the perm-arg coefficient of
+        // `RunningProductPermArg_next` is `ib1_next² − 2`, zero at `ib1_next =
+        // ±√2`. Unreachable once the `IB1ShrinkStack` range consistency
+        // constraint is in place; free without it. (See the RAM analogue.)
+        let sqrt2 = bfe!(18446742969919734017u64);
+        for (label, ib1_next) in [
+            ("op_stack: out-of-set ib1 +sqrt(2)", sqrt2),
+            ("op_stack: out-of-set ib1 -sqrt(2)", bfe!(0) - sqrt2),
+        ] {
+            out.push(
+                Window::new(label)
+                    .curr_main(M::IB1ShrinkStack, bfe!(0))
+                    .next_main(M::IB1ShrinkStack, ib1_next)
+                    .curr_main(M::StackPointer, bfe!(5))
+                    .next_main(M::StackPointer, bfe!(5)),
+            );
+        }
         out
     }
 }
@@ -371,6 +421,29 @@ mod ram_windows {
                 .next_main(M::RamPointer, bfe!(3))
                 .curr_main(M::InverseOfRampDifference, (bfe!(3) - bfe!(5)).inverse_or_zero()),
         );
+        // Out-of-set InstructionType at the boundary. The perm-arg coefficient of
+        // `RunningProductPermArg_next` is `type_next² − 2`, which is ZERO at the
+        // two field roots of `x² − 2`, i.e. `type_next = ±√2` (√2 exists since the
+        // prime is 1 mod 8). Without the `InstructionType` range consistency
+        // constraint these windows are reachable and the perm-arg terminal is
+        // free; with it they are dropped as unreachable. Sweeping the *roots of a
+        // guard coefficient* is the general lesson: an out-of-set value that is
+        // not such a root (e.g. 3) keeps the coefficient nonzero and would not
+        // expose the gap.
+        let sqrt2 = bfe!(18446742969919734017u64);
+        for (label, t_next) in [
+            ("ram: real -> out-of-set type +sqrt(2)", sqrt2),
+            ("ram: real -> out-of-set type -sqrt(2)", bfe!(0) - sqrt2),
+        ] {
+            out.push(
+                Window::new(label)
+                    .curr_main(M::InstructionType, INSTRUCTION_TYPE_READ)
+                    .next_main(M::InstructionType, t_next)
+                    .curr_main(M::RamPointer, bfe!(5))
+                    .next_main(M::RamPointer, bfe!(5))
+                    .curr_main(M::InverseOfRampDifference, bfe!(0)),
+            );
+        }
         out
     }
 }
