@@ -44,7 +44,7 @@ Before automatic degree lowering:
 | [U32Table](u32-table.md)                       |        1 |           15 |          22 |         2 |         12 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |          1 |
 | **TOTAL**                                      |   **79** |       **76** |     **151** |    **23** |     **19** |
-| (# nodes)                                      |    (539) |        (624) |      (6832) |     (213) |            |
+| (# nodes)                                      |    (539) |        (624) |      (6833) |     (213) |            |
 
 After lowering degree to 8:
 
@@ -61,7 +61,7 @@ After lowering degree to 8:
 | [U32Table](u32-table.md)                       |        1 |           18 |          24 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **79** |       **80** |     **278** |    **23** |
-| (# nodes)                                      |    (539) |        (635) |      (7106) |     (213) |
+| (# nodes)                                      |    (539) |        (635) |      (7107) |     (213) |
 
 After lowering degree to 4:
 
@@ -78,7 +78,7 @@ After lowering degree to 4:
 | [U32Table](u32-table.md)                       |        1 |           26 |          34 |         2 |
 | [Grand Cross-Table Argument](table-linking.md) |        0 |            0 |           0 |        14 |
 | **TOTAL**                                      |   **81** |       **94** |     **402** |    **23** |
-| (# nodes)                                      |    (543) |        (676) |      (7407) |     (213) |
+| (# nodes)                                      |    (543) |        (676) |      (7408) |     (213) |
 <!-- auto-gen info stop constraints_overview -->
 
 
@@ -90,8 +90,8 @@ In order to gauge the runtime cost for this step, the following table provides e
 <!-- auto-gen info start tasm_air_evaluation_cost -->
 | Type         | Processor | Op Stack |   RAM |
 |:-------------|----------:|---------:|------:|
-| static       |     34021 |    62751 | 25035 |
-| dynamic      |     45586 |    70465 | 28890 |
+| static       |     34025 |    62759 | 25038 |
+| dynamic      |     45590 |    70473 | 28893 |
 <!-- auto-gen info stop tasm_air_evaluation_cost -->
 
 ## Opcode Pressure
