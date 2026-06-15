@@ -341,3 +341,50 @@ mod clock_jump_difference_log_derivative_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod instruction_type_range_tests {
+    use itertools::Itertools;
+    use ndarray::Array2;
+    use strum::EnumCount;
+
+    use crate::table::NUM_AUX_COLUMNS;
+    use crate::table::NUM_MAIN_COLUMNS;
+
+    use super::*;
+
+    type MainColumn = <RamTable as AIR>::MainColumn;
+
+    /// Is a row whose `InstructionType` is `t` rejected by some consistency
+    /// constraint? Returns true if rejected (some constraint != 0).
+    fn type_rejected(t: BFieldElement) -> bool {
+        let builder = ConstraintCircuitBuilder::new();
+        let constraints = RamTable::consistency_constraints(&builder);
+        let challenges = (0..ChallengeId::COUNT).map(|i| xfe!(i as u64 + 1)).collect_vec();
+        let mut main = Array2::<BFieldElement>::zeros([1, NUM_MAIN_COLUMNS]);
+        main[[0, MainColumn::InstructionType.master_main_index()]] = t;
+        let aux = Array2::<XFieldElement>::zeros([1, NUM_AUX_COLUMNS]);
+        constraints
+            .iter()
+            .any(|c| c.clone().consume().evaluate(main.view(), aux.view(), &challenges) != xfe!(0))
+    }
+
+    /// `InstructionType` must be locally confined to `{WRITE, READ, PADDING}` =
+    /// {0,1,2}. Without a consistency constraint it is confined only indirectly,
+    /// via the permutation argument — but the perm-arg coefficient of
+    /// `RunningProductPermArg_next` is `type_next^2 - 2`, which is zero at
+    /// `type_next = sqrt(2)` (sqrt(2) exists since the field prime is 1 mod 8).
+    /// An out-of-set type at the real->padding boundary then frees the perm-arg
+    /// terminal, letting a prover forge the RAM<->Processor memory permutation.
+    #[test]
+    fn instruction_type_is_confined_to_legal_set() {
+        let sqrt2 = bfe!(18446742969919734017u64);
+        assert_eq!(sqrt2 * sqrt2, bfe!(2));
+        assert!(type_rejected(bfe!(3)), "out-of-set InstructionType 3 must be rejected");
+        assert!(type_rejected(sqrt2), "out-of-set InstructionType sqrt(2) must be rejected");
+        for legal in [INSTRUCTION_TYPE_WRITE, INSTRUCTION_TYPE_READ, PADDING_INDICATOR] {
+            assert!(!type_rejected(legal), "legal InstructionType {legal} must be accepted");
+        }
+    }
+}
