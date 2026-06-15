@@ -85,10 +85,24 @@ impl AIR for OpStackTable {
     }
 
     fn consistency_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no further constraints
-        vec![]
+        let constant = |c| circuit_builder.b_constant(c);
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+
+        // Confine `IB1ShrinkStack` to its legal set {0, 1, PADDING=2} on every
+        // row. Without this, the column is constrained only indirectly through
+        // the permutation argument, whose coefficient of
+        // `RunningProductPermArg_next` is `ib1_next² − 2`; that coefficient
+        // vanishes at the out-of-set value `ib1_next = √2` (which exists since
+        // the prime is 1 mod 8), freeing the perm-arg terminal at the
+        // real→padding boundary.
+        let ib1 = main_row(Self::MainColumn::IB1ShrinkStack);
+        let ib1_is_legal =
+            ib1.clone() * (ib1.clone() - constant(bfe!(1))) * (ib1 - constant(PADDING_VALUE));
+
+        vec![ib1_is_legal]
     }
 
     fn transition_constraints(
