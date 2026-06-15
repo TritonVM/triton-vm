@@ -226,15 +226,19 @@ impl AIR for RamTable {
             clock_jump_diff_log_derivative_next - clock_jump_diff_log_derivative.clone();
 
         let log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row =
-            log_derivative_accumulates * ram_pointer_changes.clone() * next_row_is_padding_row;
-        let log_derivative_remains_or_ram_pointer_doesnt_change =
-            log_derivative_remains.clone() * ram_pointer_difference.clone();
+            log_derivative_accumulates
+                * ram_pointer_changes.clone()
+                * next_row_is_padding_row.clone();
+        let log_derivative_remains_or_ram_pointer_doesnt_change_or_next_row_is_padding_row =
+            log_derivative_remains.clone()
+                * ram_pointer_difference.clone()
+                * next_row_is_padding_row;
         let log_derivative_remains_or_next_row_is_not_padding_row =
             log_derivative_remains * next_row_is_not_padding_row;
 
         let log_derivative_updates_correctly =
             log_derivative_accumulates_or_ram_pointer_changes_or_next_row_is_padding_row
-                + log_derivative_remains_or_ram_pointer_doesnt_change
+                + log_derivative_remains_or_ram_pointer_doesnt_change_or_next_row_is_padding_row
                 + log_derivative_remains_or_next_row_is_not_padding_row;
 
         vec![
