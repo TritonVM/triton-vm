@@ -97,10 +97,18 @@ impl AIR for RamTable {
     }
 
     fn consistency_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no further constraints
-        vec![]
+        let constant = |c| circuit_builder.b_constant(c);
+        let main_row =
+            |column: Self::MainColumn| circuit_builder.input(Main(column.master_main_index()));
+
+        let instruction_type = || main_row(Self::MainColumn::InstructionType);
+        let instruction_type_is_legal = (instruction_type() - constant(INSTRUCTION_TYPE_WRITE))
+            * (instruction_type() - constant(INSTRUCTION_TYPE_READ))
+            * (instruction_type() - constant(PADDING_INDICATOR));
+
+        vec![instruction_type_is_legal]
     }
 
     fn transition_constraints(
