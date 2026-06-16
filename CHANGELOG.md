@@ -3,6 +3,21 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [6.0.0](https://github.com/TritonVM/triton-vm/compare/v5.0.0..v6.0.0) - 2026-06-16
+
+### 🐛 Bug Fixes
+
+- Pin cascade log-derivative on hash-table padding rows ([77076c49](https://github.com/TritonVM/triton-vm/commit/77076c49))
+- Pin clock-jump-difference log-derivative on RAM padding rows ([3ab3b73a](https://github.com/TritonVM/triton-vm/commit/3ab3b73a))
+- Constrain RoundNumber range in hash table ([6a0643fb](https://github.com/TritonVM/triton-vm/commit/6a0643fb))
+- Pin hash-input running evaluation off its update point ([2d243c55](https://github.com/TritonVM/triton-vm/commit/2d243c55))
+- Confine RAM InstructionType to its legal set ([84b3a3aa](https://github.com/TritonVM/triton-vm/commit/84b3a3aa))
+- Confine OpStack IB1ShrinkStack to its legal set ([0c6ba645](https://github.com/TritonVM/triton-vm/commit/0c6ba645))
+
+### ⚙️ Miscellaneous
+
+- (!) Bump proof version ([e3053594](https://github.com/TritonVM/triton-vm/commit/e3053594))
+
 ## [5.0.0](https://github.com/TritonVM/triton-vm/compare/v4.0.0..v5.0.0) - 2026-06-12
 
 ### 🐛 Bug Fixes
