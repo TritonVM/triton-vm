@@ -237,8 +237,19 @@ mod tests {
 
     #[macro_rules_attr::apply(proptest(cases = 2))]
     fn nodes_are_unique_for_all_constraints(data: DummyTableData) {
+        fn assert_constraint_properties<T: AIR>(name: &str, data: &DummyTableData) {
+            let init = build_constraints(T::initial_constraints);
+            let cons = build_constraints(T::consistency_constraints);
+            let tran = build_constraints(T::transition_constraints);
+            let term = build_constraints(T::terminal_constraints);
+            table_constraints_prop(&(name.to_owned() + " init"), &init, data);
+            table_constraints_prop(&(name.to_owned() + " cons"), &cons, data);
+            table_constraints_prop(&(name.to_owned() + " tran"), &tran, data);
+            table_constraints_prop(&(name.to_owned() + " term"), &term, data);
+        }
+
         fn build_constraints<II: InputIndicator>(
-            multicircuit_builder: &dyn Fn(
+            multicircuit_builder: fn(
                 &ConstraintCircuitBuilder<II>,
             ) -> Vec<ConstraintCircuitMonad<II>>,
         ) -> Vec<ConstraintCircuit<II>> {
@@ -246,31 +257,19 @@ mod tests {
             let multicircuit = multicircuit_builder(&circuit_builder);
             let mut constraints = multicircuit.into_iter().map(|c| c.consume()).collect_vec();
             ConstraintCircuit::assert_unique_ids(&mut constraints);
+
             constraints
         }
 
-        macro_rules! assert_constraint_properties {
-            ($table:ident) => {{
-                let init = build_constraints(&$table::initial_constraints);
-                let cons = build_constraints(&$table::consistency_constraints);
-                let tran = build_constraints(&$table::transition_constraints);
-                let term = build_constraints(&$table::terminal_constraints);
-                table_constraints_prop(concat!(stringify!($table), " init"), &init, &data);
-                table_constraints_prop(concat!(stringify!($table), " cons"), &cons, &data);
-                table_constraints_prop(concat!(stringify!($table), " tran"), &tran, &data);
-                table_constraints_prop(concat!(stringify!($table), " term"), &term, &data);
-            }};
-        }
-
-        assert_constraint_properties!(ProcessorTable);
-        assert_constraint_properties!(ProgramTable);
-        assert_constraint_properties!(JumpStackTable);
-        assert_constraint_properties!(OpStackTable);
-        assert_constraint_properties!(RamTable);
-        assert_constraint_properties!(HashTable);
-        assert_constraint_properties!(U32Table);
-        assert_constraint_properties!(CascadeTable);
-        assert_constraint_properties!(LookupTable);
+        assert_constraint_properties::<ProcessorTable>("ProcessorTable", &data);
+        assert_constraint_properties::<ProgramTable>("ProgramTable", &data);
+        assert_constraint_properties::<JumpStackTable>("JumpStackTable", &data);
+        assert_constraint_properties::<OpStackTable>("OpStackTable", &data);
+        assert_constraint_properties::<RamTable>("RamTable", &data);
+        assert_constraint_properties::<HashTable>("HashTable", &data);
+        assert_constraint_properties::<U32Table>("U32Table", &data);
+        assert_constraint_properties::<CascadeTable>("CascadeTable", &data);
+        assert_constraint_properties::<LookupTable>("LookupTable", &data);
     }
 
     /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional
