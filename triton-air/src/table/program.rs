@@ -99,14 +99,18 @@ impl AIR for ProgramTable {
                 * max_minus_index_in_chunk;
 
         let is_hash_input_padding_is_bit =
-            is_hash_input_padding.clone() * (is_hash_input_padding - one.clone());
-        let is_table_padding_is_bit = is_table_padding.clone() * (is_table_padding - one);
+            is_hash_input_padding.clone() * (is_hash_input_padding.clone() - one.clone());
+        let is_table_padding_is_bit =
+            is_table_padding.clone() * (is_table_padding.clone() - one.clone());
+        let table_padding_implies_hash_input_padding =
+            is_table_padding * (one - is_hash_input_padding);
 
         vec![
             max_minus_index_in_chunk_inv_is_zero_or_the_inverse_of_max_minus_index_in_chunk,
             max_minus_index_in_chunk_is_zero_or_the_inverse_of_max_minus_index_in_chunk_inv,
             is_hash_input_padding_is_bit,
             is_table_padding_is_bit,
+            table_padding_implies_hash_input_padding,
         ]
     }
 
