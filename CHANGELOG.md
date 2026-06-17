@@ -3,6 +3,16 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [7.0.0](https://github.com/TritonVM/triton-vm/compare/v6.0.0..v7.0.0) - 2026-06-17
+
+### 🐛 Bug Fixes
+
+- Make Program Table AIR sound ([de3d6289](https://github.com/TritonVM/triton-vm/commit/de3d6289))
+
+### ⚙️ Miscellaneous
+
+- (!) Bump proof version ([37da8eea](https://github.com/TritonVM/triton-vm/commit/37da8eea))
+
 ## [6.0.0](https://github.com/TritonVM/triton-vm/compare/v5.0.0..v6.0.0) - 2026-06-16
 
 ### 🐛 Bug Fixes
