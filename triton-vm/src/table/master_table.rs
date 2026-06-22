@@ -1295,7 +1295,7 @@ pub fn all_quotients_combined(
 
     profiler!(start "evaluate AIR, compute quotient codeword");
     let dot_product = |partial_row: Vec<_>, weights: &[_]| -> XFieldElement {
-        let pairs = partial_row.into_iter().zip_eq(weights.iter());
+        let pairs = partial_row.into_iter().zip_eq(weights);
         pairs.map(|(v, &w)| v * w).sum()
     };
 
