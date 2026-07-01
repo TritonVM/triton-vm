@@ -8,6 +8,7 @@ members = [
     "triton-vm",
 ]
 resolver = "2"
+exclude = ["simpler"]
 
 [profile.test]
 opt-level = 1
