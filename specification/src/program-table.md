@@ -91,6 +91,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. The `IndexInChunk` is $\texttt{rate} - 1$ or the `MaxMinusIndexInChunkInv` is the inverse of $\texttt{rate} - 1 -{}$ `IndexInChunk`.
 1. Indicator `IsHashInputPadding` is either 0 or 1.
 1. Indicator `IsTablePadding` is either 0 or 1.
+1. If `IsTablePadding` is 1, then `IsHashInputPadding` is 1.
 
 ### Consistency Constraints as Polynomials
 
@@ -98,6 +99,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `(1 - MaxMinusIndexInChunkInv · (rate - 1 - IndexInChunk)) · (rate - 1 - IndexInChunk)`
 1. `IsHashInputPadding · (IsHashInputPadding - 1)`
 1. `IsTablePadding · (IsTablePadding - 1)`
+1. `IsTablePadding · (1 - IsHashInputPadding)`
 
 ## Transition Constraints
 
