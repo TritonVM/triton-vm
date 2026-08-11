@@ -950,5 +950,5 @@ In addition to its [instruction groups](instruction-groups.md), this instruction
 
 1. Store `RAM[st0]` in `hv0`.
 1. Store `(RAM[st1], RAM[st1+1], RAM[st1+2])` in `(hv1, hv2, hv3)`.
-1. Add `hv0 · (hv1 + hv2·x + hv3·x²)` into `(st1, st2, st3)`
+1. Add `hv0 · (hv1 + hv2·x + hv3·x²)` into `(st2, st3, st4)`
 1. Increase the pointers: `st0` and `st1` by 1 and 3, respectively.
