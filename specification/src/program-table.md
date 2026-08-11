@@ -108,6 +108,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. If `IsHashInputPadding` is 0 in the current row and 1 in the next row, then `Instruction` in the next row is 1.
 1. If `IsHashInputPadding` is 1 in the current row then `Instruction` in the next row is 0.
 1. If `IsHashInputPadding` is 1 in the current row and `IndexInChunk` is $\texttt{rate} - 1$ in the current row then `IsTablePadding` is 1 in the next row.
+1. If `IsTablePadding` is 0 in the current row and 1 in the next row, then `IndexInChunk` in the next row is 0.
 1. If the current row is not a padding row, the logarithmic derivative accumulates the current row's address, the current row's instruction, and the next row's instruction with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥 respectively.
 Otherwise, it remains unchanged.
 1. If the `IndexInChunk` in the current row is not $\texttt{rate} - 1$, then `PrepareChunkRunningEvaluation` absorbs the `Instruction` in the next row with respect to challenge 🪑.
@@ -125,6 +126,7 @@ Otherwise, it remains unchanged.
 1. `(IsHashInputPadding - 1) · IsHashInputPadding' · (Instruction' - 1)`
 1. `IsHashInputPadding · Instruction'`
 1. `IsHashInputPadding · (1 - MaxMinusIndexInChunkInv · (rate - 1 - IndexInChunk)) · IsTablePadding'`
+1. `(IsTablePadding' - IsTablePadding) · IndexInChunk'`
 1. `(1 - IsHashInputPadding) · ((InstructionLookupServerLogDerivative' - InstructionLookupServerLogDerivative) · (🪥 - 🥝·Address - 🥥·Instruction - 🫐·Instruction') - LookupMultiplicity)`<br />
     ` + IsHashInputPadding · (InstructionLookupServerLogDerivative' - InstructionLookupServerLogDerivative)`
 1. `(rate - 1 - IndexInChunk) · (PrepareChunkRunningEvaluation' - 🪑·PrepareChunkRunningEvaluation - Instruction')`<br />

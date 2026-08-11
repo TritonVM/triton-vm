@@ -577,7 +577,13 @@ impl AIR for HashTable {
         let running_evaluation_sponge_is_default_initial =
             running_evaluation_sponge - running_evaluation_initial;
 
-        vec![
+        // The capacity part of the sponge state must be zero on the first row.
+        // The first row is in program-hashing mode, and program hashing starts
+        // the sponge from Tip5's canonical (all-zero-capacity) initial state.
+        let capacity_is_zero =
+            (tip5::RATE..tip5::STATE_SIZE).map(|i| main_row(Self::state_column_by_index(i)));
+
+        let mut initial_constraints = vec![
             mode_is_program_hashing,
             round_number_is_0,
             running_evaluation_hash_input_is_default_initial,
@@ -664,7 +670,9 @@ impl AIR for HashTable {
                 Self::MainColumn::State3LowestLkOut,
                 Self::AuxColumn::CascadeState3LowestClientLogDerivative,
             ),
-        ]
+        ];
+        initial_constraints.extend(capacity_is_zero);
+        initial_constraints
     }
 
     fn consistency_constraints(

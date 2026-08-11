@@ -2584,6 +2584,45 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
+    fn nonzero_initial_sponge_capacity_violates_initial_constraints() {
+        use air::table_column::HashMainColumn;
+
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let master_main = artifacts.master_main_table.trace_table();
+        let master_aux = artifacts.master_aux_table.trace_table();
+        let challenges = &artifacts.challenges;
+
+        let honest = MasterAuxTable::evaluate_initial_constraints(
+            master_main.row(0),
+            master_aux.row(0),
+            challenges,
+        );
+        assert!(honest.iter().all(|&v| v == xfe!(0)));
+
+        let capacity_columns = [
+            HashMainColumn::State10,
+            HashMainColumn::State11,
+            HashMainColumn::State12,
+            HashMainColumn::State13,
+            HashMainColumn::State14,
+            HashMainColumn::State15,
+        ];
+        for capacity_column in capacity_columns {
+            let mut forged_row = master_main.row(0).to_owned();
+            forged_row[capacity_column.master_main_index()] = bfe!(1);
+            let forged = MasterAuxTable::evaluate_initial_constraints(
+                forged_row.view(),
+                master_aux.row(0),
+                challenges,
+            );
+            assert!(
+                forged.iter().any(|&v| v != xfe!(0)),
+                "a non-zero {capacity_column:?} must violate an initial constraint",
+            );
+        }
+    }
+
+    #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
         let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
             .with_input(bfe_array![100]);

@@ -118,6 +118,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `RunningEvaluationSponge` is 1.
 1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
     `state_i_limb_LookupClientLogDerivative` has accumulated `state_i_limb_lkin` and `state_i_limb_lkout` with respect to challenges 🍒, 🍓 and indeterminate 🧺.
+1. For `i` $\in\{10, \dots, 15\}$: register `state_i` is 0.
 
 ### Initial Constraints as Polynomials
 
@@ -129,6 +130,8 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `RunningEvaluationSponge - 1`
 1. For `i` $\in \{0, \dots, 3\}$ and `limb` $\in \{$`highest`, `mid_high`, `mid_low`, `lowest` $\}$:<br />
     `state_i_limb_LookupClientLogDerivative·(🧺 - 🍒·state_i_limb_lkin - 🍓·state_i_limb_lkout) - 1`
+1. For `i` $\in\{10, \dots, 15\}$:<br />
+    `state_i`
 
 ## Consistency Constraints
 
