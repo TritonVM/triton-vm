@@ -139,12 +139,12 @@ pub enum ChallengeId {
 
     /// A weight for linearly combining multiple elements. Applies to
     /// - `*LkIn` in the Hash Table, and
-    /// - `2^16·LookInHi + LookInLo` in the Cascade Table.
+    /// - `2^8·LookInHi + LookInLo` in the Cascade Table.
     HashCascadeLookInWeight,
 
     /// A weight for linearly combining multiple elements. Applies to
     /// - `*LkOut` in the Hash Table, and
-    /// - `2^16·LookOutHi + LookOutLo` in the Cascade Table.
+    /// - `2^8·LookOutHi + LookOutLo` in the Cascade Table.
     HashCascadeLookOutWeight,
 
     /// The indeterminate for the Lookup Argument between the Cascade Table and
