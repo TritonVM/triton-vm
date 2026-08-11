@@ -24,6 +24,7 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
+use crate::error::ProofStreamError;
 use crate::error::ProvingError;
 use crate::error::VerificationError;
 use crate::fri;
@@ -1464,6 +1465,11 @@ impl Verifier {
             profiler!(stop "combination codeword equality");
         }
         profiler!(stop "linear combination");
+
+        let Err(ProofStreamError::EmptyQueue) = proof_stream.dequeue() else {
+            return Err(VerificationError::SuperfluousProofItems);
+        };
+
         Ok(())
     }
 
@@ -2026,6 +2032,24 @@ pub(crate) mod tests {
 
         let verdict = stark.verify(&claim, &proof);
         let_assert!(Err(VerificationError::IncorrectNumberOfQuotientSegmentElements) = verdict);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn proof_with_spurious_trailing_item_is_rejected() {
+        let program = triton_program!(halt);
+        let claim = Claim::about_program(&program);
+        let (aet, _) =
+            VM::trace_execution(program, PublicInput::default(), NonDeterminism::default())
+                .unwrap();
+        let stark = Stark::low_security();
+        let proof = stark.prove(&claim, &aet).unwrap();
+
+        let mut proof_stream = ProofStream::try_from(&proof).unwrap();
+        proof_stream.enqueue(ProofItem::MerkleRoot(Digest::default()));
+        let proof = Proof::from(proof_stream);
+
+        let verdict = stark.verify(&claim, &proof);
+        let_assert!(Err(VerificationError::SuperfluousProofItems) = verdict);
     }
 
     #[macro_rules_attr::apply(test)]
