@@ -227,6 +227,13 @@ impl FriVerifier<'_> {
 
         self.last_round_codeword = self.proof_stream.dequeue()?.try_into_fri_codeword()?;
         self.last_round_polynomial = self.proof_stream.dequeue()?.try_into_fri_polynomial()?;
+
+        // The last round's codeword must have exactly the length of the last round's
+        // domain.
+        if self.last_round_codeword.len() != self.rounds.last().unwrap().domain.len() {
+            return Err(FriValidationError::LastCodewordMismatch);
+        }
+
         Ok(())
     }
 
@@ -755,6 +762,34 @@ mod tests {
         let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
         let verdict = fri.verify(&mut proof_stream);
         prop_assert!(verdict.is_err());
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 2))]
+    fn too_short_last_round_codeword_doesnt_panic(
+        fri: Fri,
+        #[strategy(arbitrary_polynomial().no_shrink())] fri_polynomial: XfePoly,
+    ) {
+        let codeword = fri.domain.evaluate(&fri_polynomial);
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        let last_round_codeword = proof_stream
+            .items
+            .iter_mut()
+            .find_map(|item| match item {
+                ProofItem::FriCodeword(codeword) => Some(codeword),
+                _ => None,
+            })
+            .unwrap();
+        prop_assume!(!last_round_codeword.is_empty());
+        last_round_codeword.pop();
+
+        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let verdict = fri.verify(&mut proof_stream);
+        prop_assert!(matches!(
+            verdict,
+            Err(FriValidationError::LastCodewordMismatch)
+        ));
     }
 
     #[macro_rules_attr::apply(test)]
