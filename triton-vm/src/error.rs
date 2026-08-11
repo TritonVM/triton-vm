@@ -169,7 +169,7 @@ pub enum ProvingError {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum VerificationError {
-    #[error("received a log₂ padded height larger than (or equal to) 32")]
+    #[error("received a log₂ padded height larger than (or equal to) 30")]
     Log2PaddedHeightTooLarge,
 
     #[error("received and computed out-of-domain quotient values don't match")]

@@ -1158,7 +1158,8 @@ impl Verifier {
 
         profiler!(start "derive additional parameters");
         let log2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
-        if log2_padded_height >= 32 {
+
+        if log2_padded_height >= 30 {
             return Err(VerificationError::Log2PaddedHeightTooLarge);
         };
 
@@ -1935,7 +1936,7 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(proptest)]
     fn too_high_padded_height_results_in_immediate_verification_failure(
-        #[strategy(32_u32..)] height: u32,
+        #[strategy(30_u32..)] height: u32,
     ) {
         let program = triton_program!(halt);
         let claim = Claim::about_program(&program);
