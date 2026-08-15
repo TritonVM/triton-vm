@@ -2111,19 +2111,24 @@ pub(crate) mod tests {
         }
     }
 
+    /// Quotient table randomization scales the indeterminate by ζ^k with every
+    /// substitution, so it is the powers of ζ^k – not those of ζ – that the
+    /// specification's chapter on Zero-Knowledge constrains. Here: ζ^k must
+    /// have multiplicative order larger than k.
     #[macro_rules_attr::apply(test)]
-    fn zeta_has_sufficiently_large_multiplicative_order() {
+    fn zeta_to_the_k_has_sufficiently_large_multiplicative_order() {
         let k = NUM_QUOTIENT_SEGMENTS as u64;
-        assert!((0..=2 * k).map(|i| Stark::ZETA.mod_pow(i)).all_unique());
+        assert!((0..=k).map(|m| Stark::ZETA.mod_pow(m * k)).all_unique());
     }
 
-    /// none of the powers ζ^i are an element of the field's 2-adic subgroups
+    /// none of the powers ζ^(m·k) are an element of the field's 2-adic subgroups
     #[macro_rules_attr::apply(test)]
-    fn zetas_powers_are_not_in_2_adic_subgroups() {
-        for i in 1..=NUM_QUOTIENT_SEGMENTS as u64 {
-            let mut zeta = Stark::ZETA.mod_pow(i);
+    fn zeta_to_the_ks_powers_are_not_in_2_adic_subgroups() {
+        let k = NUM_QUOTIENT_SEGMENTS as u64;
+        for m in 1..=k {
+            let mut zeta = Stark::ZETA.mod_pow(m * k);
             for j in 0..=ArithmeticDomain::LOG2_MAX_LEN {
-                assert!(!zeta.is_one(), "(ζ^{i})^(2^{j}) must not be 1");
+                assert!(!zeta.is_one(), "(ζ^({m}·{k}))^(2^{j}) must not be 1");
                 zeta = zeta.square();
             }
         }
