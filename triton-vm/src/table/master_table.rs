@@ -427,6 +427,19 @@ where
 
     fn num_trace_randomizers(&self) -> usize;
 
+    /// The number of trace randomizers for the column of the given index.
+    ///
+    /// Almost every column needs [`Self::num_trace_randomizers`] of them, which
+    /// is enough (with margin 1 -- reserved for the Merkle trees) to hide all
+    /// revealed rows. The batch randomizer column is the exception: it must be
+    /// uniform over *all* polynomials of degree less than the length of the
+    /// randomized trace domain, for which it needs as many randomizers as the
+    /// trace domain is long. See the specification's chapter on Zero-Knowledge,
+    /// section “Batch-Randomizer”.
+    fn num_trace_randomizers_for_column(&self, _idx: usize) -> usize {
+        self.num_trace_randomizers()
+    }
+
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
     /// in the tree.
     fn merkle_tree(&self) -> MerkleTree {
