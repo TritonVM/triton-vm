@@ -1037,16 +1037,119 @@ mod tests {
         let mut proof_stream = ProofStream::new();
         fri.prove(&codeword, &mut proof_stream).unwrap();
 
-        let mut proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let honest_proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let mut proof_stream = honest_proof_stream.clone();
         proof_stream.items.iter_mut().for_each(|item| {
             if let ProofItem::FriPolynomial(polynomial) = item {
                 *polynomial = incorrect_polynomial.clone();
             }
         });
 
+        // The last round polynomial is part of the Fiat-Shamir transcript. It
+        // is absorbed before the collinearity check indices are sampled, but
+        // after the folding challenges. Tampering with the polynomial
+        // therefore leaves the folding challenges alone but makes the verifier
+        // sample different indices than the prover used. The dequeued leafs
+        // are authenticated against the wrong positions.
+        //
+        // The discrepancy is not guaranteed to be noticed. It is possible that
+        // the new indices happen to have the same leafs (for instance, if the
+        // codeword is constant) and an identical authentication structure.
+        //
+        // In such cases, the verification fails elsewhere. But we do not care
+        // about those cases, so the following logic filters them out.
+        //
+        // To verify that the verifier really still does reject in that very
+        // unlikely regime, see the next test,
+        // [`incorrect_last_round_polynomial_of_constant_codeword_fails_low_degree_test`].
+        let honest_indices = first_round_collinearity_check_indices(&fri, honest_proof_stream);
+        let tampered_indices = first_round_collinearity_check_indices(&fri, proof_stream.clone());
+        let authentication_can_notice = honest_indices
+            .iter()
+            .zip_eq(&tampered_indices)
+            .any(|(&honest, &tampered)| codeword[honest] != codeword[tampered]);
+        if !authentication_can_notice {
+            return Ok(());
+        }
+
         let verdict = fri.verify(&mut proof_stream);
         let_assert!(Err(err) = verdict);
         assert!(let FriValidationError::BadMerkleAuthenticationPath = err);
+    }
+
+    /// The indices the verifier samples for the first round's collinearity
+    /// checks, given the (possibly tampered-with) proof stream.
+    fn first_round_collinearity_check_indices(
+        fri: &Fri,
+        mut proof_stream: ProofStream,
+    ) -> Vec<usize> {
+        let mut verifier = fri.verifier(&mut proof_stream);
+        verifier.initialize().unwrap();
+        verifier.sample_first_round_collinearity_check_indices();
+        verifier.first_round_collinearity_check_indices
+    }
+
+    /// The complement of
+    /// [`incorrect_last_round_polynomial_results_in_verification_failure`]:
+    /// the one regime in which Merkle authentication cannot notice that the
+    /// sampled indices are wrong. In this case, the verifier has to catch the
+    /// incorrect polynomial instead.
+    ///
+    /// Both of the following must hold.
+    ///
+    /// 1. Every leaf of the first round's Merkle tree is the same digest, so
+    ///    that revealing the "wrong" leafs goes unnoticed. In other words, the
+    ///    codeword is constant.
+    /// 2. The honest and the re-sampled indices have the same *set*. The
+    ///    authentication structures will then be identical. Note that the lists
+    ///    `[0, 0, 1]` and `[0, 1, 1]` are not permutations but both correspond
+    ///    to the same set, {0, 1}, and thus generate the same authentication
+    ///    structure.
+    ///
+    /// To generate suitable index lists, the domain below is chosen to be as
+    /// short as it can be (2), and the number of collinearity checks is chosen
+    /// to be large enough to guarantee set equality – except with probability
+    /// 2^(-56).
+    #[macro_rules_attr::apply(test)]
+    fn incorrect_last_round_polynomial_of_constant_codeword_fails_low_degree_test() {
+        let domain = ArithmeticDomain::of_length(2).unwrap();
+        let fri = Fri::new(domain, 2, 57).unwrap();
+        let incorrect_polynomial = Polynomial::new(vec![xfe!([1, 2, 3])]);
+        assert_eq!(
+            fri.last_round_max_degree() as isize,
+            incorrect_polynomial.degree()
+        );
+
+        let constant_polynomial = Polynomial::new(vec![xfe!([42, 43, 44])]);
+        let codeword = fri.domain.evaluate(&constant_polynomial);
+        assert!(codeword.iter().all_equal());
+
+        let mut proof_stream = ProofStream::new();
+        fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        let honest_proof_stream = prepare_proof_stream_for_verification(proof_stream);
+        let mut proof_stream = honest_proof_stream.clone();
+        proof_stream.items.iter_mut().for_each(|item| {
+            if let ProofItem::FriPolynomial(polynomial) = item {
+                *polynomial = incorrect_polynomial.clone();
+            }
+        });
+
+        let index_set = |proof_stream| {
+            first_round_collinearity_check_indices(&fri, proof_stream)
+                .into_iter()
+                .sorted()
+                .dedup()
+                .collect_vec()
+        };
+        assert_eq!(
+            index_set(honest_proof_stream),
+            index_set(proof_stream.clone())
+        );
+
+        let verdict = fri.verify(&mut proof_stream);
+        let_assert!(Err(err) = verdict);
+        assert!(let FriValidationError::LastRoundPolynomialEvaluationMismatch = err);
     }
 
     #[macro_rules_attr::apply(proptest)]
