@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::ops::AddAssign;
 use std::ops::Mul;
+use std::ops::RangeInclusive;
 
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
@@ -596,24 +597,11 @@ impl Prover {
         );
         profiler!(stop "FRI");
 
-        // For Zero-Knowledge, the out-of-domain row must not conflict with the
-        // revealed in-domain rows. Note that this conflict only happens with
-        // negligible probability.
-        if let Some(ood_point_to_the_num_segments) = out_of_domain_point_curr_row
-            .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32)
-            .unlift()
-        {
-            let ood_point_times_zeta_to_the_num_segments = ood_point_to_the_num_segments
-                * Stark::ZETA.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
-            let in_domain_indeterminates = revealed_current_row_indices
-                .par_iter()
-                .map(|&i| domains.fri.value(u32::try_from(i).unwrap()))
-                .collect::<HashSet<_>>();
-            if in_domain_indeterminates.contains(&ood_point_to_the_num_segments)
-                || in_domain_indeterminates.contains(&ood_point_times_zeta_to_the_num_segments)
-            {
-                return Err(ProvingError::ZeroKnowledgeViolation);
-            }
+        let in_domain_points = revealed_current_row_indices
+            .iter()
+            .map(|&i| domains.fri.value(u32::try_from(i).unwrap()));
+        if Self::zero_knowledge_is_violated(out_of_domain_point_curr_row, in_domain_points) {
+            return Err(ProvingError::ZeroKnowledgeViolation);
         }
 
         profiler!(start "open trace leafs");
@@ -1312,6 +1300,49 @@ impl Prover {
 
     /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value
     /// form, _i.e._, to a codeword.
+    /// Whether the out-of-domain rows of the randomized quotient table conflict
+    /// with the rows revealed at the given in-domain points.
+    ///
+    /// Unrolling the definition of the randomized quotient segments turns the
+    /// out-of-domain rows into evaluations of the last segment in
+    /// `{ζ^(m·k)·α^k for m in 1..=k}`, and the in-domain rows into evaluations
+    /// in `{ζ^(m·k)·x for m in 0..=k}` for every revealed in-domain point `x`.
+    /// Zero-Knowledge requires those two sets to be disjoint. See the
+    /// specification's chapter on Zero-Knowledge, section “Quotient Table
+    /// Randomization”.
+    ///
+    /// Equivalently, the two sets conflict exactly if `α^k == ζ^(Δ·k)·x` for
+    /// some revealed `x` and some `-k <= Δ < k`.
+    ///
+    /// Note that a conflict only happens with negligible probability.
+    fn zero_knowledge_is_violated(
+        out_of_domain_point_curr_row: XFieldElement,
+        in_domain_points: impl IntoIterator<Item = BFieldElement>,
+    ) -> bool {
+        // Since ζ lives in the base field, no conflict is possible unless α^k
+        // does, too.
+        let Some(ood_point_to_the_num_segments) = out_of_domain_point_curr_row
+            .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32)
+            .unlift()
+        else {
+            return false;
+        };
+
+        let num_segments = NUM_QUOTIENT_SEGMENTS as u32;
+        let zeta_to_the_num_segments = Stark::ZETA.mod_pow_u32(num_segments);
+        let scaled_by_powers_of_zeta_to_the_k =
+            |point: BFieldElement, exponents: RangeInclusive<u32>| {
+                exponents.map(move |m| point * zeta_to_the_num_segments.mod_pow_u32(m))
+            };
+
+        let in_domain_indeterminates = in_domain_points
+            .into_iter()
+            .flat_map(|x| scaled_by_powers_of_zeta_to_the_k(x, 0..=num_segments))
+            .collect::<HashSet<_>>();
+        scaled_by_powers_of_zeta_to_the_k(ood_point_to_the_num_segments, 1..=num_segments)
+            .any(|point| in_domain_indeterminates.contains(&point))
+    }
+
     fn deep_codeword(
         codeword: &[XFieldElement],
         domain: ArithmeticDomain,
@@ -2119,6 +2150,47 @@ pub(crate) mod tests {
     fn zeta_to_the_k_has_sufficiently_large_multiplicative_order() {
         let k = NUM_QUOTIENT_SEGMENTS as u64;
         assert!((0..=k).map(|m| Stark::ZETA.mod_pow(m * k)).all_unique());
+    }
+
+    /// The out-of-domain and in-domain indeterminates of the randomized
+    /// quotient table conflict exactly if `α^k == ζ^(Δ·k)·x` for a revealed
+    /// in-domain point `x` and some `-k <= Δ < k`. Sweep Δ across that range
+    /// and just past both of its ends.
+    #[macro_rules_attr::apply(test)]
+    fn zero_knowledge_is_violated_exactly_for_conflicting_out_of_domain_points() {
+        let k = NUM_QUOTIENT_SEGMENTS as i64;
+        let zeta_to_the_k = Stark::ZETA.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+
+        // α is in the base field, guaranteeing that α^k is, too.
+        let out_of_domain_point = xfe!(1337);
+        let ood_point_to_the_k = out_of_domain_point
+            .mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32)
+            .unlift()
+            .unwrap();
+
+        // Conflict iff α^k == ζ^(Δ·k)·x, i.e., iff x == ζ^(-Δ·k)·α^k.
+        let conflicting_in_domain_point = |delta: i64| {
+            let power_of_zeta_to_the_k = zeta_to_the_k.mod_pow(delta.unsigned_abs());
+            match delta >= 0 {
+                true => ood_point_to_the_k / power_of_zeta_to_the_k,
+                false => ood_point_to_the_k * power_of_zeta_to_the_k,
+            }
+        };
+
+        for delta in -k - 2..k + 2 {
+            let expected_violation = (-k..k).contains(&delta);
+            let in_domain_point = conflicting_in_domain_point(delta);
+            let is_violated =
+                Prover::zero_knowledge_is_violated(out_of_domain_point, [in_domain_point]);
+            assert_eq!(expected_violation, is_violated, "for Δ = {delta}");
+        }
+
+        // An out-of-domain point without a base field α^k can never conflict.
+        let out_of_domain_point = xfe!([1, 2, 3]);
+        assert!(!Prover::zero_knowledge_is_violated(
+            out_of_domain_point,
+            [ood_point_to_the_k]
+        ));
     }
 
     /// none of the powers ζ^(m·k) are an element of the field's 2-adic subgroups
