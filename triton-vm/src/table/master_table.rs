@@ -417,7 +417,7 @@ where
         assert!(idx < Self::NUM_COLUMNS);
 
         let mut rng = StdRng::from_seed(offset_rng_seed(self.trace_randomizer_seed(), idx));
-        let coefficients = (0..self.num_trace_randomizers())
+        let coefficients = (0..self.num_trace_randomizers_for_column(idx))
             .map(|_| rng.random())
             .collect();
         Polynomial::new(coefficients)
@@ -869,6 +869,14 @@ impl MasterTable for MasterAuxTable {
 
     fn num_trace_randomizers(&self) -> usize {
         self.num_trace_randomizers
+    }
+
+    fn num_trace_randomizers_for_column(&self, idx: usize) -> usize {
+        if idx >= Self::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS {
+            self.domains.trace.len()
+        } else {
+            self.num_trace_randomizers
+        }
     }
 }
 
