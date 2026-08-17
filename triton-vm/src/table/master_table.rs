@@ -2483,4 +2483,47 @@ mod tests {
             }
         }
     }
+
+    /// The batch randomizer column must be uniform of degree less than 2 N
+    /// where N is the length of the trace domain.
+    ///
+    /// Writing the column's randomized interpolant as
+    /// `b(X) = a(X) + Z(X)·r(X)`, that constraint requires N uniform
+    /// coefficients in both `a` and `r`.
+    ///
+    ///  - `r` is the column's trace randomizer, of which this column needs N
+    ///    instead of the h that suffice for every other column.
+    ///  - `a` interpolates the column's trace-domain values, which must be
+    ///    random rather than zero.
+    ///
+    /// Neither half alone is enough, and a proof in which one of them regresses
+    /// still verifies. See the specification's chapter on Zero-Knowledge,
+    /// section “Batch-Randomizer”.
+    #[macro_rules_attr::apply(test)]
+    fn batch_randomizer_column_is_uniform_over_the_randomized_trace_domain() {
+        let aux_table = TestableProgram::new(triton_program!(halt))
+            .generate_proof_artifacts()
+            .master_aux_table;
+
+        let trace_len = aux_table.domains().trace.len();
+        let batch_randomizer = MasterAuxTable::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
+
+        // `r` has N coefficients, unlike every other column, which has h
+        assert_eq!(
+            trace_len,
+            aux_table.num_trace_randomizers_for_column(batch_randomizer)
+        );
+        assert_eq!(
+            aux_table.num_trace_randomizers(),
+            aux_table.num_trace_randomizers_for_column(batch_randomizer - 1)
+        );
+        let full_degree = isize::try_from(trace_len).unwrap() - 1;
+        let r = aux_table.trace_randomizer_for_column(batch_randomizer);
+        assert_eq!(full_degree, r.degree());
+
+        // `a` has N coefficients, too
+        let column = aux_table.trace_table().column(batch_randomizer).to_vec();
+        let a = aux_table.domains().trace.interpolate(&column);
+        assert_eq!(full_degree, a.degree());
+    }
 }
