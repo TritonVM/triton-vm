@@ -388,7 +388,7 @@ impl Prover {
             randomized_quotient_segments_rows
                 .map(hash_row)
                 .collect::<Vec<_>>();
-        profiler!(stop "hash rows of quotient segments");
+        profiler!(stop "hash rows of randomized quotient segments");
         profiler!(start "Merkle tree" ("hash"));
         let quot_merkle_tree =
             MerkleTree::par_new(&fri_domain_randomized_quotient_segment_codewords_digests)?;
