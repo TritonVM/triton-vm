@@ -177,11 +177,11 @@
 #[cfg(not(any(target_pointer_width = "32", target_pointer_width = "64")))]
 compile_error!("Triton VM only supports target pointer widths 32 and 64");
 
-pub use air;
-pub use isa;
-pub use twenty_first;
+pub use ::air;
+pub use ::isa;
+pub use ::twenty_first;
 
-use isa::program::Program;
+use ::isa::program::Program;
 
 use crate::error::ProvingError;
 use crate::prelude::*;

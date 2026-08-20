@@ -98,7 +98,9 @@ web-time = "1.1"
 let_underscore_drop = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage,coverage_nightly)',
+] }
 
 [workspace.lints.clippy]
 cast_lossless = "warn"
@@ -114,7 +116,7 @@ explicit_iter_loop = "warn"
 filter_map_next = "warn"
 flat_map_option = "warn"
 fn_params_excessive_bools = "warn"
-from_iter_instead_of_collect = "warn"
+#from_iter_instead_of_collect = "warn"
 if_not_else = "warn"
 implicit_clone = "warn"
 inconsistent_struct_constructor = "warn"
@@ -149,7 +151,7 @@ should_panic_without_expect = "warn"
 stable_sort_primitive = "warn"
 struct_field_names = "warn"
 trivially_copy_pass_by_ref = "warn"
-unchecked_duration_subtraction = "warn"
+unchecked_time_subtraction = "warn"
 uninlined_format_args = "warn"
 unnecessary_box_returns = "warn"
 unnecessary_join = "warn"

@@ -70,7 +70,7 @@ pub const NUM_RANDOMIZED_QUOTIENT_SEGMENTS: usize = NUM_QUOTIENT_SEGMENTS + 1;
 /// used in the [`STARK`](Stark).
 ///
 /// Integral for achieving zero-knowledge in the
-/// [low-degree test](LowDegreeTest).
+/// [low-degree test](crate::fri::Fri).
 pub const NUM_BATCH_RANDOMIZERS: usize = 1;
 
 /// The maximum number of rows an AIR constraint can access.
@@ -1803,8 +1803,8 @@ impl Stark {
     /// Create a new STARK instance.
     ///
     /// The defining parameters are the [`security_level`](Self::security_level)
-    /// and the log₂ of the [low-degree test's](LowDegreeTest)
-    /// [expansion factor](Self::log2_ldt_expansion_factor).
+    /// and the log₂ of the [low-degree test's](crate::fri::Fri)
+    /// [expansion factor](Self::fri_expansion_factor).
     ///
     /// # Panics
     ///

@@ -107,7 +107,7 @@ impl OpStack {
     }
 
     pub fn stop_recording_underflow_io_sequence(&mut self) -> Vec<UnderflowIO> {
-        self.underflow_io_sequence.drain(..).collect()
+        std::mem::take(&mut self.underflow_io_sequence)
     }
 
     pub fn push_extension_field_element(&mut self, element: XFieldElement) {

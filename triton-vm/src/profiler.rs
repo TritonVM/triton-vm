@@ -372,7 +372,7 @@ impl VMPerformanceProfiler {
         for task in self.profile.values() {
             if let Some(ref category) = task.category {
                 category_times
-                    .entry(category.to_string())
+                    .entry(category.clone())
                     .or_insert(Duration::ZERO)
                     .add_assign(task.total_duration);
             }
