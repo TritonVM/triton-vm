@@ -3,6 +3,28 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [8.0.0](https://github.com/TritonVM/triton-vm/compare/v7.0.0..v8.0.0) - 2026-08-24
+
+### 🐛 Bug Fixes
+
+- Don't panic on malformed proof ([439eabf1](https://github.com/TritonVM/triton-vm/commit/439eabf1))
+- *(FRI)* Don't panic on codeword of wrong length ([847e52eb](https://github.com/TritonVM/triton-vm/commit/847e52eb))
+- Reject proofs with superfluous items ([26b70864](https://github.com/TritonVM/triton-vm/commit/26b70864))
+- Reject declared padded heights of 2^30 or more ([cc1fd94b](https://github.com/TritonVM/triton-vm/commit/cc1fd94b))
+- (!) Make Hash Table and Program Table AIR sound ([b6420ebc](https://github.com/TritonVM/triton-vm/commit/b6420ebc))
+- (!) Randomize quotient table ([916dfd73](https://github.com/TritonVM/triton-vm/commit/916dfd73))
+- *(STARK)* Give the batch randomizer full degree ([9dcf9ee3](https://github.com/TritonVM/triton-vm/commit/9dcf9ee3))
+
+### 📚 Documentation
+
+- Fix xb_dot_step specification ([29759221](https://github.com/TritonVM/triton-vm/commit/29759221))
+- Fix table padding specification ([09a33e64](https://github.com/TritonVM/triton-vm/commit/09a33e64))
+- Fix Zero-Knowledge chapter ([a143c2aa](https://github.com/TritonVM/triton-vm/commit/a143c2aa))
+
+### ⚙️ Miscellaneous
+
+- (!) Bump proof version ([aad1b974](https://github.com/TritonVM/triton-vm/commit/aad1b974))
+
 ## [7.0.0](https://github.com/TritonVM/triton-vm/compare/v6.0.0..v7.0.0) - 2026-06-17
 
 ### 🐛 Bug Fixes
