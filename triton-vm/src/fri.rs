@@ -820,11 +820,11 @@ mod tests {
 
     #[macro_rules_attr::apply(proptest)]
     fn expansion_factor_not_a_power_of_two_is_rejected(
-        #[strategy(2_usize..(1 << 32))]
+        #[strategy(2_usize..(1 << ArithmeticDomain::LOG2_MAX_LEN))]
         #[filter(!#expansion_factor.is_power_of_two())]
         expansion_factor: usize,
     ) {
-        let largest_supported_domain_size = 1 << 32;
+        let largest_supported_domain_size = 1 << ArithmeticDomain::LOG2_MAX_LEN;
         let domain = ArithmeticDomain::of_length(largest_supported_domain_size).unwrap();
         let num_collinearity_checks = 1;
         let err = Fri::new(domain, expansion_factor, num_collinearity_checks).unwrap_err();
