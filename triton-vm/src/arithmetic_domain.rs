@@ -5,6 +5,7 @@ use std::ops::MulAssign;
 use num_traits::ConstOne;
 use num_traits::Zero;
 use rayon::prelude::*;
+use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
@@ -274,6 +275,54 @@ impl ArithmeticDomain {
         debug_assert_eq!(self.length, values.len()); // required by `fast_coset_interpolate`
 
         Polynomial::fast_coset_interpolate(self.offset, values)
+    }
+
+    /// The [interpolant](Self::interpolate) of the given values plus the
+    /// product of this domain's [zerofier](Self::zerofier) and the given
+    /// randomizer. That is, a polynomial that agrees with the interpolant on
+    /// this domain, but is randomized everywhere else.
+    ///
+    /// Equivalent to `self.interpolate(values) +
+    /// self.mul_zerofier_with(randomizer)`, but computed in a single buffer:
+    /// the zerofier is `x^n - offset^n` for the domain's length `n`, so its
+    /// product with the randomizer is the randomizer's coefficients shifted
+    /// up by `n`, minus the randomizer scaled by `offset^n`. Avoiding the
+    /// intermediate allocations matters when many long columns are
+    /// interpolated in parallel: the page faults dominate the runtime.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of values does not equal the domain's length.
+    pub fn randomized_interpolant<FF>(
+        &self,
+        values: &[FF],
+        randomizer: &Polynomial<FF>,
+    ) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        assert_eq!(self.length, values.len());
+        let randomizer = randomizer.coefficients();
+
+        let mut coefficients =
+            twenty_first::memory::vec_with_capacity(self.length + randomizer.len());
+        coefficients.extend_from_slice(values);
+        intt(&mut coefficients);
+        let offset_inverse = self.offset.inverse();
+        let mut power_of_offset_inverse = BFieldElement::ONE;
+        for coefficient in &mut coefficients {
+            *coefficient *= power_of_offset_inverse;
+            power_of_offset_inverse *= offset_inverse;
+        }
+
+        // + x^n · randomizer - offset^n · randomizer
+        coefficients.extend_from_slice(randomizer);
+        let offset_to_the_n = self.offset.mod_pow(self.length as u64);
+        for (coefficient, &r) in coefficients.iter_mut().zip(randomizer) {
+            *coefficient -= r * offset_to_the_n;
+        }
+
+        Polynomial::new(coefficients)
     }
 
     /// Move a codeword across domains.
@@ -573,6 +622,17 @@ pub(crate) mod tests {
     fn zerofier_is_actually_zerofier(domain: ArithmeticDomain) {
         let actual_zerofier = Polynomial::zerofier(&domain.values());
         prop_assert_eq!(actual_zerofier, domain.zerofier());
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn randomized_interpolant_is_interpolant_plus_randomized_zerofier(
+        domain: ArithmeticDomain,
+        #[strategy(vec(arb(), #domain.length))] values: Vec<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] randomizer: Polynomial<'static, XFieldElement>,
+    ) {
+        let expected = domain.interpolate(&values) + domain.mul_zerofier_with(randomizer.clone());
+        let actual = domain.randomized_interpolant(&values, &randomizer);
+        prop_assert_eq!(expected, actual);
     }
 
     #[macro_rules_attr::apply(proptest)]

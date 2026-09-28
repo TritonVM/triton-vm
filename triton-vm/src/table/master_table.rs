@@ -395,10 +395,9 @@ where
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
         let trace_domain = self.domains().trace;
-        let column_interpolant = trace_domain.interpolate(column_codeword.as_slice().unwrap());
-        let randomizer = trace_domain.mul_zerofier_with(self.trace_randomizer_for_column(idx));
+        let randomizer = self.trace_randomizer_for_column(idx);
 
-        column_interpolant + randomizer
+        trace_domain.randomized_interpolant(column_codeword.as_slice().unwrap(), &randomizer)
     }
 
     /// Uniquely enables the revelation of up to `num_trace_randomizers` entries
