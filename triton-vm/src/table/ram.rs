@@ -16,7 +16,6 @@ use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::One;
-use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
 use strum::EnumCount;
@@ -30,6 +29,8 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::par_fill_column;
+use crate::ndarray_helper::par_sort_rows_into;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -71,20 +72,50 @@ impl TraceTable for RamTable {
         _: Self::FillParam,
     ) -> Self::FillReturnInfo {
         let mut ram_table = ram_table.slice_mut(s![0..aet.height_of_table(TableId::Ram), ..]);
-        let trace_iter = aet.ram_trace.rows().into_iter();
 
-        let sorted_rows =
-            trace_iter.sorted_by(|row_0, row_1| compare_rows(row_0.view(), row_1.view()));
-        for (row_index, row) in sorted_rows.enumerate() {
-            ram_table.row_mut(row_index).assign(&row);
+        profiler!(start "ram: sort");
+        let sort_keys = par_sort_rows_into(
+            ram_table.view_mut(),
+            aet.ram_trace.view(),
+            MainColumn::RamPointer.main_index(),
+            MainColumn::CLK.main_index(),
+        );
+        debug_assert!(
+            ram_table
+                .rows()
+                .into_iter()
+                .tuple_windows()
+                .all(|(row_0, row_1)| compare_rows(row_0, row_1) != Ordering::Greater)
+        );
+        profiler!(stop "ram: sort");
+
+        // Every change of the RAM pointer starts a new group of rows. The
+        // groups' pointers are the unique RAM pointers, in ascending order.
+        profiler!(start "ram: unique");
+        let mut unique_ram_pointers = vec![];
+        let mut group_of_row = Vec::with_capacity(sort_keys.len());
+        for (row, &[ram_pointer, _]) in sort_keys.iter().enumerate() {
+            if row == 0 || ram_pointer != sort_keys[row - 1][0] {
+                unique_ram_pointers.push(BFieldElement::new(ram_pointer));
+            }
+            group_of_row.push(unique_ram_pointers.len() - 1);
         }
-
-        let all_ram_pointers = ram_table.column(MainColumn::RamPointer.main_index());
-        let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
+        profiler!(stop "ram: unique");
+        profiler!(start "ram: bezout");
         let (bezout_0, bezout_1) =
             bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
+        profiler!(stop "ram: bezout");
 
-        make_ram_table_consistent(&mut ram_table, bezout_0, bezout_1)
+        profiler!(start "ram: consistent");
+        let clock_jump_differences = make_ram_table_consistent(
+            &mut ram_table,
+            &sort_keys,
+            &group_of_row,
+            &bezout_0,
+            &bezout_1,
+        );
+        profiler!(stop "ram: consistent");
+        clock_jump_differences
     }
 
     fn pad(mut main_table: ArrayViewMut2<BFieldElement>, table_len: usize) {
@@ -189,6 +220,11 @@ pub fn bezout_coefficient_polynomials_coefficients(
     // `unique_roots`. Finally, the other Bézout coefficient `a` is determined
     // by `a = (1 - fd·b) / rp`. In total, this allows computing the Bézout
     // coefficients in O(n·(log n)^2) time.
+    //
+    // Interpolating `b` from its evaluations requires the Lagrange weights
+    // `b(r) / fd(r)`, which are `1 / fd(r)^2` here. Since the evaluations of
+    // `fd` are already known, interpolating from the weights directly avoids
+    // evaluating `fd` in the roots a second time.
 
     debug_assert!(unique_roots.iter().all_unique());
     // The zerofier tree of the roots is shared between computing the
@@ -198,7 +234,11 @@ pub fn bezout_coefficient_polynomials_coefficients(
     let fd = rp.formal_derivative();
     let fd_in_roots = fd.par_divide_and_conquer_batch_evaluate(&zerofier_tree);
     let b_in_roots = BFieldElement::par_batch_inversion(fd_in_roots);
-    let b = Polynomial::par_interpolate_with_zerofier_tree(&zerofier_tree, &b_in_roots);
+    let lagrange_weights = b_in_roots.par_iter().map(|&b| b * b).collect::<Vec<_>>();
+    let b = Polynomial::par_interpolate_with_zerofier_tree_and_weights(
+        &zerofier_tree,
+        &lagrange_weights,
+    );
     let one_minus_fd_b = Polynomial::one() - fd.par_fast_multiply(&b);
     let a = one_minus_fd_b.par_clean_divide(rp);
 
@@ -210,52 +250,85 @@ pub fn bezout_coefficient_polynomials_coefficients(
 }
 
 /// - Set inverse of RAM pointer difference
-/// - Fill in the Bézout coefficients if the RAM pointer changes between two
-///   consecutive rows
+/// - Fill in the Bézout coefficients: the rows of the `k`-th group of equal
+///   RAM pointers (counting from 0) hold the coefficients of degree
+///   `num_groups - 1 - k`
 /// - Collect and return all clock jump differences
+///
+/// The `sort_keys` are the RAM pointer and clock of every row, and
+/// `group_of_row` is the index of every row's group. See also
+/// [`par_sort_rows_into`].
 fn make_ram_table_consistent(
     ram_table: &mut ArrayViewMut2<BFieldElement>,
-    mut bezout_coefficient_polynomial_coefficients_0: Vec<BFieldElement>,
-    mut bezout_coefficient_polynomial_coefficients_1: Vec<BFieldElement>,
+    sort_keys: &[[u64; 2]],
+    group_of_row: &[usize],
+    bezout_coefficient_polynomial_coefficients_0: &[BFieldElement],
+    bezout_coefficient_polynomial_coefficients_1: &[BFieldElement],
 ) -> Vec<BFieldElement> {
-    if ram_table.nrows() == 0 {
-        assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
-        assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
+    let num_rows = sort_keys.len();
+    let num_groups = bezout_coefficient_polynomial_coefficients_0.len();
+    assert_eq!(
+        num_groups,
+        bezout_coefficient_polynomial_coefficients_1.len()
+    );
+    assert_eq!(num_rows, group_of_row.len());
+    if num_rows == 0 {
+        assert_eq!(0, num_groups);
         return vec![];
     }
+    assert_eq!(num_groups, group_of_row[num_rows - 1] + 1);
 
-    let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
-    let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
-    ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient0.main_index()] =
-        current_bcpc_0;
-    ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient1.main_index()] =
-        current_bcpc_1;
+    let ram_pointer = |row: usize| BFieldElement::new(sort_keys[row][0]);
+    let clk = |row: usize| BFieldElement::new(sort_keys[row][1]);
+    let is_last_of_group =
+        |row: usize| row + 1 == num_rows || group_of_row[row] != group_of_row[row + 1];
 
-    let mut clock_jump_differences = vec![];
-    for row_idx in 0..ram_table.nrows() - 1 {
-        let (mut curr_row, mut next_row) =
-            ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+    // The RAM pointer difference to the next row is zero within a group;
+    // those differences are excluded from the batch inversion.
+    let ramp_differences = (0..num_rows)
+        .into_par_iter()
+        .map(|row| {
+            if is_last_of_group(row) {
+                BFieldElement::ONE
+            } else {
+                ram_pointer(row + 1) - ram_pointer(row)
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut ramp_difference_inverses = BFieldElement::par_batch_inversion(ramp_differences);
+    ramp_difference_inverses
+        .par_iter_mut()
+        .enumerate()
+        .filter(|(row, _)| is_last_of_group(*row))
+        .for_each(|(_, inverse)| *inverse = BFieldElement::ZERO);
+    par_fill_column(
+        ram_table,
+        MainColumn::InverseOfRampDifference.main_index(),
+        &ramp_difference_inverses,
+    );
 
-        let ramp_diff = next_row[MainColumn::RamPointer.main_index()]
-            - curr_row[MainColumn::RamPointer.main_index()];
-        let clk_diff =
-            next_row[MainColumn::CLK.main_index()] - curr_row[MainColumn::CLK.main_index()];
-
-        if ramp_diff.is_zero() {
-            clock_jump_differences.push(clk_diff);
-        } else {
-            current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
-            current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
-        }
-
-        curr_row[MainColumn::InverseOfRampDifference.main_index()] = ramp_diff.inverse_or_zero();
-        next_row[MainColumn::BezoutCoefficientPolynomialCoefficient0.main_index()] = current_bcpc_0;
-        next_row[MainColumn::BezoutCoefficientPolynomialCoefficient1.main_index()] = current_bcpc_1;
+    for (column, coefficients) in [
+        (
+            MainColumn::BezoutCoefficientPolynomialCoefficient0,
+            bezout_coefficient_polynomial_coefficients_0,
+        ),
+        (
+            MainColumn::BezoutCoefficientPolynomialCoefficient1,
+            bezout_coefficient_polynomial_coefficients_1,
+        ),
+    ] {
+        let column_values = group_of_row
+            .par_iter()
+            .map(|&group| coefficients[num_groups - 1 - group])
+            .collect::<Vec<_>>();
+        par_fill_column(ram_table, column.main_index(), &column_values);
     }
 
-    assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
-    assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
-    clock_jump_differences
+    (0..num_rows - 1)
+        .into_par_iter()
+        .filter(|&row| !is_last_of_group(row))
+        .map(|row| clk(row + 1) - clk(row))
+        .collect()
 }
 
 fn auxiliary_column_running_product_of_ramp_and_formal_derivative(
