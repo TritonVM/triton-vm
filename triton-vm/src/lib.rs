@@ -202,11 +202,15 @@ static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemall
 /// many short-lived, large buffers of the prover; measured on a 96-core
 /// machine, this makes small proofs about 10% and large proofs about 15%
 /// faster. The background thread purges unused memory asynchronously
-/// instead of on the allocating threads. The environment variable
-/// `_RJEM_MALLOC_CONF` overrides this.
+/// instead of on the allocating threads. Capping the number of arenas
+/// bounds the memory that idle arenas hold on machines with many threads,
+/// where jemalloc would otherwise create four arenas per CPU; with the
+/// huge pages, each arena holds at least 2 MiB. Machines with few threads
+/// are unaffected, since their default is below the cap. The environment
+/// variable `_RJEM_MALLOC_CONF` overrides this.
 #[cfg(all(feature = "jemalloc", target_os = "linux"))]
 #[unsafe(export_name = "_rjem_malloc_conf")]
-static JEMALLOC_CONF: &[u8] = b"thp:always,metadata_thp:always,background_thread:true\0";
+static JEMALLOC_CONF: &[u8] = b"thp:always,metadata_thp:always,background_thread:true,narenas:32\0";
 
 pub mod aet;
 pub mod arithmetic_domain;
