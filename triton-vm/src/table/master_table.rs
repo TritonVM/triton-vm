@@ -530,10 +530,12 @@ where
                         buffer[[row_idx, column_idx]] = element;
                     }
                 }
-                for (digest, row) in digests.iter_mut().zip(buffer.axis_iter(ROW_AXIS)) {
-                    let row = Self::Field::bfe_slice(row.to_slice().unwrap());
-                    *digest = Tip5::hash_varlen(row);
-                }
+                let rows = buffer
+                    .rows()
+                    .into_iter()
+                    .map(|row| Self::Field::bfe_slice(row.to_slice().unwrap()))
+                    .collect_vec();
+                digests.copy_from_slice(&Tip5::hash_varlen_many(&rows));
             });
 
         digests
