@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::cmp::max;
+use std::sync::LazyLock;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
@@ -15,9 +16,12 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
+use num_traits::ConstOne;
+use num_traits::ConstZero;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
+use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -103,23 +107,47 @@ impl TraceTable for U32Table {
     type FillReturnInfo = ();
 
     fn fill(mut u32_table: ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace, _: ()) {
-        let mut next_section_start = 0;
-        for (&u32_table_entry, &multiplicity) in &aet.u32_entries {
-            let mut first_row = Array2::zeros([1, MainColumn::COUNT]);
-            first_row[[0, MainColumn::CopyFlag.main_index()]] = bfe!(1);
-            first_row[[0, MainColumn::Bits.main_index()]] = bfe!(0);
-            first_row[[0, MainColumn::BitsMinus33Inv.main_index()]] = bfe!(-33).inverse();
-            first_row[[0, MainColumn::CI.main_index()]] = u32_table_entry.instruction.opcode_b();
-            first_row[[0, MainColumn::LHS.main_index()]] = u32_table_entry.left_operand;
-            first_row[[0, MainColumn::RHS.main_index()]] = u32_table_entry.right_operand;
-            first_row[[0, MainColumn::LookupMultiplicity.main_index()]] = multiplicity.into();
-            let u32_section = u32_section_next_row(first_row);
+        // The sections are independent of each other: build them in parallel.
+        let u32_sections = aet
+            .u32_entries
+            .par_iter()
+            .map(|(&u32_table_entry, &multiplicity)| {
+                let mut first_row = Array2::zeros([1, MainColumn::COUNT]);
+                first_row[[0, MainColumn::CopyFlag.main_index()]] = bfe!(1);
+                first_row[[0, MainColumn::Bits.main_index()]] = bfe!(0);
+                first_row[[0, MainColumn::BitsMinus33Inv.main_index()]] = bits_minus_33_inverse(0);
+                first_row[[0, MainColumn::CI.main_index()]] =
+                    u32_table_entry.instruction.opcode_b();
+                first_row[[0, MainColumn::LHS.main_index()]] = u32_table_entry.left_operand;
+                first_row[[0, MainColumn::RHS.main_index()]] = u32_table_entry.right_operand;
+                first_row[[0, MainColumn::LookupMultiplicity.main_index()]] = multiplicity.into();
+                u32_section_next_row(first_row)
+            })
+            .collect::<Vec<_>>();
 
+        let mut next_section_start = 0;
+        for u32_section in u32_sections {
             let next_section_end = next_section_start + u32_section.nrows();
             u32_table
                 .slice_mut(s![next_section_start..next_section_end, ..])
                 .assign(&u32_section);
             next_section_start = next_section_end;
+        }
+
+        // The inverses-or-zero of the operands are computed for the whole
+        // table at once, using batch inversion.
+        let table_len = next_section_start;
+        for (operand, operand_inverse) in [
+            (MainColumn::LHS, MainColumn::LhsInv),
+            (MainColumn::RHS, MainColumn::RhsInv),
+        ] {
+            let operands = u32_table
+                .slice(s![..table_len, operand.main_index()])
+                .to_vec();
+            let inverses = par_batch_inverse_or_zero(operands);
+            u32_table
+                .slice_mut(s![..table_len, operand_inverse.main_index()])
+                .assign(&Array1::from(inverses));
         }
     }
 
@@ -190,6 +218,44 @@ impl TraceTable for U32Table {
     }
 }
 
+static TWO_INVERSE: LazyLock<BFieldElement> = LazyLock::new(|| bfe!(2).inverse());
+
+/// The inverses of `bits - 33` for all values of `bits` that can occur, i.e.,
+/// `0..=32`. Column `Bits` is incremented once per row of a section, and
+/// sections are at most 33 rows long.
+static BITS_MINUS_33_INVERSES: LazyLock<[BFieldElement; 33]> =
+    LazyLock::new(|| std::array::from_fn(|bits| (bfe!(bits as u64) - bfe!(33)).inverse()));
+
+fn bits_minus_33_inverse(bits: u64) -> BFieldElement {
+    match usize::try_from(bits)
+        .ok()
+        .and_then(|bits| BITS_MINUS_33_INVERSES.get(bits))
+    {
+        Some(&inverse) => inverse,
+        None => (bfe!(bits) - bfe!(33)).inverse(),
+    }
+}
+
+/// The inverse of every non-zero element, and zero for every zero element.
+fn par_batch_inverse_or_zero(elements: Vec<BFieldElement>) -> Vec<BFieldElement> {
+    let non_zero_elements = elements
+        .par_iter()
+        .map(|&x| if x.is_zero() { BFieldElement::ONE } else { x })
+        .collect();
+    let inverses = BFieldElement::par_batch_inversion(non_zero_elements);
+    elements
+        .into_par_iter()
+        .zip(inverses)
+        .map(|(x, inverse)| {
+            if x.is_zero() {
+                BFieldElement::ZERO
+            } else {
+                inverse
+            }
+        })
+        .collect()
+}
+
 fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElement> {
     let row_idx = section.nrows() - 1;
     let current_instruction: Instruction = section[[row_idx, MainColumn::CI.main_index()]]
@@ -220,11 +286,7 @@ fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElem
             section[[row_idx, MainColumn::Result.main_index()]] = bfe!(0);
         }
 
-        // The right hand side is guaranteed to be 0. However, if the current
-        // instruction is `pow`, then the left hand side might be non-zero.
-        let lhs_inv_or_0 = section[[row_idx, MainColumn::LHS.main_index()]].inverse_or_zero();
-        section[[row_idx, MainColumn::LhsInv.main_index()]] = lhs_inv_or_0;
-
+        // The inverses of the operands are filled in by `fill`, in batch.
         return section;
     }
 
@@ -234,21 +296,18 @@ fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElem
     next_row[MainColumn::CopyFlag.main_index()] = bfe!(0);
     next_row[MainColumn::Bits.main_index()] += bfe!(1);
     next_row[MainColumn::BitsMinus33Inv.main_index()] =
-        (next_row[MainColumn::Bits.main_index()] - bfe!(33)).inverse();
+        bits_minus_33_inverse(next_row[MainColumn::Bits.main_index()].value());
     next_row[MainColumn::LHS.main_index()] = match current_instruction == Instruction::Pow {
         true => section[[row_idx, MainColumn::LHS.main_index()]],
-        false => (section[[row_idx, MainColumn::LHS.main_index()]] - lhs_lsb) / bfe!(2),
+        false => (section[[row_idx, MainColumn::LHS.main_index()]] - lhs_lsb) * *TWO_INVERSE,
     };
     next_row[MainColumn::RHS.main_index()] =
-        (section[[row_idx, MainColumn::RHS.main_index()]] - rhs_lsb) / bfe!(2);
+        (section[[row_idx, MainColumn::RHS.main_index()]] - rhs_lsb) * *TWO_INVERSE;
     next_row[MainColumn::LookupMultiplicity.main_index()] = bfe!(0);
 
     section.push_row(next_row.view()).unwrap();
     section = u32_section_next_row(section);
     let (mut row, next_row) = section.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
-
-    row[MainColumn::LhsInv.main_index()] = row[MainColumn::LHS.main_index()].inverse_or_zero();
-    row[MainColumn::RhsInv.main_index()] = row[MainColumn::RHS.main_index()].inverse_or_zero();
 
     let next_row_result = next_row[MainColumn::Result.main_index()];
     row[MainColumn::Result.main_index()] = match current_instruction {
