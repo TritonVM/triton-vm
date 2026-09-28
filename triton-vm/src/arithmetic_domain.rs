@@ -1,9 +1,11 @@
+use std::mem::MaybeUninit;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::ConstOne;
 use num_traits::Zero;
 use rayon::prelude::*;
+use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -168,6 +170,47 @@ impl ArithmeticDomain {
         }
 
         values
+    }
+
+    /// Like [`evaluate`](Self::evaluate), but writing the codeword into the
+    /// given, possibly uninitialized memory instead of allocating a new
+    /// vector. On return, every element of `codeword` is initialized. Avoiding
+    /// the allocation matters when many large codewords are computed: fresh
+    /// allocations are served from fresh pages, and the page faults dominate
+    /// the runtime.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients of the polynomial exceeds the
+    /// [length](Self::len) of this domain, or if the length of `codeword`
+    /// does not equal it.
+    pub fn evaluate_into<FF>(&self, polynomial: &Polynomial<FF>, codeword: &mut [MaybeUninit<FF>])
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        let coefficients = polynomial.coefficients();
+        assert!(coefficients.len() <= self.length);
+        assert_eq!(self.length, codeword.len());
+
+        let (scaled_coefficients, padding) = codeword.split_at_mut(coefficients.len());
+        let mut power_of_offset = BFieldElement::ONE;
+        for (target, &coefficient) in scaled_coefficients.iter_mut().zip(coefficients) {
+            target.write(coefficient * power_of_offset);
+            power_of_offset *= self.offset;
+        }
+        for target in padding {
+            target.write(FF::zero());
+        }
+
+        // SAFETY:
+        // 1. Every element of `codeword` was written to above.
+        // 2. `MaybeUninit<FF>` has the same layout as `FF`.
+        // 3. The pointer and length are those of the exclusively borrowed
+        //    `codeword`, and the resulting slice does not outlive it.
+        let codeword = unsafe {
+            std::slice::from_raw_parts_mut(codeword.as_mut_ptr().cast::<FF>(), codeword.len())
+        };
+        ntt(codeword);
     }
 
     /// Like [`evaluate`](Self::evaluate), but using a parallel NTT. Prefer

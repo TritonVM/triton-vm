@@ -303,14 +303,15 @@ where
         profiler!(start "evaluation");
         Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
             .and(interpolation_polynomials.axis_iter(ROW_AXIS))
-            .par_for_each(|lde_column, interpolant| {
-                let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
-                Array1::from(lde_codeword).move_into_uninit(lde_column);
+            .par_for_each(|mut lde_column, interpolant| {
+                // The NTT runs in place, directly in the table's column: no
+                // temporary allocation, no copy.
+                let lde_column = lde_column.as_slice_mut().unwrap();
+                evaluation_domain.evaluate_into(&interpolant[()], lde_column);
             });
-        // SAFETY: Every column of the table was written to by
-        // `move_into_uninit`, which initializes every element of the column.
-        // The columns partition the table. Hence, every element is
-        // initialized.
+        // SAFETY: Every column of the table was written to by `evaluate_into`,
+        // which initializes every element of the column. The columns
+        // partition the table. Hence, every element is initialized.
         let extended_columns = unsafe { extended_columns.assume_init() };
         profiler!(stop "evaluation");
         profiler!(start "memoize");
@@ -510,9 +511,11 @@ where
     /// Since rows are not contiguous in memory, a bunch of rows is gathered
     /// into a small, row-major buffer before hashing.
     fn hash_rows_of_column_major_table(table: ArrayView2<Self::Field>) -> Vec<Digest> {
-        // The buffer for one chunk of rows should comfortably fit into the L2
-        // cache, even for the auxiliary table with its wider elements.
-        const ROWS_PER_CHUNK: usize = 32;
+        // Larger chunks read longer contiguous pieces of every column, which
+        // helps the hardware prefetchers. The buffer for one chunk of rows
+        // should still fit into the L2 cache, even for the auxiliary table
+        // with its wider elements.
+        const ROWS_PER_CHUNK: usize = 128;
 
         let num_columns = table.ncols();
         let mut digests = vec![Digest::default(); table.nrows()];
@@ -1316,8 +1319,10 @@ pub fn all_quotients_combined(
     // Rows are gathered into small, row-major buffers before evaluating the
     // constraints on them: the generated constraint evaluation code accesses
     // the rows' elements by index, which is notably faster for contiguous
-    // rows than for rows of a column-major table.
-    const ROWS_PER_CHUNK: usize = 16;
+    // rows than for rows of a column-major table. Larger chunks read longer
+    // contiguous pieces of every column, which helps the hardware
+    // prefetchers; the four buffers should still fit into the L2 cache.
+    const ROWS_PER_CHUNK: usize = 64;
 
     assert_eq!(
         quotient_domain.len(),
