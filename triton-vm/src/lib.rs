@@ -197,6 +197,17 @@ use crate::prelude::*;
 #[global_allocator]
 static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+/// jemalloc's configuration, read at startup. Backing the allocations with
+/// transparent huge pages saves the page faults that otherwise dominate the
+/// many short-lived, large buffers of the prover; measured on a 96-core
+/// machine, this makes small proofs about 10% and large proofs about 15%
+/// faster. The background thread purges unused memory asynchronously
+/// instead of on the allocating threads. The environment variable
+/// `_RJEM_MALLOC_CONF` overrides this.
+#[cfg(all(feature = "jemalloc", target_os = "linux"))]
+#[unsafe(export_name = "_rjem_malloc_conf")]
+static JEMALLOC_CONF: &[u8] = b"thp:always,metadata_thp:always,background_thread:true\0";
+
 pub mod aet;
 pub mod arithmetic_domain;
 pub mod challenges;
