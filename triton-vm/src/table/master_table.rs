@@ -137,6 +137,7 @@ use num_traits::ToBytes;
 use num_traits::Zero;
 use rand::distr::StandardUniform;
 use rand::prelude::*;
+use rayon::prelude::*;
 use strum::EnumCount;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
@@ -254,7 +255,7 @@ where
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
 
-        let mut extended_trace = Vec::with_capacity(0);
+        let mut extended_trace: Vec<MaybeUninit<Self::Field>> = Vec::with_capacity(0);
         match crate::config::cache_lde_trace() {
             Some(CacheDecision::NoCache) => return,
             Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
@@ -280,39 +281,37 @@ where
             });
         profiler!(stop "interpolation");
 
-        profiler!(start "resize");
         assert!(extended_trace.capacity() >= num_elements);
-        // Note: zero-initializing the memory here might seem wasteful, since
-        // every element is overwritten during “evaluation” below. However,
-        // this pass also faults in the pages in a cache-friendly, sequential
-        // manner. Writing into uninitialized memory instead was measured to
-        // be almost an order of magnitude slower, since the column-wise
-        // writes below touch a new page with almost every write.
-        extended_trace
-            .spare_capacity_mut()
-            .par_iter_mut()
-            .for_each(|e| *e = MaybeUninit::new(Self::Field::ZERO));
-
         unsafe {
-            // Speed up initialization through parallelization.
-            //
             // SAFETY:
             // 1. The capacity is sufficiently large – see above `assert!`.
             // 2. The length is set to equal (or less than) the capacity.
-            // 3. Each element in the spare capacity is initialized.
+            // 3. The elements are of type `MaybeUninit`, which has no
+            //    validity requirements; uninitialized memory is a valid
+            //    `MaybeUninit`.
             extended_trace.set_len(num_elements);
         }
-        let mut extended_columns =
-            Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
-        profiler!(stop "resize");
+
+        // The table is column-major (“`F`”): every column is a contiguous
+        // codeword. This lets the (parallel, per-column) evaluation below
+        // write its results without any re-arrangement of memory, which is
+        // by far the fastest way to build the table. Consumers that need
+        // rows, like row hashing, gather them from the columns.
+        let shape = [num_rows, Self::NUM_COLUMNS].f();
+        let mut extended_columns = Array2::from_shape_vec(shape, extended_trace).unwrap();
 
         profiler!(start "evaluation");
         Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
             .and(interpolation_polynomials.axis_iter(ROW_AXIS))
             .par_for_each(|lde_column, interpolant| {
                 let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
-                Array1::from(lde_codeword).move_into(lde_column);
+                Array1::from(lde_codeword).move_into_uninit(lde_column);
             });
+        // SAFETY: Every column of the table was written to by
+        // `move_into_uninit`, which initializes every element of the column.
+        // The columns partition the table. Hence, every element is
+        // initialized.
+        let extended_columns = unsafe { extended_columns.assume_init() };
         profiler!(stop "evaluation");
         profiler!(start "memoize");
         self.memoize_low_degree_extended_table(extended_columns);
@@ -465,13 +464,7 @@ where
     fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             profiler!(start "hash rows" ("hash"));
-            let all_digests = fri_domain_table
-                .axis_iter(ROW_AXIS)
-                .into_par_iter()
-                .map(|row| row.to_slice().unwrap())
-                .map(Self::Field::bfe_slice)
-                .map(Tip5::hash_varlen)
-                .collect();
+            let all_digests = Self::hash_rows_of_column_major_table(fri_domain_table);
             profiler!(stop "hash rows");
 
             return all_digests;
@@ -510,6 +503,36 @@ where
             .into_par_iter()
             .map(|sponge| sponge.finalize())
             .collect()
+    }
+
+    /// Hash every row of the given (column-major) table.
+    ///
+    /// Since rows are not contiguous in memory, a bunch of rows is gathered
+    /// into a small, row-major buffer before hashing.
+    fn hash_rows_of_column_major_table(table: ArrayView2<Self::Field>) -> Vec<Digest> {
+        // The buffer for one chunk of rows should comfortably fit into the L2
+        // cache, even for the auxiliary table with its wider elements.
+        const ROWS_PER_CHUNK: usize = 32;
+
+        let num_columns = table.ncols();
+        let mut digests = vec![Digest::default(); table.nrows()];
+        digests
+            .par_chunks_mut(ROWS_PER_CHUNK)
+            .zip(table.axis_chunks_iter(ROW_AXIS, ROWS_PER_CHUNK))
+            .for_each(|(digests, rows)| {
+                let mut buffer = Array2::<Self::Field>::zeros([rows.nrows(), num_columns]);
+                for (column_idx, column) in rows.axis_iter(COL_AXIS).enumerate() {
+                    for (row_idx, &element) in column.iter().enumerate() {
+                        buffer[[row_idx, column_idx]] = element;
+                    }
+                }
+                for (digest, row) in digests.iter_mut().zip(buffer.axis_iter(ROW_AXIS)) {
+                    let row = Self::Field::bfe_slice(row.to_slice().unwrap());
+                    *digest = Tip5::hash_varlen(row);
+                }
+            });
+
+        digests
     }
 
     /// The linear combination of the trace-randomized columns using the given
@@ -1290,6 +1313,12 @@ pub fn all_quotients_combined(
     challenges: &Challenges,
     quotient_weights: &[XFieldElement],
 ) -> Vec<XFieldElement> {
+    // Rows are gathered into small, row-major buffers before evaluating the
+    // constraints on them: the generated constraint evaluation code accesses
+    // the rows' elements by index, which is notably faster for contiguous
+    // rows than for rows of a column-major table.
+    const ROWS_PER_CHUNK: usize = 16;
+
     assert_eq!(
         quotient_domain.len(),
         quotient_domain_master_main_table.nrows(),
@@ -1320,67 +1349,119 @@ pub fn all_quotients_combined(
         pairs.map(|(v, &w)| v * w).sum()
     };
 
-    let quotient_codeword = (0..quotient_domain.len())
-        .into_par_iter()
-        .map(|row_index| {
-            let unit_distance = quotient_domain.len() / trace_domain.len();
-            let next_row_index = (row_index + unit_distance) % quotient_domain.len();
-            let current_row_main = quotient_domain_master_main_table.row(row_index);
-            let current_row_aux = quotient_domain_master_aux_table.row(row_index);
-            let next_row_main = quotient_domain_master_main_table.row(next_row_index);
-            let next_row_aux = quotient_domain_master_aux_table.row(next_row_index);
+    let num_rows = quotient_domain.len();
+    let unit_distance = num_rows / trace_domain.len();
+    let mut quotient_codeword = vec![XFieldElement::ZERO; num_rows];
+    quotient_codeword
+        .par_chunks_mut(ROWS_PER_CHUNK)
+        .enumerate()
+        .for_each(|(chunk_idx, quotient_values)| {
+            let first_row = chunk_idx * ROWS_PER_CHUNK;
+            let num_chunk_rows = quotient_values.len();
+            let current_rows_main =
+                gather_rows(quotient_domain_master_main_table, first_row, num_chunk_rows);
+            let current_rows_aux =
+                gather_rows(quotient_domain_master_aux_table, first_row, num_chunk_rows);
+            let next_rows_main = gather_rows(
+                quotient_domain_master_main_table,
+                first_row + unit_distance,
+                num_chunk_rows,
+            );
+            let next_rows_aux = gather_rows(
+                quotient_domain_master_aux_table,
+                first_row + unit_distance,
+                num_chunk_rows,
+            );
 
-            let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let initial_inner_product = dot_product(
-                initial_constraint_values,
-                &quotient_weights[..init_section_end],
-            );
-            let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row_index];
+            for (i, quotient_value) in quotient_values.iter_mut().enumerate() {
+                let row_index = first_row + i;
+                let current_row_main = current_rows_main.row(i);
+                let current_row_aux = current_rows_aux.row(i);
+                let next_row_main = next_rows_main.row(i);
+                let next_row_aux = next_rows_aux.row(i);
 
-            let consistency_constraint_values = MasterAuxTable::evaluate_consistency_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let consistency_inner_product = dot_product(
-                consistency_constraint_values,
-                &quotient_weights[init_section_end..cons_section_end],
-            );
-            quotient_value += consistency_inner_product * consistency_zerofier_inverse[row_index];
+                let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    challenges,
+                );
+                let initial_inner_product = dot_product(
+                    initial_constraint_values,
+                    &quotient_weights[..init_section_end],
+                );
+                let mut value = initial_inner_product * initial_zerofier_inverse[row_index];
 
-            let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
-                current_row_main,
-                current_row_aux,
-                next_row_main,
-                next_row_aux,
-                challenges,
-            );
-            let transition_inner_product = dot_product(
-                transition_constraint_values,
-                &quotient_weights[cons_section_end..tran_section_end],
-            );
-            quotient_value += transition_inner_product * transition_zerofier_inverse[row_index];
+                let consistency_constraint_values =
+                    MasterAuxTable::evaluate_consistency_constraints(
+                        current_row_main,
+                        current_row_aux,
+                        challenges,
+                    );
+                let consistency_inner_product = dot_product(
+                    consistency_constraint_values,
+                    &quotient_weights[init_section_end..cons_section_end],
+                );
+                value += consistency_inner_product * consistency_zerofier_inverse[row_index];
 
-            let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let terminal_inner_product = dot_product(
-                terminal_constraint_values,
-                &quotient_weights[tran_section_end..],
-            );
-            quotient_value += terminal_inner_product * terminal_zerofier_inverse[row_index];
-            quotient_value
-        })
-        .collect();
+                let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    next_row_main,
+                    next_row_aux,
+                    challenges,
+                );
+                let transition_inner_product = dot_product(
+                    transition_constraint_values,
+                    &quotient_weights[cons_section_end..tran_section_end],
+                );
+                value += transition_inner_product * transition_zerofier_inverse[row_index];
+
+                let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    challenges,
+                );
+                let terminal_inner_product = dot_product(
+                    terminal_constraint_values,
+                    &quotient_weights[tran_section_end..],
+                );
+                value += terminal_inner_product * terminal_zerofier_inverse[row_index];
+
+                *quotient_value = value;
+            }
+        });
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// Copy `num_rows` consecutive rows of the given table, starting at row
+/// `first_row` and wrapping around at the end of the table, into a new,
+/// row-major array.
+fn gather_rows<FF: FiniteField>(
+    table: ArrayView2<FF>,
+    first_row: usize,
+    num_rows: usize,
+) -> Array2<FF> {
+    let table_len = table.nrows();
+    let first_row = first_row % table_len;
+    let mut rows = Array2::zeros([num_rows, table.ncols()]);
+    if first_row + num_rows <= table_len {
+        // gathering column by column reads the (column-major) table
+        // contiguously
+        let source = table.slice(s![first_row..first_row + num_rows, ..]);
+        for (column_idx, column) in source.axis_iter(COL_AXIS).enumerate() {
+            for (row_idx, &element) in column.iter().enumerate() {
+                rows[[row_idx, column_idx]] = element;
+            }
+        }
+    } else {
+        for row_idx in 0..num_rows {
+            let source_row = table.row((first_row + row_idx) % table_len);
+            rows.row_mut(row_idx).assign(&source_row);
+        }
+    }
+    rows
 }
 
 #[cfg(test)]
