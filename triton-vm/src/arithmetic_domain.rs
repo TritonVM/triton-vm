@@ -304,6 +304,19 @@ impl ArithmeticDomain {
         Polynomial::new(coefficients)
     }
 
+    /// The [zerofier](Self::zerofier) of this domain, evaluated in the given
+    /// indeterminate. Since the zerofier is `x^n - offset^n` for the domain's
+    /// length `n`, this takes two exponentiations rather than a pass over
+    /// `n` coefficients.
+    pub fn evaluate_zerofier<FF>(&self, indeterminate: FF) -> FF
+    where
+        FF: FiniteField + From<BFieldElement>,
+    {
+        let length = u32::try_from(self.length).expect("domain length must fit u32");
+        let offset_to_the_length = self.offset.mod_pow(u64::from(length));
+        indeterminate.mod_pow_u32(length) - FF::from(offset_to_the_length)
+    }
+
     /// Move a codeword across domains.
     ///
     /// Given a [polynomial](Polynomial) in evaluation form (i.e., a codeword)
@@ -601,6 +614,17 @@ pub(crate) mod tests {
     fn zerofier_is_actually_zerofier(domain: ArithmeticDomain) {
         let actual_zerofier = Polynomial::zerofier(&domain.values());
         prop_assert_eq!(actual_zerofier, domain.zerofier());
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn zerofier_evaluation_agrees_with_evaluating_the_zerofier(
+        domain: ArithmeticDomain,
+        #[strategy(arb())] indeterminate: XFieldElement,
+    ) {
+        let expected = domain
+            .zerofier()
+            .evaluate::<_, XFieldElement>(indeterminate);
+        prop_assert_eq!(expected, domain.evaluate_zerofier(indeterminate));
     }
 
     #[macro_rules_attr::apply(proptest)]

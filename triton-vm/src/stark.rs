@@ -402,19 +402,22 @@ impl Prover {
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
-        let ood_main_row = master_main_table.out_of_domain_row(out_of_domain_point_curr_row);
+        let out_of_domain_points = [out_of_domain_point_curr_row, out_of_domain_point_next_row];
+        let [ood_main_row, ood_next_main_row] = master_main_table
+            .out_of_domain_rows(&out_of_domain_points)
+            .try_into()
+            .unwrap();
+        let [ood_aux_row, ood_next_aux_row] = master_aux_table
+            .out_of_domain_rows(&out_of_domain_points)
+            .try_into()
+            .unwrap();
+
         let ood_main_row = MasterMainTable::try_to_main_row(ood_main_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainMainRow(Box::new(ood_main_row)));
-
-        let ood_aux_row = master_aux_table.out_of_domain_row(out_of_domain_point_curr_row);
         let ood_aux_row = MasterAuxTable::try_to_aux_row(ood_aux_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainAuxRow(Box::new(ood_aux_row)));
-
-        let ood_next_main_row = master_main_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_main_row = MasterMainTable::try_to_main_row(ood_next_main_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainMainRow(Box::new(ood_next_main_row)));
-
-        let ood_next_aux_row = master_aux_table.out_of_domain_row(out_of_domain_point_next_row);
         let ood_next_aux_row = MasterAuxTable::try_to_aux_row(ood_next_aux_row)?;
         proof_stream.enqueue(ProofItem::OutOfDomainAuxRow(Box::new(ood_next_aux_row)));
 
@@ -426,8 +429,11 @@ impl Prover {
         let ood_point_curr_row_pow_num_segments =
             out_of_domain_point_curr_row.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
         let randomized_quot_segment_ood_row_for_p = randomized_quot_segment_polys_for_p
-            .each_ref()
-            .map(|poly| poly.evaluate(ood_point_curr_row_pow_num_segments));
+            .par_iter()
+            .map(|poly| poly.par_evaluate(ood_point_curr_row_pow_num_segments))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
             randomized_quot_segment_ood_row_for_p,
         ));
@@ -437,8 +443,11 @@ impl Prover {
         let ood_point_curr_row_times_zeta_pow_num_segments =
             (out_of_domain_point_curr_row * Stark::ZETA).mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
         let randomized_quot_segment_ood_row_for_r = randomized_quot_segment_polys_for_r
-            .each_ref()
-            .map(|poly| poly.evaluate(ood_point_curr_row_times_zeta_pow_num_segments));
+            .par_iter()
+            .map(|poly| poly.par_evaluate(ood_point_curr_row_times_zeta_pow_num_segments))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
         proof_stream.enqueue(ProofItem::OutOfDomainQuotientSegments(
             randomized_quot_segment_ood_row_for_r,
         ));

@@ -345,50 +345,117 @@ where
     /// Notably, the index does not have to be in any of the domains. In other
     /// words, can be used to compute out-of-domain rows. Does not include
     /// batch randomizers.
-    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        // The following is a batched version of barycentric Lagrangian
-        // evaluation. Since the method `barycentric_evaluate` is
-        // self-contained, not returning intermediate items necessary for
-        // batching, and since returning and reusing those intermediate items
-        // would produce a challenging interface, the relevant parts are
-        // reimplemented here.
+    /// The evaluations of all column polynomials, including their trace
+    /// randomizers, in each of the given indeterminates.
+    ///
+    /// Uses barycentric Lagrangian evaluation, batched in two ways. First,
+    /// the barycentric weights of an indeterminate are shared across all
+    /// columns. Second, the table is streamed only once, in blocks of rows,
+    /// for all indeterminates and columns at once: for a table with hundreds
+    /// of long columns, the memory traffic of reading the table, not the
+    /// arithmetic, dominates the runtime. A block's rows of all columns and
+    /// its weights for all indeterminates fit into the L2 cache.
+    fn out_of_domain_rows(&self, indeterminates: &[XFieldElement]) -> Vec<Array1<XFieldElement>> {
+        const ROWS_PER_BLOCK: usize = 1 << 11;
 
-        let domain = self.domains().trace.values();
-        let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
-        let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
-        let domain_over_domain_shift = domain
-            .into_par_iter()
-            .zip_eq(domain_shift_inverses)
-            .map(|(d, inv)| d * inv)
-            .collect::<Vec<_>>();
-        let barycentric_eval_denominator_inverse = domain_over_domain_shift
-            .par_iter()
-            .copied()
-            .sum::<XFieldElement>()
-            .inverse();
+        let trace_domain = self.domains().trace;
+        let domain = trace_domain.values();
+        let num_rows = domain.len();
 
-        let ood_trace_domain_zerofier: XFieldElement =
-            self.domains().trace.zerofier().evaluate(indeterminate);
-
-        let trace_table = self.trace_table();
-        (0..Self::NUM_COLUMNS)
-            .into_par_iter()
-            .map(|i| {
-                let trace_codeword = trace_table.column(i);
-                let barycentric_eval_numerator = domain_over_domain_shift
-                    .iter()
-                    .zip_eq(trace_codeword)
-                    .map(|(&dsi, &abscis)| abscis * dsi)
-                    .sum::<XFieldElement>();
-
-                let ood_trace_randomizer: XFieldElement =
-                    self.trace_randomizer_for_column(i).evaluate(indeterminate);
-
-                barycentric_eval_numerator * barycentric_eval_denominator_inverse
-                    + ood_trace_domain_zerofier * ood_trace_randomizer
+        // barycentric weights `d / (z - d)` for every point `d` of the
+        // domain, per indeterminate `z`, and the inverses of their sums
+        let weights = indeterminates
+            .iter()
+            .map(|&indeterminate| {
+                let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
+                let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
+                domain
+                    .par_iter()
+                    .zip_eq(domain_shift_inverses)
+                    .map(|(&d, inv)| d * inv)
+                    .collect::<Vec<_>>()
             })
-            .collect::<Vec<XFieldElement>>()
-            .into()
+            .collect_vec();
+        let weight_sum_inverses = weights
+            .iter()
+            .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
+            .collect_vec();
+        let zerofier_evaluations = indeterminates
+            .iter()
+            .map(|&indeterminate| trace_domain.evaluate_zerofier(indeterminate))
+            .collect_vec();
+
+        // `numerators[indeterminate][column] = Σ_d weight(d) · column(d)`,
+        // summed block by block
+        let trace_table = self.trace_table();
+        let num_columns = Self::NUM_COLUMNS;
+        let block_numerators = |first_row: usize| {
+            let rows = first_row..(first_row + ROWS_PER_BLOCK).min(num_rows);
+            let mut numerators = vec![XFieldElement::ZERO; indeterminates.len() * num_columns];
+            for (column_index, column) in trace_table.columns().into_iter().enumerate() {
+                let column = column.slice(s![rows.clone()]);
+                let column = column.as_slice().expect("columns are contiguous");
+                for (weights, numerators) in weights
+                    .iter()
+                    .zip_eq(numerators.chunks_exact_mut(num_columns))
+                {
+                    let mut numerator = XFieldElement::ZERO;
+                    for (&value, &weight) in column.iter().zip_eq(&weights[rows.clone()]) {
+                        numerator += value * weight;
+                    }
+                    numerators[column_index] = numerator;
+                }
+            }
+            numerators
+        };
+        let numerators = (0..num_rows)
+            .into_par_iter()
+            .step_by(ROWS_PER_BLOCK)
+            .map(block_numerators)
+            .reduce(
+                || vec![XFieldElement::ZERO; indeterminates.len() * num_columns],
+                |mut acc, block| {
+                    for (a, b) in acc.iter_mut().zip_eq(block) {
+                        *a += b;
+                    }
+                    acc
+                },
+            );
+
+        // the randomizers are only needed here; evaluate them in all
+        // indeterminates at once
+        let randomizer_evaluations = (0..num_columns)
+            .into_par_iter()
+            .map(|column_index| {
+                let randomizer = self.trace_randomizer_for_column(column_index);
+                indeterminates
+                    .iter()
+                    .map(|&indeterminate| {
+                        randomizer.par_evaluate::<_, XFieldElement>(indeterminate)
+                    })
+                    .collect_vec()
+            })
+            .collect::<Vec<_>>();
+
+        izip!(
+            numerators.chunks_exact(num_columns),
+            weight_sum_inverses,
+            zerofier_evaluations
+        )
+        .enumerate()
+        .map(
+            |(point_index, (numerators, weight_sum_inverse, zerofier_evaluation))| {
+                (0..num_columns)
+                    .map(|column_index| {
+                        numerators[column_index] * weight_sum_inverse
+                            + zerofier_evaluation
+                                * randomizer_evaluations[column_index][point_index]
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
+        )
+        .collect()
     }
 
     fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
@@ -611,10 +678,9 @@ where
         // add trace randomizers to their columns
         // todo: this could be done using `Polynomial::batch_evaluate` if that
         //   function had more general trait bounds 🤷
-        let trace_domain_zerofier = domains.trace.zerofier();
         let zerofier_evals = indeterminates
             .par_iter()
-            .map(|&i| trace_domain_zerofier.evaluate::<_, Self::Field>(i))
+            .map(|&i| domains.trace.evaluate_zerofier(i))
             .collect::<Vec<_>>();
 
         let trace_randomizers = (0..Self::NUM_COLUMNS)
