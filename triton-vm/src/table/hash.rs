@@ -11,16 +11,22 @@ use air::table_column::MasterMainColumn;
 use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::prelude::*;
+use num_traits::ConstOne;
 use num_traits::Zero;
+use rayon::prelude::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::prelude::tip5::NUM_ROUNDS;
 use twenty_first::prelude::tip5::STATE_SIZE;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::COL_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
+use crate::table::running_arguments::par_log_derivative;
+use crate::table::running_arguments::par_running_evaluation;
 
 type MainColumn = <HashTable as air::AIR>::MainColumn;
 type AuxColumn = <HashTable as air::AIR>::AuxColumn;
@@ -318,27 +324,8 @@ impl TraceTable for HashTable {
         let cascade_indeterminate = challenges[ChallengeId::HashCascadeLookupIndeterminate];
         let send_chunk_indeterminate =
             challenges[ChallengeId::ProgramAttestationSendChunkIndeterminate];
-
-        let mut hash_input_running_evaluation = EvalArg::default_initial();
-        let mut hash_digest_running_evaluation = EvalArg::default_initial();
-        let mut sponge_running_evaluation = EvalArg::default_initial();
-        let mut cascade_state_0_highest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_0_mid_high_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_0_mid_low_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_0_lowest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_1_highest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_1_mid_high_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_1_mid_low_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_1_lowest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_2_highest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_2_mid_high_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_2_mid_low_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_2_lowest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_3_highest_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_3_mid_high_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_3_mid_low_log_derivative = LookupArg::default_initial();
-        let mut cascade_state_3_lowest_log_derivative = LookupArg::default_initial();
-        let mut receive_chunk_running_evaluation = EvalArg::default_initial();
+        let prepare_chunk_indeterminate =
+            challenges[ChallengeId::ProgramAttestationPrepareChunkIndeterminate];
 
         let two_pow_16 = bfe!(1_u64 << 16);
         let two_pow_32 = bfe!(1_u64 << 32);
@@ -409,201 +396,182 @@ impl TraceTable for HashTable {
                 .map(|(&state, &weight)| weight * state)
                 .sum()
         };
+        let compressed_digest = |row: ArrayView1<BFieldElement>| -> XFieldElement {
+            rate_registers(row)[..Digest::LEN]
+                .iter()
+                .zip_eq(state_weights[..Digest::LEN].iter())
+                .map(|(&state, &weight)| weight * state)
+                .sum()
+        };
 
         let cascade_look_in_weight = challenges[ChallengeId::HashCascadeLookInWeight];
         let cascade_look_out_weight = challenges[ChallengeId::HashCascadeLookOutWeight];
 
-        let log_derivative_summand =
-            |row: ArrayView1<BFieldElement>,
-             lk_in_col: Self::MainColumn,
-             lk_out_col: Self::MainColumn| {
-                let compressed_elements = cascade_indeterminate
-                    - cascade_look_in_weight * row[lk_in_col.main_index()]
-                    - cascade_look_out_weight * row[lk_out_col.main_index()];
-                compressed_elements.inverse()
-            };
+        let mode = |row: ArrayView1<BFieldElement>| row[MainColumn::Mode.main_index()];
+        let in_program_hashing_mode =
+            |row: ArrayView1<BFieldElement>| mode(row) == HashTableMode::ProgramHashing.into();
+        let in_sponge_mode =
+            |row: ArrayView1<BFieldElement>| mode(row) == HashTableMode::Sponge.into();
+        let in_hash_mode = |row: ArrayView1<BFieldElement>| mode(row) == HashTableMode::Hash.into();
+        let in_pad_mode = |row: ArrayView1<BFieldElement>| mode(row) == HashTableMode::Pad.into();
 
-        for row_idx in 0..main_table.nrows() {
-            let row = main_table.row(row_idx);
+        let round_number =
+            |row: ArrayView1<BFieldElement>| row[MainColumn::RoundNumber.main_index()];
+        let in_round_0 = |row: ArrayView1<BFieldElement>| round_number(row).is_zero();
+        let in_last_round =
+            |row: ArrayView1<BFieldElement>| round_number(row) == (NUM_ROUNDS as u64).into();
 
-            let mode = row[MainColumn::Mode.main_index()];
-            let in_program_hashing_mode = mode == HashTableMode::ProgramHashing.into();
-            let in_sponge_mode = mode == HashTableMode::Sponge.into();
-            let in_hash_mode = mode == HashTableMode::Hash.into();
-            let in_pad_mode = mode == HashTableMode::Pad.into();
+        let current_instruction = |row: ArrayView1<BFieldElement>| row[MainColumn::CI.main_index()];
+        let current_instruction_is_sponge_init = |row: ArrayView1<BFieldElement>| {
+            current_instruction(row) == Instruction::SpongeInit.opcode_b()
+        };
 
-            let round_number = row[MainColumn::RoundNumber.main_index()];
-            let in_round_0 = round_number.is_zero();
-            let in_last_round = round_number == (NUM_ROUNDS as u64).into();
-
-            let current_instruction = row[MainColumn::CI.main_index()];
-            let current_instruction_is_sponge_init =
-                current_instruction == Instruction::SpongeInit.opcode_b();
-
-            if in_program_hashing_mode && in_round_0 {
-                let compressed_chunk_of_instructions = EvalArg::compute_terminal(
+        // The contribution of each row to the various running evaluations,
+        // if any. The running evaluations are then computed in parallel.
+        let receive_chunk_addend = |row: ArrayView1<BFieldElement>| {
+            (in_program_hashing_mode(row) && in_round_0(row)).then(|| {
+                EvalArg::compute_terminal(
                     &rate_registers(row),
                     EvalArg::default_initial(),
-                    challenges[ChallengeId::ProgramAttestationPrepareChunkIndeterminate],
-                );
-                receive_chunk_running_evaluation = receive_chunk_running_evaluation
-                    * send_chunk_indeterminate
-                    + compressed_chunk_of_instructions
-            }
+                    prepare_chunk_indeterminate,
+                )
+            })
+        };
+        let sponge_addend = |row: ArrayView1<BFieldElement>| {
+            (in_sponge_mode(row) && in_round_0(row)).then(|| {
+                let mut addend = ci_weight * current_instruction(row);
+                if !current_instruction_is_sponge_init(row) {
+                    addend += compressed_row(row);
+                }
+                addend
+            })
+        };
+        let hash_input_addend = |row: ArrayView1<BFieldElement>| {
+            (in_hash_mode(row) && in_round_0(row)).then(|| compressed_row(row))
+        };
+        let hash_digest_addend = |row: ArrayView1<BFieldElement>| {
+            (in_hash_mode(row) && in_last_round(row)).then(|| compressed_digest(row))
+        };
 
-            if in_sponge_mode && in_round_0 && current_instruction_is_sponge_init {
-                sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
-                    + ci_weight * current_instruction
-            }
+        let rows = || {
+            (0..main_table.nrows())
+                .into_par_iter()
+                .map(|row_idx| main_table.row(row_idx))
+        };
+        let running_evaluation =
+            |addend: &(dyn Fn(ArrayView1<BFieldElement>) -> Option<XFieldElement> + Sync),
+             indeterminate| {
+                let addends = rows().map(addend).collect::<Vec<_>>();
+                par_running_evaluation(&addends, indeterminate, EvalArg::default_initial())
+            };
 
-            if in_sponge_mode && in_round_0 && !current_instruction_is_sponge_init {
-                sponge_running_evaluation = sponge_running_evaluation * sponge_eval_indeterminate
-                    + ci_weight * current_instruction
-                    + compressed_row(row)
-            }
+        // The contribution of each row to the cascade table lookups' log
+        // derivatives, if any. The inversions are batched.
+        let contributes_to_cascade_lookup = |row: ArrayView1<BFieldElement>| {
+            !in_pad_mode(row) && !in_last_round(row) && !current_instruction_is_sponge_init(row)
+        };
+        let cascade_log_derivative = |lk_in_col: Self::MainColumn, lk_out_col: Self::MainColumn| {
+            let fractions = rows()
+                .map(|row| {
+                    contributes_to_cascade_lookup(row).then(|| {
+                        let denominator = cascade_indeterminate
+                            - cascade_look_in_weight * row[lk_in_col.main_index()]
+                            - cascade_look_out_weight * row[lk_out_col.main_index()];
+                        (denominator, XFieldElement::ONE)
+                    })
+                })
+                .collect::<Vec<_>>();
+            par_log_derivative(&fractions, LookupArg::default_initial())
+        };
 
-            if in_hash_mode && in_round_0 {
-                hash_input_running_evaluation = hash_input_running_evaluation
-                    * hash_input_eval_indeterminate
-                    + compressed_row(row)
-            }
-
-            if in_hash_mode && in_last_round {
-                let compressed_digest: XFieldElement = rate_registers(row)[..Digest::LEN]
-                    .iter()
-                    .zip_eq(state_weights[..Digest::LEN].iter())
-                    .map(|(&state, &weight)| weight * state)
-                    .sum();
-                hash_digest_running_evaluation = hash_digest_running_evaluation
-                    * hash_digest_eval_indeterminate
-                    + compressed_digest
-            }
-
-            if !in_pad_mode && !in_last_round && !current_instruction_is_sponge_init {
-                cascade_state_0_highest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State0HighestLkIn,
-                    MainColumn::State0HighestLkOut,
-                );
-                cascade_state_0_mid_high_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State0MidHighLkIn,
-                    MainColumn::State0MidHighLkOut,
-                );
-                cascade_state_0_mid_low_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State0MidLowLkIn,
-                    MainColumn::State0MidLowLkOut,
-                );
-                cascade_state_0_lowest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State0LowestLkIn,
-                    MainColumn::State0LowestLkOut,
-                );
-                cascade_state_1_highest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State1HighestLkIn,
-                    MainColumn::State1HighestLkOut,
-                );
-                cascade_state_1_mid_high_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State1MidHighLkIn,
-                    MainColumn::State1MidHighLkOut,
-                );
-                cascade_state_1_mid_low_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State1MidLowLkIn,
-                    MainColumn::State1MidLowLkOut,
-                );
-                cascade_state_1_lowest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State1LowestLkIn,
-                    MainColumn::State1LowestLkOut,
-                );
-                cascade_state_2_highest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State2HighestLkIn,
-                    MainColumn::State2HighestLkOut,
-                );
-                cascade_state_2_mid_high_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State2MidHighLkIn,
-                    MainColumn::State2MidHighLkOut,
-                );
-                cascade_state_2_mid_low_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State2MidLowLkIn,
-                    MainColumn::State2MidLowLkOut,
-                );
-                cascade_state_2_lowest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State2LowestLkIn,
-                    MainColumn::State2LowestLkOut,
-                );
-                cascade_state_3_highest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State3HighestLkIn,
-                    MainColumn::State3HighestLkOut,
-                );
-                cascade_state_3_mid_high_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State3MidHighLkIn,
-                    MainColumn::State3MidHighLkOut,
-                );
-                cascade_state_3_mid_low_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State3MidLowLkIn,
-                    MainColumn::State3MidLowLkOut,
-                );
-                cascade_state_3_lowest_log_derivative += log_derivative_summand(
-                    row,
-                    MainColumn::State3LowestLkIn,
-                    MainColumn::State3LowestLkOut,
-                );
-            }
-
-            let mut auxiliary_row = aux_table.row_mut(row_idx);
-            auxiliary_row[AuxColumn::ReceiveChunkRunningEvaluation.aux_index()] =
-                receive_chunk_running_evaluation;
-            auxiliary_row[AuxColumn::HashInputRunningEvaluation.aux_index()] =
-                hash_input_running_evaluation;
-            auxiliary_row[AuxColumn::HashDigestRunningEvaluation.aux_index()] =
-                hash_digest_running_evaluation;
-            auxiliary_row[AuxColumn::SpongeRunningEvaluation.aux_index()] =
-                sponge_running_evaluation;
-            auxiliary_row[AuxColumn::CascadeState0HighestClientLogDerivative.aux_index()] =
-                cascade_state_0_highest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState0MidHighClientLogDerivative.aux_index()] =
-                cascade_state_0_mid_high_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState0MidLowClientLogDerivative.aux_index()] =
-                cascade_state_0_mid_low_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState0LowestClientLogDerivative.aux_index()] =
-                cascade_state_0_lowest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState1HighestClientLogDerivative.aux_index()] =
-                cascade_state_1_highest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState1MidHighClientLogDerivative.aux_index()] =
-                cascade_state_1_mid_high_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState1MidLowClientLogDerivative.aux_index()] =
-                cascade_state_1_mid_low_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState1LowestClientLogDerivative.aux_index()] =
-                cascade_state_1_lowest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState2HighestClientLogDerivative.aux_index()] =
-                cascade_state_2_highest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState2MidHighClientLogDerivative.aux_index()] =
-                cascade_state_2_mid_high_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState2MidLowClientLogDerivative.aux_index()] =
-                cascade_state_2_mid_low_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState2LowestClientLogDerivative.aux_index()] =
-                cascade_state_2_lowest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState3HighestClientLogDerivative.aux_index()] =
-                cascade_state_3_highest_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState3MidHighClientLogDerivative.aux_index()] =
-                cascade_state_3_mid_high_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState3MidLowClientLogDerivative.aux_index()] =
-                cascade_state_3_mid_low_log_derivative;
-            auxiliary_row[AuxColumn::CascadeState3LowestClientLogDerivative.aux_index()] =
-                cascade_state_3_lowest_log_derivative;
-        }
+        let all_aux_columns = AuxColumn::iter().collect_vec();
+        aux_table
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .zip(all_aux_columns)
+            .enumerate()
+            .for_each(|(column_idx, (target_column, aux_column))| {
+                debug_assert_eq!(column_idx, aux_column.aux_index());
+                let column = match aux_column {
+                    AuxColumn::ReceiveChunkRunningEvaluation => {
+                        running_evaluation(&receive_chunk_addend, send_chunk_indeterminate)
+                    }
+                    AuxColumn::HashInputRunningEvaluation => {
+                        running_evaluation(&hash_input_addend, hash_input_eval_indeterminate)
+                    }
+                    AuxColumn::HashDigestRunningEvaluation => {
+                        running_evaluation(&hash_digest_addend, hash_digest_eval_indeterminate)
+                    }
+                    AuxColumn::SpongeRunningEvaluation => {
+                        running_evaluation(&sponge_addend, sponge_eval_indeterminate)
+                    }
+                    AuxColumn::CascadeState0HighestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State0HighestLkIn,
+                        MainColumn::State0HighestLkOut,
+                    ),
+                    AuxColumn::CascadeState0MidHighClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State0MidHighLkIn,
+                        MainColumn::State0MidHighLkOut,
+                    ),
+                    AuxColumn::CascadeState0MidLowClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State0MidLowLkIn,
+                        MainColumn::State0MidLowLkOut,
+                    ),
+                    AuxColumn::CascadeState0LowestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State0LowestLkIn,
+                        MainColumn::State0LowestLkOut,
+                    ),
+                    AuxColumn::CascadeState1HighestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State1HighestLkIn,
+                        MainColumn::State1HighestLkOut,
+                    ),
+                    AuxColumn::CascadeState1MidHighClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State1MidHighLkIn,
+                        MainColumn::State1MidHighLkOut,
+                    ),
+                    AuxColumn::CascadeState1MidLowClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State1MidLowLkIn,
+                        MainColumn::State1MidLowLkOut,
+                    ),
+                    AuxColumn::CascadeState1LowestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State1LowestLkIn,
+                        MainColumn::State1LowestLkOut,
+                    ),
+                    AuxColumn::CascadeState2HighestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State2HighestLkIn,
+                        MainColumn::State2HighestLkOut,
+                    ),
+                    AuxColumn::CascadeState2MidHighClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State2MidHighLkIn,
+                        MainColumn::State2MidHighLkOut,
+                    ),
+                    AuxColumn::CascadeState2MidLowClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State2MidLowLkIn,
+                        MainColumn::State2MidLowLkOut,
+                    ),
+                    AuxColumn::CascadeState2LowestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State2LowestLkIn,
+                        MainColumn::State2LowestLkOut,
+                    ),
+                    AuxColumn::CascadeState3HighestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State3HighestLkIn,
+                        MainColumn::State3HighestLkOut,
+                    ),
+                    AuxColumn::CascadeState3MidHighClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State3MidHighLkIn,
+                        MainColumn::State3MidHighLkOut,
+                    ),
+                    AuxColumn::CascadeState3MidLowClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State3MidLowLkIn,
+                        MainColumn::State3MidLowLkOut,
+                    ),
+                    AuxColumn::CascadeState3LowestClientLogDerivative => cascade_log_derivative(
+                        MainColumn::State3LowestLkIn,
+                        MainColumn::State3LowestLkOut,
+                    ),
+                };
+                Array1::from(column).move_into(target_column);
+            });
         profiler!(stop "hash table");
     }
 }
