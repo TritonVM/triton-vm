@@ -22,6 +22,7 @@ use serde::Serialize;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::math::zerofier_tree::ZerofierTree;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -190,13 +191,16 @@ pub fn bezout_coefficient_polynomials_coefficients(
     // coefficients in O(n·(log n)^2) time.
 
     debug_assert!(unique_roots.iter().all_unique());
-    let rp = Polynomial::par_zerofier(unique_roots);
+    // The zerofier tree of the roots is shared between computing the
+    // zerofier itself, evaluating the formal derivative, and interpolating.
+    let zerofier_tree = ZerofierTree::par_new_from_domain(unique_roots);
+    let rp = zerofier_tree.zerofier();
     let fd = rp.formal_derivative();
-    let fd_in_roots = fd.par_batch_evaluate(unique_roots);
-    let b_in_roots = BFieldElement::batch_inversion(fd_in_roots);
-    let b = Polynomial::par_interpolate(unique_roots, &b_in_roots);
-    let one_minus_fd_b = Polynomial::one() - fd.multiply(&b);
-    let a = one_minus_fd_b.clean_divide(rp);
+    let fd_in_roots = fd.par_divide_and_conquer_batch_evaluate(&zerofier_tree);
+    let b_in_roots = BFieldElement::par_batch_inversion(fd_in_roots);
+    let b = Polynomial::par_interpolate_with_zerofier_tree(&zerofier_tree, &b_in_roots);
+    let one_minus_fd_b = Polynomial::one() - fd.par_fast_multiply(&b);
+    let a = one_minus_fd_b.par_clean_divide(rp);
 
     let mut coefficients_0 = a.into_coefficients();
     let mut coefficients_1 = b.into_coefficients();
