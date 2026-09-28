@@ -186,6 +186,17 @@ use ::isa::program::Program;
 use crate::error::ProvingError;
 use crate::prelude::*;
 
+/// The prover allocates and frees a large number of large buffers from many
+/// threads at once. jemalloc handles this considerably better than the
+/// system allocator: on a 96-core machine, proving is about 10% faster
+/// overall. Since a binary can only have one global allocator, this is behind
+/// the (default) feature `jemalloc`, to be disabled by binaries that set
+/// their own. On platforms where jemalloc is unavailable, like wasm or
+/// Windows with MSVC, the feature has no effect.
+#[cfg(all(feature = "jemalloc", any(target_os = "linux", target_os = "macos")))]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 pub mod aet;
 pub mod arithmetic_domain;
 pub mod challenges;

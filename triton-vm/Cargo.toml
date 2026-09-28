@@ -74,9 +74,17 @@ prettyplease.workspace = true
 proc-macro2.workspace = true
 syn.workspace = true
 
+# jemalloc is built from C sources, which rules out wasm and the MSVC
+# toolchain; only the platforms it is known to build on are listed.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+tikv-jemallocator = { version = "0.7", optional = true }
+
 [features]
-default = ["no_profile"]
+default = ["no_profile", "jemalloc"]
 no_profile = [] # see `profiler.rs` for an explanation of this seemingly backwards feature
+# Use jemalloc as the global allocator. See `lib.rs` for details. Disable
+# this feature if the binary sets its own global allocator.
+jemalloc = ["dep:tikv-jemallocator"]
 
 [lints]
 workspace = true
