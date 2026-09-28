@@ -353,14 +353,16 @@ where
         // reimplemented here.
 
         let domain = self.domains().trace.values();
-        let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
+        let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
         let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
         let domain_over_domain_shift = domain
-            .into_iter()
+            .into_par_iter()
             .zip_eq(domain_shift_inverses)
-            .map(|(d, inv)| d * inv);
+            .map(|(d, inv)| d * inv)
+            .collect::<Vec<_>>();
         let barycentric_eval_denominator_inverse = domain_over_domain_shift
-            .clone()
+            .par_iter()
+            .copied()
             .sum::<XFieldElement>()
             .inverse();
 
@@ -373,9 +375,9 @@ where
             .map(|i| {
                 let trace_codeword = trace_table.column(i);
                 let barycentric_eval_numerator = domain_over_domain_shift
-                    .clone()
+                    .iter()
                     .zip_eq(trace_codeword)
-                    .map(|(dsi, &abscis)| abscis * dsi)
+                    .map(|(&dsi, &abscis)| abscis * dsi)
                     .sum::<XFieldElement>();
 
                 let ood_trace_randomizer: XFieldElement =
