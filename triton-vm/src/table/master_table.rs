@@ -282,6 +282,7 @@ where
         profiler!(stop "interpolation");
 
         assert!(extended_trace.capacity() >= num_elements);
+        ndarray_helper::advise_huge_pages(extended_trace.spare_capacity_mut());
         unsafe {
             // SAFETY:
             // 1. The capacity is sufficiently large – see above `assert!`.

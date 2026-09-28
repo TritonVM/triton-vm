@@ -55,6 +55,9 @@ proptest-arbitrary-adapter.workspace = true
 serde_json.workspace = true
 test-strategy.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 criterion.workspace = true
 
