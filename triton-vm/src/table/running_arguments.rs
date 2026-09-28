@@ -24,16 +24,29 @@ pub(crate) fn par_running_evaluation(
     indeterminate: XFieldElement,
     initial: XFieldElement,
 ) -> Vec<XFieldElement> {
-    // Each row's update is an affine map `acc ↦ a·acc + b`. Composing the
-    // maps of all rows up to and including row `i` gives the affine map that
-    // takes the initial value to the running evaluation at row `i`.
-    let mut affine_maps = addends
+    let affine_maps = addends
         .par_iter()
         .map(|addend| match addend {
             Some(x) => (indeterminate, *x),
             None => (XFieldElement::ONE, XFieldElement::ZERO),
         })
-        .collect::<Vec<_>>();
+        .collect();
+    par_running_affine_maps(affine_maps, initial)
+}
+
+/// The running value starting from `initial`, where row `i` updates the
+/// running value `acc` to `a · acc + b` for `affine_maps[i] == (a, b)`. The
+/// returned vector holds the running value _after_ processing each row.
+///
+/// This generalizes [`par_running_evaluation`]: a row that contributes
+/// several symbols to a running evaluation is one affine map, namely the
+/// composition of the symbols' individual updates.
+pub(crate) fn par_running_affine_maps(
+    mut affine_maps: Vec<(XFieldElement, XFieldElement)>,
+    initial: XFieldElement,
+) -> Vec<XFieldElement> {
+    // Composing the maps of all rows up to and including row `i` gives the
+    // affine map that takes the initial value to the running value at row `i`.
     par_scan(&mut affine_maps, |(a_prev, b_prev), (a_next, b_next)| {
         (a_next * a_prev, a_next * b_prev + b_next)
     });
@@ -41,6 +54,25 @@ pub(crate) fn par_running_evaluation(
         .into_par_iter()
         .map(|(a, b)| a * initial + b)
         .collect()
+}
+
+/// The running product starting from `initial`, where `factors[i]` being
+/// `Some(f)` means that row `i` multiplies the running product by `f`, and
+/// `None` means it leaves it unchanged. The returned vector holds the value
+/// of the running product _after_ processing each row.
+pub(crate) fn par_running_product(
+    factors: &[Option<XFieldElement>],
+    initial: XFieldElement,
+) -> Vec<XFieldElement> {
+    let mut products = factors
+        .par_iter()
+        .map(|factor| factor.unwrap_or(XFieldElement::ONE))
+        .collect::<Vec<_>>();
+    par_scan(&mut products, |prev, next| prev * next);
+    if initial != XFieldElement::ONE {
+        products.par_iter_mut().for_each(|p| *p *= initial);
+    }
+    products
 }
 
 /// The running sum starting from `initial`. The returned vector holds the
@@ -214,6 +246,42 @@ mod tests {
         }
 
         let actual = par_running_evaluation(&addends, indeterminate, initial);
+        prop_assert_eq!(expected, actual);
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn running_product_agrees_with_sequential_computation(
+        #[strategy(interesting_lengths())] _len: usize,
+        #[strategy(vec(arb(), #_len))] factors: Vec<Option<XFieldElement>>,
+        #[strategy(arb())] initial: XFieldElement,
+    ) {
+        let mut acc = initial;
+        let mut expected = Vec::with_capacity(factors.len());
+        for factor in &factors {
+            if let Some(f) = factor {
+                acc *= *f;
+            }
+            expected.push(acc);
+        }
+
+        let actual = par_running_product(&factors, initial);
+        prop_assert_eq!(expected, actual);
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn running_affine_maps_agree_with_sequential_computation(
+        #[strategy(interesting_lengths())] _len: usize,
+        #[strategy(vec(arb(), #_len))] maps: Vec<(XFieldElement, XFieldElement)>,
+        #[strategy(arb())] initial: XFieldElement,
+    ) {
+        let mut acc = initial;
+        let mut expected = Vec::with_capacity(maps.len());
+        for &(a, b) in &maps {
+            acc = a * acc + b;
+            expected.push(acc);
+        }
+
+        let actual = par_running_affine_maps(maps, initial);
         prop_assert_eq!(expected, actual);
     }
 

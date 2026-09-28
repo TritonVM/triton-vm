@@ -950,11 +950,25 @@ impl MasterMainTable {
 
         // memory-like tables must be filled in before clock jump differences
         // are known, hence the break from the usual order
-        let clk_jump_diffs_op_stack =
-            OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
-        let clk_jump_diffs_ram = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
-        let clk_jump_diffs_jump_stack =
-            JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
+        let clk_jump_diffs_op_stack = {
+            profiler!(start "op stack table");
+            let filled = OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
+            profiler!(stop "op stack table");
+            filled
+        };
+        let clk_jump_diffs_ram = {
+            profiler!(start "ram table");
+            let filled = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
+            profiler!(stop "ram table");
+            filled
+        };
+        let clk_jump_diffs_jump_stack = {
+            profiler!(start "jump stack table");
+            let filled =
+                JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
+            profiler!(stop "jump stack table");
+            filled
+        };
 
         let clk_jump_diffs = ClkJumpDiffs {
             op_stack: clk_jump_diffs_op_stack,
@@ -962,13 +976,43 @@ impl MasterMainTable {
             jump_stack: clk_jump_diffs_jump_stack,
         };
         let processor_table = master_main_table.table_mut(TableId::Processor);
-        ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+        {
+            profiler!(start "processor table");
+            let filled = ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+            profiler!(stop "processor table");
+            filled
+        };
 
-        ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
-        HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
-        CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
-        LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
-        U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
+        {
+            profiler!(start "program table");
+            let filled = ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
+            profiler!(stop "program table");
+            filled
+        };
+        {
+            profiler!(start "hash table");
+            let filled = HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
+            profiler!(stop "hash table");
+            filled
+        };
+        {
+            profiler!(start "cascade table");
+            let filled = CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
+            profiler!(stop "cascade table");
+            filled
+        };
+        {
+            profiler!(start "lookup table");
+            let filled = LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
+            profiler!(stop "lookup table");
+            filled
+        };
+        {
+            profiler!(start "u32 table");
+            let filled = U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
+            profiler!(stop "u32 table");
+            filled
+        };
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.

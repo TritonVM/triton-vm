@@ -318,17 +318,26 @@ impl ArithmeticDomain {
 
     /// All the values that make up this domain.
     pub fn values(&self) -> Vec<BFieldElement> {
-        let mut accumulator = BFieldElement::ONE;
+        // Each chunk starts from its own power of the generator, so that the
+        // chunks can be computed in parallel.
+        const CHUNK_SIZE: usize = 1 << 12;
+
         let mut domain_values = Vec::with_capacity(self.length);
-        for _ in 0..self.length {
-            domain_values.push(accumulator * self.offset);
-            accumulator *= self.generator;
-        }
-        assert_eq!(
-            BFieldElement::ONE,
-            accumulator,
-            "internal error: domain length must equal the order of the generator"
-        );
+        domain_values
+            .spare_capacity_mut()
+            .par_chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(chunk_idx, chunk)| {
+                let chunk_start = u64::try_from(chunk_idx * CHUNK_SIZE).expect(USIZE_TO_U64_ERR);
+                let mut accumulator = self.generator.mod_pow(chunk_start) * self.offset;
+                for value in chunk {
+                    value.write(accumulator);
+                    accumulator *= self.generator;
+                }
+            });
+        // SAFETY: The chunks partition the first `self.length` elements of the
+        // spare capacity, and every element of every chunk was written to.
+        unsafe { domain_values.set_len(self.length) };
 
         domain_values
     }

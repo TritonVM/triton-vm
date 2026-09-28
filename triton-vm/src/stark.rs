@@ -10,7 +10,6 @@ use itertools::izip;
 use ndarray::Zip;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
-use num_traits::ConstZero;
 use rand::prelude::*;
 use rand::random;
 use rayon::prelude::*;
@@ -574,14 +573,17 @@ impl Prover {
             randomized_quotient_segments_curr_row_deep_codeword,
             randomized_quotient_segments_curr_row_times_zeta_deep_codeword,
         ];
-        let deep_codeword = deep_codeword_components
+        let deep_weights = weights.deep.as_slice().unwrap();
+        let deep_codeword = (0..short_domain.len())
             .into_par_iter()
-            .zip_eq(weights.deep.as_slice().unwrap())
-            .map(|(codeword, &weight)| codeword.into_par_iter().map(|c| c * weight).collect())
-            .reduce(
-                || vec![XFieldElement::ZERO; short_domain.len()],
-                |left, right| left.into_iter().zip(right).map(|(l, r)| l + r).collect(),
-            );
+            .map(|i| {
+                deep_codeword_components
+                    .iter()
+                    .zip_eq(deep_weights)
+                    .map(|(codeword, &weight)| codeword[i] * weight)
+                    .sum()
+            })
+            .collect::<Vec<XFieldElement>>();
         profiler!(stop "sum");
         let fri_combination_codeword = if fri_domain_is_short_domain {
             deep_codeword
@@ -1204,13 +1206,18 @@ impl Prover {
     fn split_polynomial_into_segments<const N: usize, FF: FiniteField>(
         polynomial: Polynomial<FF>,
     ) -> [Polynomial<'static, FF>; N] {
-        let mut segments = Vec::with_capacity(N);
         let coefficients = polynomial.into_coefficients();
-        for segment_index in 0..N {
-            let segment_coefficients = coefficients.iter().skip(segment_index).step_by(N);
-            let segment = Polynomial::new(segment_coefficients.copied().collect());
-            segments.push(segment);
-        }
+        let segments = (0..N)
+            .into_par_iter()
+            .map(|segment_index| {
+                let num_coefficients = coefficients.len().saturating_sub(segment_index).div_ceil(N);
+                let segment_coefficients = (0..num_coefficients)
+                    .into_par_iter()
+                    .map(|i| coefficients[segment_index + i * N])
+                    .collect();
+                Polynomial::new(segment_coefficients)
+            })
+            .collect::<Vec<_>>();
         segments.try_into().unwrap()
     }
 
