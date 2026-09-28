@@ -170,6 +170,50 @@ impl ArithmeticDomain {
         values
     }
 
+    /// Like [`evaluate`](Self::evaluate), but using a parallel NTT. Prefer
+    /// this for a single evaluation on the critical path, and [`evaluate`]
+    /// when evaluating many polynomials in parallel.
+    ///
+    /// [`evaluate`]: Self::evaluate
+    pub fn par_evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
+    where
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>
+            + 'static,
+    {
+        let (offset, length) = (self.offset, self.length);
+        let evaluate_from =
+            |chunk| Polynomial::new_borrowed(chunk).par_fast_coset_evaluate(offset, length);
+
+        let mut indexed_chunks = (0..).zip(polynomial.coefficients().chunks(length));
+        let mut values = indexed_chunks.next().map_or_else(
+            || vec![FF::ZERO; length],
+            |(_, first_chunk)| evaluate_from(first_chunk),
+        );
+        for (chunk_index, chunk) in indexed_chunks {
+            let coefficient_index = chunk_index * u64::try_from(length).unwrap();
+            let scaled_offset = offset.mod_pow(coefficient_index);
+            values
+                .par_iter_mut()
+                .zip(evaluate_from(chunk))
+                .for_each(|(value, evaluation)| *value += evaluation * scaled_offset);
+        }
+
+        values
+    }
+
+    /// Like [`interpolate`](Self::interpolate), but using a parallel NTT.
+    /// See also [`par_evaluate`](Self::par_evaluate).
+    pub fn par_interpolate<FF>(&self, values: &[FF]) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        debug_assert_eq!(self.length, values.len());
+        Polynomial::par_fast_coset_interpolate(self.offset, values)
+    }
+
     /// Interpolate a polynomial with respect to the [values](Self::values) of
     /// this domain.
     ///

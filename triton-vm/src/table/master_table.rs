@@ -282,6 +282,12 @@ where
 
         profiler!(start "resize");
         assert!(extended_trace.capacity() >= num_elements);
+        // Note: zero-initializing the memory here might seem wasteful, since
+        // every element is overwritten during “evaluation” below. However,
+        // this pass also faults in the pages in a cache-friendly, sequential
+        // manner. Writing into uninitialized memory instead was measured to
+        // be almost an order of magnitude slower, since the column-wise
+        // writes below touch a new page with almost every write.
         extended_trace
             .spare_capacity_mut()
             .par_iter_mut()
@@ -348,7 +354,7 @@ where
 
         let domain = self.domains().trace.values();
         let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
-        let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
+        let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
         let domain_over_domain_shift = domain
             .into_iter()
             .zip_eq(domain_shift_inverses)
@@ -526,7 +532,7 @@ where
         let weighted_sum_of_trace_columns = self
             .domains()
             .trace
-            .interpolate(&weighted_sum_of_trace_columns);
+            .par_interpolate(&weighted_sum_of_trace_columns);
 
         let weighted_sum_of_trace_randomizer_polynomials = weights
             .as_slice()
@@ -1207,10 +1213,10 @@ pub fn initial_quotient_zerofier_inverse(
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
         .values()
-        .into_iter()
+        .into_par_iter()
         .map(|x| x - bfe!(1))
         .collect();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 pub fn consistency_quotient_zerofier_inverse(
@@ -1219,10 +1225,10 @@ pub fn consistency_quotient_zerofier_inverse(
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
         .values()
-        .iter()
+        .into_par_iter()
         .map(|x| x.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 pub fn transition_quotient_zerofier_inverse(
@@ -1236,7 +1242,7 @@ pub fn transition_quotient_zerofier_inverse(
         .par_iter()
         .map(|domain_value| domain_value.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
-    let subgroup_zerofier_inverse = BFieldElement::batch_inversion(subgroup_zerofier);
+    let subgroup_zerofier_inverse = BFieldElement::par_batch_inversion(subgroup_zerofier);
     let zerofier_inverse: Vec<_> = quotient_domain_values
         .into_par_iter()
         .zip_eq(subgroup_zerofier_inverse.into_par_iter())
@@ -1256,10 +1262,10 @@ pub fn terminal_quotient_zerofier_inverse(
     let trace_domain_generator_inverse = trace_domain.generator().inverse();
     let zerofier_codeword = quotient_domain
         .values()
-        .into_iter()
+        .into_par_iter()
         .map(|x| x - trace_domain_generator_inverse)
-        .collect_vec();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+        .collect();
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 /// Computes the quotient codeword, which is the randomized linear combination

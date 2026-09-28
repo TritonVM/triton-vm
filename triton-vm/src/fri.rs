@@ -175,7 +175,7 @@ impl ProverRound {
         let two_inverse = xfe!(2).inverse();
 
         let domain_points = self.domain.values();
-        let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
+        let domain_point_inverses = BFieldElement::par_batch_inversion(domain_points);
 
         let n = self.codeword.len();
         (0..n / 2)

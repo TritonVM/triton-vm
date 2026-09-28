@@ -465,7 +465,6 @@ impl Prover {
         let aux_combination_poly = master_aux_table.weighted_sum_of_columns(weights.aux);
         profiler!(stop "aux");
         let main_and_aux_combination_polynomial = main_combination_poly + aux_combination_poly;
-        let main_and_aux_codeword = short_domain.evaluate(&main_and_aux_combination_polynomial);
 
         profiler!(start "quotient" ("CC"));
         let [
@@ -485,11 +484,18 @@ impl Prover {
         let randomized_quotient_segments_ood_poly_r = last_rand_seg_quot_poly
             * weights.quot_segments.last().copied().unwrap()
             + shared_randomized_quotient_segments_combination_polynomial;
-        let randomized_quotient_segments_ood_codeword_p =
-            short_domain.evaluate(&randomized_quotient_segments_ood_poly_p);
-        let randomized_quotient_segments_ood_codeword_r =
-            short_domain.evaluate(&randomized_quotient_segments_ood_poly_r);
         profiler!(stop "quotient");
+
+        // Each evaluation is a single NTT, which is not parallelized
+        // internally. Evaluating the three polynomials concurrently keeps
+        // more than one core busy.
+        profiler!(start "evaluate" ("LDE"));
+        let main_and_aux_codeword = short_domain.par_evaluate(&main_and_aux_combination_polynomial);
+        let randomized_quotient_segments_ood_codeword_p =
+            short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_p);
+        let randomized_quotient_segments_ood_codeword_r =
+            short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_r);
+        profiler!(stop "evaluate");
 
         profiler!(stop "linear combination");
 
@@ -514,12 +520,14 @@ impl Prover {
         //
         // Both approaches are sound. The first approach is more efficient, as
         // it requires fewer operations.
+        let short_domain_values = short_domain.values();
+
         profiler!(start "main&aux curr row");
         let out_of_domain_curr_row_main_and_aux_value =
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
         let main_and_aux_curr_row_deep_codeword = Self::deep_codeword(
             &main_and_aux_codeword,
-            short_domain,
+            &short_domain_values,
             out_of_domain_point_curr_row,
             out_of_domain_curr_row_main_and_aux_value,
         );
@@ -530,7 +538,7 @@ impl Prover {
             main_and_aux_combination_polynomial.evaluate(out_of_domain_point_next_row);
         let main_and_aux_next_row_deep_codeword = Self::deep_codeword(
             &main_and_aux_codeword,
-            short_domain,
+            &short_domain_values,
             out_of_domain_point_next_row,
             out_of_domain_next_row_main_and_aux_value,
         );
@@ -541,7 +549,7 @@ impl Prover {
             randomized_quotient_segments_ood_poly_p.evaluate(ood_point_curr_row_pow_num_segments);
         let randomized_quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
             &randomized_quotient_segments_ood_codeword_p,
-            short_domain,
+            &short_domain_values,
             ood_point_curr_row_pow_num_segments,
             out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value,
         );
@@ -551,7 +559,7 @@ impl Prover {
                 .evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
         let randomized_quotient_segments_curr_row_times_zeta_deep_codeword = Self::deep_codeword(
             &randomized_quotient_segments_ood_codeword_r,
-            short_domain,
+            &short_domain_values,
             ood_point_curr_row_times_zeta_pow_num_segments,
             out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value,
         );
@@ -580,8 +588,8 @@ impl Prover {
         } else {
             profiler!(start "LDE" ("LDE"));
             let deep_codeword = domains
-                .quotient
-                .low_degree_extension(&deep_codeword, domains.fri);
+                .fri
+                .par_evaluate(&domains.quotient.par_interpolate(&deep_codeword));
             profiler!(stop "LDE");
             deep_codeword
         };
@@ -1168,7 +1176,8 @@ impl Prover {
         quotient_codeword: Array1<XFieldElement>,
         quotient_domain: ArithmeticDomain,
     ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
-        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
+        let quotient_interpolation_poly =
+            quotient_domain.par_interpolate(&quotient_codeword.to_vec());
 
         Self::split_polynomial_into_segments(quotient_interpolation_poly)
     }
@@ -1211,8 +1220,8 @@ impl Prover {
         fri_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
         let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
-            .into_par_iter()
-            .flat_map(|segment| fri_domain.evaluate(segment))
+            .iter()
+            .flat_map(|segment| fri_domain.par_evaluate(segment))
             .collect();
 
         // Constructing the result in column-major form is easier here.
@@ -1264,15 +1273,11 @@ impl Prover {
         let random_coefficients = (0..num_coefficients).map(|_| rng.random()).collect();
         let quotient_segment_randomizer = Polynomial::new(random_coefficients);
 
-        // Set up the randomized quotient table and corresponding polynomials
-        // “from the right”, that is, highest index first.
-        let quotient_segment_randomizer_codeword =
-            ldt_domain.evaluate(&quotient_segment_randomizer);
-        let mut randomized_segment_codewords = segment_codewords;
-        randomized_segment_codewords
-            .push_column(Array1::from(quotient_segment_randomizer_codeword).view())
-            .unwrap();
-
+        // Set up the randomized quotient polynomials “from the right”, that
+        // is, highest index first. Working on the polynomials alone is cheap;
+        // the expensive part, evaluating on the low-degree test domain, is
+        // deferred until all polynomials are known so that it can happen in
+        // parallel.
         let mut randomized_segment_polynomials = segment_polynomials.to_vec();
         randomized_segment_polynomials.push(quotient_segment_randomizer);
         let mut randomized_segment_polynomials: [_; NUM_RANDOMIZED_QUOTIENT_SEGMENTS] =
@@ -1280,19 +1285,39 @@ impl Prover {
 
         let zeta_to_the_k =
             Stark::ZETA.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
-        for (i, mut s_i_codeword) in randomized_segment_codewords
-            .columns_mut()
-            .into_iter()
-            .enumerate()
-            .dropping_back(1)
-            .rev()
-        {
+        let mut s_i_addend_polys = Vec::with_capacity(NUM_QUOTIENT_SEGMENTS);
+        for i in (0..NUM_QUOTIENT_SEGMENTS).rev() {
             let zeta_to_the_i = Stark::ZETA.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
             let s_i_plus_1_poly = &randomized_segment_polynomials[i + 1];
             let s_i_addend_poly = -zeta_to_the_i * s_i_plus_1_poly.scale(zeta_to_the_k);
-            let s_i_addend_codeword = ldt_domain.evaluate(&s_i_addend_poly);
+            randomized_segment_polynomials[i] += s_i_addend_poly.clone();
+            s_i_addend_polys.push(s_i_addend_poly);
+        }
+        s_i_addend_polys.reverse();
+
+        // The randomizer's codeword is the last column; the addend codewords
+        // are added to the existing segment codewords.
+        let randomizer_poly = &randomized_segment_polynomials[NUM_QUOTIENT_SEGMENTS];
+        let polys_to_evaluate = s_i_addend_polys
+            .iter()
+            .chain(std::iter::once(randomizer_poly))
+            .collect_vec();
+        let mut codewords = polys_to_evaluate
+            .into_iter()
+            .map(|poly| ldt_domain.par_evaluate(poly))
+            .collect::<Vec<_>>();
+        let quotient_segment_randomizer_codeword = codewords.pop().unwrap();
+
+        let mut randomized_segment_codewords = segment_codewords;
+        randomized_segment_codewords
+            .push_column(Array1::from(quotient_segment_randomizer_codeword).view())
+            .unwrap();
+        for (mut s_i_codeword, s_i_addend_codeword) in randomized_segment_codewords
+            .columns_mut()
+            .into_iter()
+            .zip(codewords)
+        {
             s_i_codeword.add_assign(&Array1::from(s_i_addend_codeword));
-            randomized_segment_polynomials[i] += s_i_addend_poly;
         }
 
         (randomized_segment_codewords, randomized_segment_polynomials)
@@ -1345,22 +1370,23 @@ impl Prover {
 
     fn deep_codeword(
         codeword: &[XFieldElement],
-        domain: ArithmeticDomain,
+        domain_values: &[BFieldElement],
         out_of_domain_point: XFieldElement,
         out_of_domain_value: XFieldElement,
     ) -> Vec<XFieldElement> {
-        domain
-            .values()
+        // The DEEP update is (f(x) - f(α)) / (x - α). Field inversion is
+        // expensive; batch inversion replaces (almost) all of them with
+        // multiplications.
+        assert_eq!(domain_values.len(), codeword.len());
+        let denominators = domain_values
             .par_iter()
-            .zip_eq(codeword)
-            .map(|(&in_domain_value, &in_domain_evaluation)| {
-                Stark::deep_update(
-                    in_domain_value,
-                    in_domain_evaluation,
-                    out_of_domain_point,
-                    out_of_domain_value,
-                )
-            })
+            .map(|&x| x - out_of_domain_point)
+            .collect();
+        let denominator_inverses = XFieldElement::par_batch_inversion(denominators);
+        codeword
+            .par_iter()
+            .zip_eq(denominator_inverses)
+            .map(|(&f_x, denominator_inverse)| (f_x - out_of_domain_value) * denominator_inverse)
             .collect()
     }
 }
@@ -3563,7 +3589,7 @@ pub(crate) mod tests {
 
         let deep_poly = Prover::deep_codeword(
             &low_deg_codeword,
-            domain,
+            &domain.values(),
             out_of_domain_point,
             out_of_domain_value,
         );
@@ -3573,7 +3599,7 @@ pub(crate) mod tests {
         let bogus_out_of_domain_value = rand::rng().random();
         let bogus_deep_poly = Prover::deep_codeword(
             &low_deg_codeword,
-            domain,
+            &domain.values(),
             out_of_domain_point,
             bogus_out_of_domain_value,
         );
