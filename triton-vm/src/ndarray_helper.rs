@@ -82,7 +82,7 @@ where
 {
     let mut array = Array2::uninit(shape);
     if let Some(memory) = array.as_slice_memory_order_mut() {
-        advise_huge_pages(memory);
+        twenty_first::memory::advise_huge_pages(memory);
     }
     array.par_mapv_inplace(|_| MaybeUninit::new(FF::ZERO));
 
@@ -91,42 +91,6 @@ where
         // 1. The array is not sliced up.
         // 2. The array is fully initialized.
         array.assume_init()
-    }
-}
-
-/// Advise the operating system to back the given memory with huge pages,
-/// where supported. On other systems, this does nothing.
-///
-/// The prover's large tables are accessed in patterns that touch many pages
-/// at once. With the default page size of 4 KiB, both faulting in the pages
-/// initially and the subsequent address translations are a significant part
-/// of the prover's runtime on machines with many cores; huge pages reduce
-/// both by orders of magnitude.
-pub(crate) fn advise_huge_pages<T>(memory: &mut [T]) {
-    #[cfg(target_os = "linux")]
-    {
-        const HUGE_PAGE_SIZE: usize = 2 << 20;
-        const PAGE_SIZE: usize = 4 << 10;
-
-        let start = memory.as_mut_ptr() as usize;
-        let end = start + std::mem::size_of_val(memory);
-        let aligned_start = start.next_multiple_of(PAGE_SIZE);
-        let aligned_end = end & !(PAGE_SIZE - 1);
-        if aligned_end < aligned_start + HUGE_PAGE_SIZE {
-            return;
-        }
-
-        let region = aligned_start as *mut libc::c_void;
-        let region_len = aligned_end - aligned_start;
-        // SAFETY: The region lies within `memory`, which is exclusively
-        // borrowed. The advice does not alter the memory's contents or its
-        // mapping; it only informs the kernel's paging decisions. Failure is
-        // harmless and hence ignored.
-        let _ = unsafe { libc::madvise(region, region_len, libc::MADV_HUGEPAGE) };
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = memory;
     }
 }
 
