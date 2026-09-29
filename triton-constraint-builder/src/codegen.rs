@@ -58,10 +58,22 @@ pub struct TasmBackend {
 
 impl Codegen for RustBackend {
     fn constraint_evaluation_code(constraints: &Constraints) -> TokenStream {
+        fn num_main_constraints<II: InputIndicator>(circuits: Vec<ConstraintCircuit<II>>) -> usize {
+            circuits
+                .iter()
+                .filter(|circuit| circuit.evaluates_to_base_element())
+                .count()
+        }
+
         let num_init_constraints = constraints.init.len();
         let num_cons_constraints = constraints.cons.len();
         let num_tran_constraints = constraints.tran.len();
         let num_term_constraints = constraints.term.len();
+
+        let num_init_main_constraints = num_main_constraints(constraints.init());
+        let num_cons_main_constraints = num_main_constraints(constraints.cons());
+        let num_tran_main_constraints = num_main_constraints(constraints.tran());
+        let num_term_main_constraints = num_main_constraints(constraints.term());
 
         let (init_constraint_degrees, init_constraints_bfe, init_constraints_xfe) =
             Self::tokenize_circuits(&constraints.init());
@@ -97,6 +109,14 @@ impl Codegen for RustBackend {
                 + Self::NUM_CONSISTENCY_CONSTRAINTS
                 + Self::NUM_TRANSITION_CONSTRAINTS
                 + Self::NUM_TERMINAL_CONSTRAINTS;
+
+            // The number of constraints of the respective type that evaluate to
+            // an element of the base field. When evaluating over the base
+            // field, these constraints come first.
+            pub const NUM_INITIAL_MAIN_CONSTRAINTS: usize = #num_init_main_constraints;
+            pub const NUM_CONSISTENCY_MAIN_CONSTRAINTS: usize = #num_cons_main_constraints;
+            pub const NUM_TRANSITION_MAIN_CONSTRAINTS: usize = #num_tran_main_constraints;
+            pub const NUM_TERMINAL_MAIN_CONSTRAINTS: usize = #num_term_main_constraints;
 
             #[allow(unused_variables)]
             pub fn initial_quotient_degree_bounds(interpolant_degree: isize) -> Vec<isize> {

@@ -140,6 +140,7 @@ use rand::prelude::*;
 use rayon::prelude::*;
 use strum::EnumCount;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::tip5::RATE;
 use twenty_first::util_types::sponge;
@@ -1494,10 +1495,6 @@ pub fn all_quotients_combined(
     profiler!(stop "zerofier inverse");
 
     profiler!(start "evaluate AIR, compute quotient codeword");
-    let dot_product = |partial_row: Vec<_>, weights: &[_]| -> XFieldElement {
-        let pairs = partial_row.into_iter().zip_eq(weights.iter());
-        pairs.map(|(v, &w)| v * w).sum()
-    };
 
     let num_rows = quotient_domain.len();
     let unit_distance = num_rows / trace_domain.len();
@@ -1535,9 +1532,10 @@ pub fn all_quotients_combined(
                     current_row_aux,
                     challenges,
                 );
-                let initial_inner_product = dot_product(
-                    initial_constraint_values,
+                let initial_inner_product = inner_product(
+                    &initial_constraint_values,
                     &quotient_weights[..init_section_end],
+                    MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
                 );
                 let mut value = initial_inner_product * initial_zerofier_inverse[row_index];
 
@@ -1547,9 +1545,10 @@ pub fn all_quotients_combined(
                         current_row_aux,
                         challenges,
                     );
-                let consistency_inner_product = dot_product(
-                    consistency_constraint_values,
+                let consistency_inner_product = inner_product(
+                    &consistency_constraint_values,
                     &quotient_weights[init_section_end..cons_section_end],
+                    MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
                 );
                 value += consistency_inner_product * consistency_zerofier_inverse[row_index];
 
@@ -1560,9 +1559,10 @@ pub fn all_quotients_combined(
                     next_row_aux,
                     challenges,
                 );
-                let transition_inner_product = dot_product(
-                    transition_constraint_values,
+                let transition_inner_product = inner_product(
+                    &transition_constraint_values,
                     &quotient_weights[cons_section_end..tran_section_end],
+                    MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
                 );
                 value += transition_inner_product * transition_zerofier_inverse[row_index];
 
@@ -1571,9 +1571,10 @@ pub fn all_quotients_combined(
                     current_row_aux,
                     challenges,
                 );
-                let terminal_inner_product = dot_product(
-                    terminal_constraint_values,
+                let terminal_inner_product = inner_product(
+                    &terminal_constraint_values,
                     &quotient_weights[tran_section_end..],
+                    MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
                 );
                 value += terminal_inner_product * terminal_zerofier_inverse[row_index];
 
@@ -1583,6 +1584,83 @@ pub fn all_quotients_combined(
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// The inner product `Σ values[i] · weights[i]`, where the first
+/// `num_base_values` values are known to be [lifted](XFieldElement::lift) base
+/// field elements.
+///
+/// Every product of two base field elements is accumulated without modular
+/// reduction; only the final sums are reduced. Additionally, for the lifted
+/// base field elements, the known-zero coefficients are skipped.
+fn inner_product(
+    values: &[XFieldElement],
+    weights: &[XFieldElement],
+    num_base_values: usize,
+) -> XFieldElement {
+    assert_eq!(values.len(), weights.len());
+    let (base_values, ext_values) = values.split_at(num_base_values);
+    let (base_weights, ext_weights) = weights.split_at(num_base_values);
+
+    // the coefficients of the product before reduction modulo the extension
+    // field's defining polynomial x^3 - x + 1
+    let mut sums = [UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1];
+    for (value, weight) in base_values.iter().zip(base_weights) {
+        debug_assert!(value.unlift().is_some());
+        let value = value.coefficients[0];
+        for (sum, &w) in sums.iter_mut().zip(&weight.coefficients) {
+            sum.add_product(value, w);
+        }
+    }
+    for (value, weight) in ext_values.iter().zip(ext_weights) {
+        for (i, &v) in value.coefficients.iter().enumerate() {
+            for (j, &w) in weight.coefficients.iter().enumerate() {
+                sums[i + j].add_product(v, w);
+            }
+        }
+    }
+
+    // x^3 = x - 1 and x^4 = x^2 - x
+    let [s0, s1, s2, s3, s4] = sums.map(UnreducedSum::reduce);
+    XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+}
+
+/// A sum of products of [`BFieldElement`]s, where the products are not reduced
+/// individually. Since the elements are in Montgomery representation, a single
+/// Montgomery reduction of the sum gives the reduced sum of the products.
+#[derive(Debug, Copy, Clone)]
+struct UnreducedSum(u128);
+
+impl UnreducedSum {
+    const ZERO: Self = Self(0);
+
+    /// The Montgomery reduction requires its input to be smaller than this.
+    const P_TIMES_2_POW_64: u128 = (BFieldElement::P as u128) << 64;
+
+    /// Equals 2^128 - p·2^64. Adding it after the sum wrapped around 2^128
+    /// keeps the sum's residue modulo p intact.
+    const WRAP_AROUND_CORRECTION: u128 = (1 << 96) - (1 << 64);
+
+    #[inline(always)]
+    fn add_product(&mut self, a: BFieldElement, b: BFieldElement) {
+        let product = u128::from(a.raw_u64()) * u128::from(b.raw_u64());
+        let (sum, wrapped_around) = self.0.overflowing_add(product);
+
+        // After a wrap-around, the sum is smaller than the product, which is at
+        // most (p-1)^2 = 2^128 - 2^97 + 2^64. Adding the correction can't
+        // overflow.
+        self.0 = sum + u128::from(wrapped_around) * Self::WRAP_AROUND_CORRECTION;
+    }
+
+    #[inline(always)]
+    fn reduce(self) -> BFieldElement {
+        let sum = if self.0 >= Self::P_TIMES_2_POW_64 {
+            self.0 - Self::P_TIMES_2_POW_64
+        } else {
+            self.0
+        };
+        BFieldElement::from_raw_u64(BFieldElement::montyred(sum))
+    }
 }
 
 /// Copy `num_rows` consecutive rows of the given table, starting at row
@@ -1785,6 +1863,55 @@ mod tests {
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
         row_hashes_are_identical(artifacts.master_main_table);
         row_hashes_are_identical(artifacts.master_aux_table);
+    }
+
+    fn naive_inner_product(values: &[XFieldElement], weights: &[XFieldElement]) -> XFieldElement {
+        values.iter().zip_eq(weights).map(|(&v, &w)| v * w).sum()
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn lazily_reduced_inner_product_equals_naive_inner_product(
+        #[strategy(arb())] base_values: Vec<BFieldElement>,
+        #[strategy(arb())] ext_values: Vec<XFieldElement>,
+        #[strategy(prop::collection::vec(arb(), #base_values.len() + #ext_values.len()))]
+        weights: Vec<XFieldElement>,
+    ) {
+        let num_base_values = base_values.len();
+        let values = base_values
+            .into_iter()
+            .map(|bfe| bfe.lift())
+            .chain(ext_values)
+            .collect_vec();
+
+        let expected = naive_inner_product(&values, &weights);
+        let actual = super::inner_product(&values, &weights, num_base_values);
+        prop_assert_eq!(expected, actual);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn lazily_reduced_inner_product_of_largest_elements_equals_naive_inner_product() {
+        // Products of the largest elements make the unreduced sums wrap around
+        // frequently.
+        let max = BFieldElement::new(BFieldElement::MAX);
+        let max_xfe = XFieldElement::new([max; EXTENSION_DEGREE]);
+        let min_raw = BFieldElement::from_raw_u64(0);
+        let max_raw = BFieldElement::from_raw_u64(BFieldElement::P - 1);
+        let max_raw_xfe = XFieldElement::new([max_raw; EXTENSION_DEGREE]);
+        let mixed_xfe = XFieldElement::new([max_raw, min_raw, max]);
+
+        for element in [max_xfe, max_raw_xfe, mixed_xfe] {
+            for num_base_values in [0, 1, 500, 1000] {
+                let values = (0..num_base_values)
+                    .map(|_| element.coefficients[0].lift())
+                    .chain(std::iter::repeat_n(element, 1000))
+                    .collect_vec();
+                let weights = vec![element; values.len()];
+
+                let expected = naive_inner_product(&values, &weights);
+                let actual = super::inner_product(&values, &weights, num_base_values);
+                assert_eq!(expected, actual);
+            }
+        }
     }
 
     #[macro_rules_attr::apply(proptest)]
