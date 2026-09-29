@@ -619,11 +619,12 @@ where
         &self,
         weights: Array1<XFieldElement>,
     ) -> Polynomial<'_, XFieldElement> {
-        assert_eq!(Self::NUM_COLUMNS, weights.len());
-
         // The table is column-major, so the rows are summed block by block:
         // within a block, every column's contiguous piece is read once.
         const ROWS_PER_BLOCK: usize = 1 << 11;
+
+        assert_eq!(Self::NUM_COLUMNS, weights.len());
+
         let trace_table = self.trace_table();
         let weights = weights.as_slice().unwrap();
         let mut weighted_sum_of_trace_columns = vec![XFieldElement::ZERO; trace_table.nrows()];
@@ -1077,43 +1078,25 @@ impl MasterMainTable {
             jump_stack: clk_jump_diffs_jump_stack,
         };
         let processor_table = master_main_table.table_mut(TableId::Processor);
-        {
-            profiler!(start "processor table");
-            let filled = ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
-            profiler!(stop "processor table");
-            filled
-        };
+        profiler!(start "processor table");
+        ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+        profiler!(stop "processor table");
 
-        {
-            profiler!(start "program table");
-            let filled = ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
-            profiler!(stop "program table");
-            filled
-        };
-        {
-            profiler!(start "hash table");
-            let filled = HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
-            profiler!(stop "hash table");
-            filled
-        };
-        {
-            profiler!(start "cascade table");
-            let filled = CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
-            profiler!(stop "cascade table");
-            filled
-        };
-        {
-            profiler!(start "lookup table");
-            let filled = LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
-            profiler!(stop "lookup table");
-            filled
-        };
-        {
-            profiler!(start "u32 table");
-            let filled = U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
-            profiler!(stop "u32 table");
-            filled
-        };
+        profiler!(start "program table");
+        ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
+        profiler!(stop "program table");
+        profiler!(start "hash table");
+        HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
+        profiler!(stop "hash table");
+        profiler!(start "cascade table");
+        CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
+        profiler!(stop "cascade table");
+        profiler!(start "lookup table");
+        LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
+        profiler!(stop "lookup table");
+        profiler!(start "u32 table");
+        U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
+        profiler!(stop "u32 table");
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.
@@ -2704,17 +2687,19 @@ mod tests {
         let main_rows = main.out_of_domain_rows(&points);
         let aux_rows = aux.out_of_domain_rows(&points);
         for (i, &z) in points.iter().enumerate() {
-            for col in 0..MasterMainTable::NUM_COLUMNS {
+            assert_eq!(MasterMainTable::NUM_COLUMNS, main_rows[i].len());
+            for (col, &actual) in main_rows[i].iter().enumerate() {
                 let expected = main
                     .randomized_column_interpolant(col)
                     .evaluate::<_, XFieldElement>(z);
-                assert_eq!(expected, main_rows[i][col], "main column {col}, point {i}");
+                assert_eq!(expected, actual, "main column {col}, point {i}");
             }
-            for col in 0..MasterAuxTable::NUM_COLUMNS {
+            assert_eq!(MasterAuxTable::NUM_COLUMNS, aux_rows[i].len());
+            for (col, &actual) in aux_rows[i].iter().enumerate() {
                 let expected = aux
                     .randomized_column_interpolant(col)
                     .evaluate::<_, XFieldElement>(z);
-                assert_eq!(expected, aux_rows[i][col], "aux column {col}, point {i}");
+                assert_eq!(expected, actual, "aux column {col}, point {i}");
             }
         }
     }
