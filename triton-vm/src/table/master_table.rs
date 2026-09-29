@@ -1467,7 +1467,7 @@ pub fn all_quotients_combined(
     // the rows' elements by index, which is notably faster for contiguous
     // rows than for rows of a column-major table. Larger chunks read longer
     // contiguous pieces of every column, which helps the hardware
-    // prefetchers; the four buffers should still fit into the L2 cache.
+    // prefetchers; the two buffers should still fit into the L2 cache.
     const ROWS_PER_CHUNK: usize = 64;
 
     assert_eq!(
@@ -1505,27 +1505,26 @@ pub fn all_quotients_combined(
         .for_each(|(chunk_idx, quotient_values)| {
             let first_row = chunk_idx * ROWS_PER_CHUNK;
             let num_chunk_rows = quotient_values.len();
-            let current_rows_main =
-                gather_rows(quotient_domain_master_main_table, first_row, num_chunk_rows);
-            let current_rows_aux =
-                gather_rows(quotient_domain_master_aux_table, first_row, num_chunk_rows);
-            let next_rows_main = gather_rows(
+            // The “next” rows are the current rows, shifted by the unit
+            // distance. Gathering both at once copies the overlap only once.
+            let num_gathered_rows = num_chunk_rows + unit_distance;
+            let rows_main = gather_rows(
                 quotient_domain_master_main_table,
-                first_row + unit_distance,
-                num_chunk_rows,
+                first_row,
+                num_gathered_rows,
             );
-            let next_rows_aux = gather_rows(
+            let rows_aux = gather_rows(
                 quotient_domain_master_aux_table,
-                first_row + unit_distance,
-                num_chunk_rows,
+                first_row,
+                num_gathered_rows,
             );
 
             for (i, quotient_value) in quotient_values.iter_mut().enumerate() {
                 let row_index = first_row + i;
-                let current_row_main = current_rows_main.row(i);
-                let current_row_aux = current_rows_aux.row(i);
-                let next_row_main = next_rows_main.row(i);
-                let next_row_aux = next_rows_aux.row(i);
+                let current_row_main = rows_main.row(i);
+                let current_row_aux = rows_aux.row(i);
+                let next_row_main = rows_main.row(i + unit_distance);
+                let next_row_aux = rows_aux.row(i + unit_distance);
 
                 let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
                     current_row_main,
