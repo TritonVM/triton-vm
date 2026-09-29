@@ -48,6 +48,7 @@ use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
 use crate::table::master_table::all_quotients_combined;
+use crate::table::master_table::evaluate_randomized_interpolant_into;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::offset_rng_seed;
 
@@ -888,21 +889,6 @@ impl Prover {
         {
             // offset by fri domain offset to avoid division-by-zero errors
             let working_domain = working_domain.with_offset(iota.mod_pow(coset_index) * psi);
-            profiler!(start "poly evaluate" ("LDE"));
-            Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
-                .and(main_columns.axis_iter_mut(COL_AXIS))
-                .par_for_each(|trace_column, target_column| {
-                    let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
-                    Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
-                });
-            Zip::from(aux_table.trace_table().axis_iter(COL_AXIS))
-                .and(aux_columns.axis_iter_mut(COL_AXIS))
-                .par_for_each(|trace_column, target_column| {
-                    let trace_poly = Polynomial::new_borrowed(trace_column.as_slice().unwrap());
-                    Array1::from(working_domain.evaluate(&trace_poly)).move_into(target_column);
-                });
-            profiler!(stop "poly evaluate");
-
             // A _randomized_ trace interpolant is:
             //
             //    trace_interpolant + trace_zerofier·trace_randomizer
@@ -949,27 +935,37 @@ impl Prover {
             // domains at most as long as the trace domain.
             assert!(working_domain.len() <= domains.trace.len());
 
-            profiler!(start "trace randomizers" ("LDE"));
+            // The randomizers are added to the interpolants' scaled
+            // coefficients before the NTT, which avoids evaluating them
+            // separately.
+            profiler!(start "poly evaluate" ("LDE"));
             let trace_domain_len = u64::try_from(domains.trace.len()).unwrap();
             let zerofier = working_domain.offset().mod_pow(trace_domain_len) - BFieldElement::ONE;
-
-            Zip::from(main_columns.axis_iter_mut(COL_AXIS))
-                .and(main_trace_randomizers.axis_iter(ROW_AXIS))
-                .par_for_each(|mut column, randomizer_polynomial| {
-                    let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
-                    for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
-                        *cell += zerofier * randomizer;
-                    }
+            Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
+                .and(main_columns.axis_iter_mut(COL_AXIS))
+                .and(main_trace_randomizers.view())
+                .par_for_each(|interpolant, mut codeword, randomizer| {
+                    evaluate_randomized_interpolant_into(
+                        interpolant.as_slice().unwrap(),
+                        randomizer,
+                        zerofier,
+                        working_domain,
+                        codeword.as_slice_mut().unwrap(),
+                    );
                 });
-            Zip::from(aux_columns.axis_iter_mut(COL_AXIS))
-                .and(aux_trace_randomizers.axis_iter(ROW_AXIS))
-                .par_for_each(|mut column, randomizer_polynomial| {
-                    let randomizer_codeword = working_domain.evaluate(&randomizer_polynomial[[]]);
-                    for (cell, randomizer) in column.iter_mut().zip(randomizer_codeword) {
-                        *cell += zerofier * randomizer;
-                    }
+            Zip::from(aux_table.trace_table().axis_iter(COL_AXIS))
+                .and(aux_columns.axis_iter_mut(COL_AXIS))
+                .and(aux_trace_randomizers.view())
+                .par_for_each(|interpolant, mut codeword, randomizer| {
+                    evaluate_randomized_interpolant_into(
+                        interpolant.as_slice().unwrap(),
+                        randomizer,
+                        zerofier,
+                        working_domain,
+                        codeword.as_slice_mut().unwrap(),
+                    );
                 });
-            profiler!(stop "trace randomizers");
+            profiler!(stop "poly evaluate");
 
             profiler!(start "AIR evaluation" ("AIR"));
             let all_quotients = all_quotients_combined(

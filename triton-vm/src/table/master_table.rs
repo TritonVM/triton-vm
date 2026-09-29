@@ -567,41 +567,38 @@ where
             .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
         profiler!(stop "interpolate");
 
+        // The interpolants are polynomials in the trace domain's values.
+        assert_eq!(BFieldElement::ONE, trace_domain.offset());
         let num_rows_u64 = u64::try_from(num_rows).unwrap();
-        let trace_offset_inverse = trace_domain.offset().inverse();
-        let trace_offset_to_the_n = trace_domain.offset().mod_pow(num_rows_u64);
         let mut coset_table = ndarray_helper::par_zeros((num_rows, Self::NUM_COLUMNS).f());
         let mut all_digests = vec![Digest::default(); fri_domain.len()];
         for coset_index in 0..num_cosets {
             // The coset's points are `coset_offset · trace_generator^i`.
             let coset_offset =
                 fri_domain.offset() * fri_domain.generator().mod_pow(coset_index as u64);
+            let coset = ArithmeticDomain::of_length(num_rows)
+                .unwrap()
+                .with_offset(coset_offset);
+            debug_assert_eq!(
+                fri_domain.generator().mod_pow(num_cosets as u64),
+                coset.generator()
+            );
+
+            // The trace zerofier, `X^n - 1`, is constant on the coset.
+            let zerofier = coset_offset.mod_pow(num_rows_u64) - BFieldElement::ONE;
 
             profiler!(start "LDE" ("LDE"));
-            // A randomized interpolant is `interpolant + zerofier · randomizer`.
-            // The trace zerofier, `X^n - offset^n`, is constant on the coset.
-            let zerofier = coset_offset.mod_pow(num_rows_u64) - trace_offset_to_the_n;
-            let interpolant_scale = coset_offset * trace_offset_inverse;
-            Zip::from(coset_table.axis_iter_mut(COL_AXIS))
-                .and(self.trace_table().axis_iter(COL_AXIS))
+            Zip::from(self.trace_table().axis_iter(COL_AXIS))
+                .and(coset_table.axis_iter_mut(COL_AXIS))
                 .and(ArrayView1::from(&randomizers))
-                .par_for_each(|mut codeword, coefficients, randomizer| {
-                    let codeword = codeword.as_slice_mut().unwrap();
-                    let coefficients = coefficients.as_slice().unwrap();
-                    let randomizer = randomizer.coefficients();
-                    assert!(randomizer.len() <= codeword.len());
-
-                    let mut power = BFieldElement::ONE;
-                    for (cell, &coefficient) in codeword.iter_mut().zip(coefficients) {
-                        *cell = coefficient * power;
-                        power *= interpolant_scale;
-                    }
-                    let mut power = zerofier;
-                    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
-                        *cell += coefficient * power;
-                        power *= coset_offset;
-                    }
-                    ntt(codeword);
+                .par_for_each(|interpolant, mut codeword, randomizer| {
+                    evaluate_randomized_interpolant_into(
+                        interpolant.as_slice().unwrap(),
+                        randomizer,
+                        zerofier,
+                        coset,
+                        codeword.as_slice_mut().unwrap(),
+                    );
                 });
             profiler!(stop "LDE");
 
@@ -1563,6 +1560,56 @@ pub fn all_quotients_combined(
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// Evaluate the randomized interpolant `interpolant + zerofier · randomizer` on
+/// the given domain, writing the values into `codeword`.
+///
+/// The trace zerofier must be constant on the domain, and `zerofier` must be
+/// that constant. This holds for cosets of subgroups of the trace domain; see
+/// also [`ArithmeticDomain::randomized_interpolant`].
+///
+/// The randomizer, whose degree is small, is added to the interpolant's
+/// scaled coefficients before the (single, in-place) NTT, which avoids
+/// evaluating it separately.
+///
+/// # Panics
+///
+/// Panics if the codeword's length differs from the domain's, or if the
+/// interpolant or the randomizer has more coefficients than the codeword is
+/// long.
+pub(crate) fn evaluate_randomized_interpolant_into<FF>(
+    interpolant: &[FF],
+    randomizer: &Polynomial<FF>,
+    zerofier: BFieldElement,
+    domain: ArithmeticDomain,
+    codeword: &mut [FF],
+) where
+    FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+{
+    let randomizer = randomizer.coefficients();
+    assert_eq!(domain.len(), codeword.len());
+    assert!(interpolant.len() <= codeword.len());
+    assert!(randomizer.len() <= codeword.len());
+
+    // Evaluating `p(x)` on the coset `offset·⟨ω⟩` is evaluating `p(offset·x)`
+    // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
+    let offset = domain.offset();
+    let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
+    let mut power = BFieldElement::ONE;
+    for (cell, &coefficient) in scaled_interpolant.iter_mut().zip(interpolant) {
+        *cell = coefficient * power;
+        power *= offset;
+    }
+    zero_padding.fill(FF::ZERO);
+
+    let mut power = zerofier;
+    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
+        *cell += coefficient * power;
+        power *= offset;
+    }
+
+    ntt(codeword);
 }
 
 /// The inner product `Σ values[i] · weights[i]`, where the first
