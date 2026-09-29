@@ -1,9 +1,11 @@
+use std::mem::MaybeUninit;
 use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::ConstOne;
 use num_traits::Zero;
 use rayon::prelude::*;
+use twenty_first::math::ntt::intt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -170,6 +172,100 @@ impl ArithmeticDomain {
         values
     }
 
+    /// Like [`evaluate`](Self::evaluate), but writing the codeword into the
+    /// given, possibly uninitialized memory instead of allocating a new
+    /// vector. On return, every element of `codeword` is initialized. Avoiding
+    /// the allocation matters when many large codewords are computed: fresh
+    /// allocations are served from fresh pages, and the page faults dominate
+    /// the runtime. Moreover, the scaling and zero-padding of the coefficients
+    /// are fused with the transform's first passes over memory.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients of the polynomial exceeds the
+    /// [length](Self::len) of this domain, or if the length of `codeword`
+    /// does not equal it.
+    pub fn evaluate_into<FF>(&self, polynomial: &Polynomial<FF>, codeword: &mut [MaybeUninit<FF>])
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        assert_eq!(self.length, codeword.len());
+        polynomial.fast_coset_evaluate_into(self.offset, codeword);
+    }
+
+    /// Like [`evaluate`](Self::evaluate), but using a parallel NTT. Prefer
+    /// this for a single evaluation on the critical path, and [`evaluate`]
+    /// when evaluating many polynomials in parallel.
+    ///
+    /// [`evaluate`]: Self::evaluate
+    pub fn par_evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
+    where
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>
+            + 'static,
+    {
+        let (offset, length) = (self.offset, self.length);
+        let evaluate_from = |chunk: &[FF]| {
+            // Evaluating into uninitialized memory avoids zero-initializing
+            // and then overwriting the codeword; the transform initializes it.
+            let mut codeword = twenty_first::memory::vec_with_capacity(length);
+            Polynomial::new_borrowed(chunk)
+                .par_fast_coset_evaluate_into(offset, codeword.spare_capacity_mut());
+            // SAFETY: `par_fast_coset_evaluate_into` initializes every one
+            // of the `length` elements of the spare capacity.
+            unsafe { codeword.set_len(length) };
+            codeword
+        };
+
+        let mut indexed_chunks = (0..).zip(polynomial.coefficients().chunks(length));
+        let mut values = indexed_chunks.next().map_or_else(
+            || vec![FF::ZERO; length],
+            |(_, first_chunk)| evaluate_from(first_chunk),
+        );
+        for (chunk_index, chunk) in indexed_chunks {
+            let coefficient_index = chunk_index * u64::try_from(length).unwrap();
+            let scaled_offset = offset.mod_pow(coefficient_index);
+            values
+                .par_iter_mut()
+                .zip(evaluate_from(chunk))
+                .for_each(|(value, evaluation)| *value += evaluation * scaled_offset);
+        }
+
+        values
+    }
+
+    /// Like [`par_evaluate`](Self::par_evaluate), but writing the codeword
+    /// into the given, possibly uninitialized memory. On return, every element
+    /// of `codeword` is initialized. See [`evaluate_into`](Self::evaluate_into).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients of the polynomial exceeds the
+    /// [length](Self::len) of this domain, or if the length of `codeword`
+    /// does not equal it.
+    pub fn par_evaluate_into<FF>(
+        &self,
+        polynomial: &Polynomial<FF>,
+        codeword: &mut [MaybeUninit<FF>],
+    ) where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        assert_eq!(self.length, codeword.len());
+        polynomial.par_fast_coset_evaluate_into(self.offset, codeword);
+    }
+
+    /// Like [`interpolate`](Self::interpolate), but using a parallel NTT.
+    /// See also [`par_evaluate`](Self::par_evaluate).
+    pub fn par_interpolate<FF>(&self, values: &[FF]) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        debug_assert_eq!(self.length, values.len());
+        Polynomial::par_fast_coset_interpolate(self.offset, values)
+    }
+
     /// Interpolate a polynomial with respect to the [values](Self::values) of
     /// this domain.
     ///
@@ -187,6 +283,67 @@ impl ArithmeticDomain {
         debug_assert_eq!(self.length, values.len()); // required by `fast_coset_interpolate`
 
         Polynomial::fast_coset_interpolate(self.offset, values)
+    }
+
+    /// The [interpolant](Self::interpolate) of the given values plus the
+    /// product of this domain's [zerofier](Self::zerofier) and the given
+    /// randomizer. That is, a polynomial that agrees with the interpolant on
+    /// this domain, but is randomized everywhere else.
+    ///
+    /// Equivalent to `self.interpolate(values) +
+    /// self.mul_zerofier_with(randomizer)`, but computed in a single buffer:
+    /// the zerofier is `x^n - offset^n` for the domain's length `n`, so its
+    /// product with the randomizer is the randomizer's coefficients shifted
+    /// up by `n`, minus the randomizer scaled by `offset^n`. Avoiding the
+    /// intermediate allocations matters when many long columns are
+    /// interpolated in parallel: the page faults dominate the runtime.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of values does not equal the domain's length.
+    pub fn randomized_interpolant<FF>(
+        &self,
+        values: &[FF],
+        randomizer: &Polynomial<FF>,
+    ) -> Polynomial<'static, FF>
+    where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        assert_eq!(self.length, values.len());
+        let randomizer = randomizer.coefficients();
+
+        let mut coefficients =
+            twenty_first::memory::vec_with_capacity(self.length + randomizer.len());
+        coefficients.extend_from_slice(values);
+        intt(&mut coefficients);
+        let offset_inverse = self.offset.inverse();
+        let mut power_of_offset_inverse = BFieldElement::ONE;
+        for coefficient in &mut coefficients {
+            *coefficient *= power_of_offset_inverse;
+            power_of_offset_inverse *= offset_inverse;
+        }
+
+        // + x^n · randomizer - offset^n · randomizer
+        coefficients.extend_from_slice(randomizer);
+        let offset_to_the_n = self.offset.mod_pow(self.length as u64);
+        for (coefficient, &r) in coefficients.iter_mut().zip(randomizer) {
+            *coefficient -= r * offset_to_the_n;
+        }
+
+        Polynomial::new(coefficients)
+    }
+
+    /// The [zerofier](Self::zerofier) of this domain, evaluated in the given
+    /// indeterminate. Since the zerofier is `x^n - offset^n` for the domain's
+    /// length `n`, this takes two exponentiations rather than a pass over
+    /// `n` coefficients.
+    pub fn evaluate_zerofier<FF>(&self, indeterminate: FF) -> FF
+    where
+        FF: FiniteField + From<BFieldElement>,
+    {
+        let length = u32::try_from(self.length).expect("domain length must fit u32");
+        let offset_to_the_length = self.offset.mod_pow(u64::from(length));
+        indeterminate.mod_pow_u32(length) - FF::from(offset_to_the_length)
     }
 
     /// Move a codeword across domains.
@@ -231,17 +388,26 @@ impl ArithmeticDomain {
 
     /// All the values that make up this domain.
     pub fn values(&self) -> Vec<BFieldElement> {
-        let mut accumulator = BFieldElement::ONE;
+        // Each chunk starts from its own power of the generator, so that the
+        // chunks can be computed in parallel.
+        const CHUNK_SIZE: usize = 1 << 12;
+
         let mut domain_values = Vec::with_capacity(self.length);
-        for _ in 0..self.length {
-            domain_values.push(accumulator * self.offset);
-            accumulator *= self.generator;
-        }
-        assert_eq!(
-            BFieldElement::ONE,
-            accumulator,
-            "internal error: domain length must equal the order of the generator"
-        );
+        domain_values
+            .spare_capacity_mut()
+            .par_chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .for_each(|(chunk_idx, chunk)| {
+                let chunk_start = u64::try_from(chunk_idx * CHUNK_SIZE).expect(USIZE_TO_U64_ERR);
+                let mut accumulator = self.generator.mod_pow(chunk_start) * self.offset;
+                for value in chunk {
+                    value.write(accumulator);
+                    accumulator *= self.generator;
+                }
+            });
+        // SAFETY: The chunks partition the first `self.length` elements of the
+        // spare capacity, and every element of every chunk was written to.
+        unsafe { domain_values.set_len(self.length) };
 
         domain_values
     }
@@ -477,6 +643,28 @@ pub(crate) mod tests {
     fn zerofier_is_actually_zerofier(domain: ArithmeticDomain) {
         let actual_zerofier = Polynomial::zerofier(&domain.values());
         prop_assert_eq!(actual_zerofier, domain.zerofier());
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn zerofier_evaluation_agrees_with_evaluating_the_zerofier(
+        domain: ArithmeticDomain,
+        #[strategy(arb())] indeterminate: XFieldElement,
+    ) {
+        let expected = domain
+            .zerofier()
+            .evaluate::<_, XFieldElement>(indeterminate);
+        prop_assert_eq!(expected, domain.evaluate_zerofier(indeterminate));
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn randomized_interpolant_is_interpolant_plus_randomized_zerofier(
+        domain: ArithmeticDomain,
+        #[strategy(vec(arb(), #domain.length))] values: Vec<XFieldElement>,
+        #[strategy(arbitrary_polynomial())] randomizer: Polynomial<'static, XFieldElement>,
+    ) {
+        let expected = domain.interpolate(&values) + domain.mul_zerofier_with(randomizer.clone());
+        let actual = domain.randomized_interpolant(&values, &randomizer);
+        prop_assert_eq!(expected, actual);
     }
 
     #[macro_rules_attr::apply(proptest)]

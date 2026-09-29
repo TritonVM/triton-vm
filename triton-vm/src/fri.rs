@@ -56,7 +56,7 @@ impl FriProver<'_> {
     }
 
     fn commit_to_first_round(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
-        let first_round = ProverRound::new(self.first_round_domain, codeword)?;
+        let first_round = ProverRound::new(self.first_round_domain, codeword.to_vec())?;
         self.commit_to_round(&first_round);
         self.store_round(first_round);
         Ok(())
@@ -84,7 +84,7 @@ impl FriProver<'_> {
         let folding_challenge = self.proof_stream.sample_scalars(1)[0];
         let codeword = previous_round.split_and_fold(folding_challenge);
         let domain = previous_round.domain.pow(2)?;
-        ProverRound::new(domain, &codeword)
+        ProverRound::new(domain, codeword)
     }
 
     fn send_last_codeword(&mut self) {
@@ -154,12 +154,12 @@ impl FriProver<'_> {
 }
 
 impl ProverRound {
-    fn new(domain: ArithmeticDomain, codeword: &[XFieldElement]) -> ProverResult<Self> {
+    fn new(domain: ArithmeticDomain, codeword: Vec<XFieldElement>) -> ProverResult<Self> {
         debug_assert_eq!(domain.len(), codeword.len());
-        let merkle_tree = Self::merkle_tree_from_codeword(codeword)?;
+        let merkle_tree = Self::merkle_tree_from_codeword(&codeword)?;
         let round = Self {
             domain,
-            codeword: codeword.to_vec(),
+            codeword,
             merkle_tree,
         };
         Ok(round)
@@ -175,7 +175,7 @@ impl ProverRound {
         let two_inverse = xfe!(2).inverse();
 
         let domain_points = self.domain.values();
-        let domain_point_inverses = BFieldElement::batch_inversion(domain_points);
+        let domain_point_inverses = BFieldElement::par_batch_inversion(domain_points);
 
         let n = self.codeword.len();
         (0..n / 2)

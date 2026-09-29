@@ -50,7 +50,6 @@
 //! [master_aux_table]: MasterAuxTable
 //! [master_quot_table]: all_quotients_combined
 
-use std::borrow::Borrow;
 use std::mem::MaybeUninit;
 use std::ops::Add;
 use std::ops::Mul;
@@ -131,17 +130,18 @@ use ndarray::Zip;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
+use num_traits::ConstOne;
 use num_traits::ConstZero;
-use num_traits::One;
 use num_traits::ToBytes;
-use num_traits::Zero;
 use rand::distr::StandardUniform;
 use rand::prelude::*;
+use rayon::prelude::*;
 use strum::EnumCount;
+use twenty_first::math::ntt::intt;
+use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
-use twenty_first::tip5::RATE;
-use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -243,19 +243,20 @@ where
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Low-degree extend all columns of the trace table (including randomizers)
-    /// _if_ it can be [cached]. In that case, the resulting low-degree extended
-    /// columns can be accessed using [`quotient_domain_table`][table] and
-    /// [`fri_domain_table`][Self::fri_domain_table].
+    /// _if_ it is to be [cached]. In that case, the resulting low-degree
+    /// extended columns can be accessed using [`quotient_domain_table`][table]
+    /// and [`fri_domain_table`][Self::fri_domain_table]. Without a decision,
+    /// the table is cached if the required memory can be reserved.
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
-    fn maybe_low_degree_extend_all_columns(&mut self) {
+    fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
 
-        let mut extended_trace = Vec::with_capacity(0);
-        match crate::config::cache_lde_trace() {
+        let mut extended_trace: Vec<MaybeUninit<Self::Field>> = Vec::with_capacity(0);
+        match cache_decision {
             Some(CacheDecision::NoCache) => return,
             Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
             None => {
@@ -280,33 +281,39 @@ where
             });
         profiler!(stop "interpolation");
 
-        profiler!(start "resize");
         assert!(extended_trace.capacity() >= num_elements);
-        extended_trace
-            .spare_capacity_mut()
-            .par_iter_mut()
-            .for_each(|e| *e = MaybeUninit::new(Self::Field::ZERO));
-
+        twenty_first::memory::advise_huge_pages(extended_trace.spare_capacity_mut());
         unsafe {
-            // Speed up initialization through parallelization.
-            //
             // SAFETY:
             // 1. The capacity is sufficiently large – see above `assert!`.
             // 2. The length is set to equal (or less than) the capacity.
-            // 3. Each element in the spare capacity is initialized.
+            // 3. The elements are of type `MaybeUninit`, which has no
+            //    validity requirements; uninitialized memory is a valid
+            //    `MaybeUninit`.
             extended_trace.set_len(num_elements);
         }
-        let mut extended_columns =
-            Array2::from_shape_vec([num_rows, Self::NUM_COLUMNS], extended_trace).unwrap();
-        profiler!(stop "resize");
+
+        // The table is column-major (“`F`”): every column is a contiguous
+        // codeword. This lets the (parallel, per-column) evaluation below
+        // write its results without any re-arrangement of memory, which is
+        // by far the fastest way to build the table. Consumers that need
+        // rows, like row hashing, gather them from the columns.
+        let shape = [num_rows, Self::NUM_COLUMNS].f();
+        let mut extended_columns = Array2::from_shape_vec(shape, extended_trace).unwrap();
 
         profiler!(start "evaluation");
         Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
             .and(interpolation_polynomials.axis_iter(ROW_AXIS))
-            .par_for_each(|lde_column, interpolant| {
-                let lde_codeword = evaluation_domain.evaluate(&interpolant[()]);
-                Array1::from(lde_codeword).move_into(lde_column);
+            .par_for_each(|mut lde_column, interpolant| {
+                // The NTT runs in place, directly in the table's column: no
+                // temporary allocation, no copy.
+                let lde_column = lde_column.as_slice_mut().unwrap();
+                evaluation_domain.evaluate_into(&interpolant[()], lde_column);
             });
+        // SAFETY: Every column of the table was written to by `evaluate_into`,
+        // which initializes every element of the column. The columns
+        // partition the table. Hence, every element is initialized.
+        let extended_columns = unsafe { extended_columns.assume_init() };
         profiler!(stop "evaluation");
         profiler!(start "memoize");
         self.memoize_low_degree_extended_table(extended_columns);
@@ -338,58 +345,126 @@ where
     /// Notably, the index does not have to be in any of the domains. In other
     /// words, can be used to compute out-of-domain rows. Does not include
     /// batch randomizers.
-    fn out_of_domain_row(&self, indeterminate: XFieldElement) -> Array1<XFieldElement> {
-        // The following is a batched version of barycentric Lagrangian
-        // evaluation. Since the method `barycentric_evaluate` is
-        // self-contained, not returning intermediate items necessary for
-        // batching, and since returning and reusing those intermediate items
-        // would produce a challenging interface, the relevant parts are
-        // reimplemented here.
+    /// The evaluations of all column polynomials, including their trace
+    /// randomizers, in each of the given indeterminates.
+    ///
+    /// Uses barycentric Lagrangian evaluation, batched in two ways. First,
+    /// the barycentric weights of an indeterminate are shared across all
+    /// columns. Second, the table is streamed only once, in blocks of rows,
+    /// for all indeterminates and columns at once: for a table with hundreds
+    /// of long columns, the memory traffic of reading the table, not the
+    /// arithmetic, dominates the runtime. A block's rows of all columns and
+    /// its weights for all indeterminates fit into the L2 cache.
+    fn out_of_domain_rows(&self, indeterminates: &[XFieldElement]) -> Vec<Array1<XFieldElement>> {
+        const ROWS_PER_BLOCK: usize = 1 << 11;
 
-        let domain = self.domains().trace.values();
-        let domain_shift = domain.iter().map(|&d| indeterminate - d).collect();
-        let domain_shift_inverses = XFieldElement::batch_inversion(domain_shift);
-        let domain_over_domain_shift = domain
-            .into_iter()
-            .zip_eq(domain_shift_inverses)
-            .map(|(d, inv)| d * inv);
-        let barycentric_eval_denominator_inverse = domain_over_domain_shift
-            .clone()
-            .sum::<XFieldElement>()
-            .inverse();
+        let trace_domain = self.domains().trace;
+        let domain = trace_domain.values();
+        let num_rows = domain.len();
 
-        let ood_trace_domain_zerofier: XFieldElement =
-            self.domains().trace.zerofier().evaluate(indeterminate);
-
-        let trace_table = self.trace_table();
-        (0..Self::NUM_COLUMNS)
-            .into_par_iter()
-            .map(|i| {
-                let trace_codeword = trace_table.column(i);
-                let barycentric_eval_numerator = domain_over_domain_shift
-                    .clone()
-                    .zip_eq(trace_codeword)
-                    .map(|(dsi, &abscis)| abscis * dsi)
-                    .sum::<XFieldElement>();
-
-                let ood_trace_randomizer: XFieldElement =
-                    self.trace_randomizer_for_column(i).evaluate(indeterminate);
-
-                barycentric_eval_numerator * barycentric_eval_denominator_inverse
-                    + ood_trace_domain_zerofier * ood_trace_randomizer
+        // barycentric weights `d / (z - d)` for every point `d` of the
+        // domain, per indeterminate `z`, and the inverses of their sums
+        let weights = indeterminates
+            .iter()
+            .map(|&indeterminate| {
+                let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
+                let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
+                domain
+                    .par_iter()
+                    .zip_eq(domain_shift_inverses)
+                    .map(|(&d, inv)| d * inv)
+                    .collect::<Vec<_>>()
             })
-            .collect::<Vec<XFieldElement>>()
-            .into()
+            .collect_vec();
+        let weight_sum_inverses = weights
+            .iter()
+            .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
+            .collect_vec();
+        let zerofier_evaluations = indeterminates
+            .iter()
+            .map(|&indeterminate| trace_domain.evaluate_zerofier(indeterminate))
+            .collect_vec();
+
+        // `numerators[indeterminate][column] = Σ_d weight(d) · column(d)`,
+        // summed block by block
+        let trace_table = self.trace_table();
+        let num_columns = Self::NUM_COLUMNS;
+        let block_numerators = |first_row: usize| {
+            let rows = first_row..(first_row + ROWS_PER_BLOCK).min(num_rows);
+            let mut numerators = vec![XFieldElement::ZERO; indeterminates.len() * num_columns];
+            for (column_index, column) in trace_table.columns().into_iter().enumerate() {
+                let column = column.slice(s![rows.clone()]);
+                let column = column.as_slice().expect("columns are contiguous");
+                for (weights, numerators) in weights
+                    .iter()
+                    .zip_eq(numerators.chunks_exact_mut(num_columns))
+                {
+                    let mut numerator = XFieldElement::ZERO;
+                    for (&value, &weight) in column.iter().zip_eq(&weights[rows.clone()]) {
+                        numerator += value * weight;
+                    }
+                    numerators[column_index] = numerator;
+                }
+            }
+            numerators
+        };
+        let numerators = (0..num_rows)
+            .into_par_iter()
+            .step_by(ROWS_PER_BLOCK)
+            .map(block_numerators)
+            .reduce(
+                || vec![XFieldElement::ZERO; indeterminates.len() * num_columns],
+                |mut acc, block| {
+                    for (a, b) in acc.iter_mut().zip_eq(block) {
+                        *a += b;
+                    }
+                    acc
+                },
+            );
+
+        // the randomizers are only needed here; evaluate them in all
+        // indeterminates at once
+        let randomizer_evaluations = (0..num_columns)
+            .into_par_iter()
+            .map(|column_index| {
+                let randomizer = self.trace_randomizer_for_column(column_index);
+                indeterminates
+                    .iter()
+                    .map(|&indeterminate| {
+                        randomizer.par_evaluate::<_, XFieldElement>(indeterminate)
+                    })
+                    .collect_vec()
+            })
+            .collect::<Vec<_>>();
+
+        izip!(
+            numerators.chunks_exact(num_columns),
+            weight_sum_inverses,
+            zerofier_evaluations
+        )
+        .enumerate()
+        .map(
+            |(point_index, (numerators, weight_sum_inverse, zerofier_evaluation))| {
+                (0..num_columns)
+                    .map(|column_index| {
+                        numerators[column_index] * weight_sum_inverse
+                            + zerofier_evaluation
+                                * randomizer_evaluations[column_index][point_index]
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
+        )
+        .collect()
     }
 
     fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
         let trace_domain = self.domains().trace;
-        let column_interpolant = trace_domain.interpolate(column_codeword.as_slice().unwrap());
-        let randomizer = trace_domain.mul_zerofier_with(self.trace_randomizer_for_column(idx));
+        let randomizer = self.trace_randomizer_for_column(idx);
 
-        column_interpolant + randomizer
+        trace_domain.randomized_interpolant(column_codeword.as_slice().unwrap(), &randomizer)
     }
 
     /// Uniquely enables the revelation of up to `num_trace_randomizers` entries
@@ -442,7 +517,7 @@ where
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
     /// in the tree.
-    fn merkle_tree(&self) -> MerkleTree {
+    fn merkle_tree(&mut self) -> MerkleTree {
         profiler!(start "leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
         profiler!(stop "leafs");
@@ -454,54 +529,132 @@ where
         merkle_tree
     }
 
-    fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
+    fn hash_all_fri_domain_rows(&mut self) -> Vec<Digest> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             profiler!(start "hash rows" ("hash"));
-            let all_digests = fri_domain_table
-                .axis_iter(ROW_AXIS)
-                .into_par_iter()
-                .map(|row| row.to_slice().unwrap())
-                .map(Self::Field::bfe_slice)
-                .map(Tip5::hash_varlen)
-                .collect();
+            let all_digests = Self::hash_rows_of_column_major_table(fri_domain_table);
             profiler!(stop "hash rows");
 
             return all_digests;
         }
 
-        // Now knowing that the low-degree extensions are not cached, hash all
-        // FRI domain rows of the table using just-in-time low-degree-extension.
-        let num_threads = rayon::current_num_threads().max(1);
-        let eval_domain = self.evaluation_domain();
-        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); eval_domain.len()];
+        // Now knowing that the low-degree extensions are not cached, hash the
+        // FRI domain's rows coset by coset. Every coset is as long as the trace
+        // domain, and all columns are low-degree extended onto it at once,
+        // which allows hashing the coset's rows in their entirety. Hence, the
+        // additional memory is one table the size of the trace table,
+        // independent of the number of threads.
+        let domains = self.domains();
+        let trace_domain = domains.trace;
+        let fri_domain = domains.fri;
+        let num_rows = trace_domain.len();
+        let num_cosets = fri_domain.len() / num_rows;
+        assert_eq!(fri_domain.len(), num_cosets * num_rows);
 
-        let column_indices = Array1::from_iter(0..Self::NUM_COLUMNS);
-        let mut codewords = Array2::zeros([eval_domain.len(), num_threads]);
-        for column_indices in column_indices.axis_chunks_iter(ROW_AXIS, num_threads) {
+        profiler!(start "fetch trace randomizers");
+        let randomizers = (0..Self::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| self.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        profiler!(stop "fetch trace randomizers");
+
+        // The trace table's columns are replaced by their interpolants'
+        // coefficients here and restored below.
+        profiler!(start "interpolate" ("LDE"));
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        profiler!(stop "interpolate");
+
+        // The interpolants are polynomials in the trace domain's values.
+        assert_eq!(BFieldElement::ONE, trace_domain.offset());
+        let num_rows_u64 = u64::try_from(num_rows).unwrap();
+        let mut coset_table = ndarray_helper::par_zeros((num_rows, Self::NUM_COLUMNS).f());
+        let mut all_digests = vec![Digest::default(); fri_domain.len()];
+        for coset_index in 0..num_cosets {
+            // The coset's points are `coset_offset · trace_generator^i`.
+            let coset_offset =
+                fri_domain.offset() * fri_domain.generator().mod_pow(coset_index as u64);
+            let coset = ArithmeticDomain::of_length(num_rows)
+                .unwrap()
+                .with_offset(coset_offset);
+            debug_assert_eq!(
+                fri_domain.generator().mod_pow(num_cosets as u64),
+                coset.generator()
+            );
+
+            // The trace zerofier, `X^n - 1`, is constant on the coset.
+            let zerofier = coset_offset.mod_pow(num_rows_u64) - BFieldElement::ONE;
+
             profiler!(start "LDE" ("LDE"));
-            let mut codewords = codewords.slice_mut(s![.., 0..column_indices.len()]);
-            Zip::from(column_indices)
-                .and(codewords.axis_iter_mut(COL_AXIS))
-                .par_for_each(|&col_idx, target_column| {
-                    let column_interpolant = self.randomized_column_interpolant(col_idx);
-                    let lde_codeword = eval_domain.evaluate(&column_interpolant);
-                    Array1::from(lde_codeword).move_into(target_column);
+            Zip::from(self.trace_table().axis_iter(COL_AXIS))
+                .and(coset_table.axis_iter_mut(COL_AXIS))
+                .and(ArrayView1::from(&randomizers))
+                .par_for_each(|interpolant, mut codeword, randomizer| {
+                    evaluate_randomized_interpolant_into(
+                        interpolant.as_slice().unwrap(),
+                        randomizer,
+                        zerofier,
+                        coset,
+                        codeword.as_slice_mut().unwrap(),
+                    );
                 });
             profiler!(stop "LDE");
+
             profiler!(start "hash rows" ("hash"));
-            sponge_states
+            let coset_digests = Self::hash_rows_of_column_major_table(coset_table.view());
+            all_digests
                 .par_iter_mut()
-                .zip(codewords.axis_iter(ROW_AXIS))
-                .for_each(|(sponge, row)| {
-                    sponge.absorb(Self::Field::bfe_slice(row.to_slice().unwrap()))
-                });
+                .skip(coset_index)
+                .step_by(num_cosets)
+                .zip(coset_digests)
+                .for_each(|(digest, coset_digest)| *digest = coset_digest);
             profiler!(stop "hash rows");
         }
 
-        sponge_states
+        profiler!(start "restore trace" ("LDE"));
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
-            .map(|sponge| sponge.finalize())
-            .collect()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        profiler!(stop "restore trace");
+
+        all_digests
+    }
+
+    /// Hash every row of the given (column-major) table.
+    ///
+    /// Since rows are not contiguous in memory, a bunch of rows is gathered
+    /// into a small, row-major buffer before hashing.
+    fn hash_rows_of_column_major_table(table: ArrayView2<Self::Field>) -> Vec<Digest> {
+        // Larger chunks read longer contiguous pieces of every column, which
+        // helps the hardware prefetchers. The buffer for one chunk of rows
+        // should still fit into the L2 cache, even for the auxiliary table
+        // with its wider elements.
+        const ROWS_PER_CHUNK: usize = 128;
+
+        let num_columns = table.ncols();
+        let mut digests = vec![Digest::default(); table.nrows()];
+        digests
+            .par_chunks_mut(ROWS_PER_CHUNK)
+            .zip(table.axis_chunks_iter(ROW_AXIS, ROWS_PER_CHUNK))
+            .for_each(|(digests, rows)| {
+                let mut buffer = Array2::<Self::Field>::zeros([rows.nrows(), num_columns]);
+                for (column_idx, column) in rows.axis_iter(COL_AXIS).enumerate() {
+                    for (row_idx, &element) in column.iter().enumerate() {
+                        buffer[[row_idx, column_idx]] = element;
+                    }
+                }
+                let rows = buffer
+                    .rows()
+                    .into_iter()
+                    .map(|row| Self::Field::bfe_slice(row.to_slice().unwrap()))
+                    .collect_vec();
+                digests.copy_from_slice(&Tip5::hash_varlen_many(&rows));
+            });
+
+        digests
     }
 
     /// The linear combination of the trace-randomized columns using the given
@@ -515,32 +668,66 @@ where
         &self,
         weights: Array1<XFieldElement>,
     ) -> Polynomial<'_, XFieldElement> {
+        // The table is column-major, so the rows are summed block by block:
+        // within a block, every column's contiguous piece is read once.
+        const ROWS_PER_BLOCK: usize = 1 << 11;
+
         assert_eq!(Self::NUM_COLUMNS, weights.len());
 
-        let weighted_sum_of_trace_columns = self
-            .trace_table()
-            .axis_iter(ROW_AXIS)
-            .into_par_iter()
-            .map(|row| row.iter().zip_eq(&weights).map(|(&r, &w)| r * w).sum())
-            .collect::<Vec<_>>();
-        let weighted_sum_of_trace_columns = self
-            .domains()
-            .trace
-            .interpolate(&weighted_sum_of_trace_columns);
-
-        let weighted_sum_of_trace_randomizer_polynomials = weights
-            .as_slice()
-            .unwrap()
-            .par_iter()
+        let trace_table = self.trace_table();
+        let weights = weights.as_slice().unwrap();
+        let mut weighted_sum_of_trace_columns = vec![XFieldElement::ZERO; trace_table.nrows()];
+        weighted_sum_of_trace_columns
+            .par_chunks_mut(ROWS_PER_BLOCK)
             .enumerate()
-            .map(|(i, &w)| self.trace_randomizer_for_column(i).scalar_mul(w))
-            .reduce(Polynomial::zero, |sum, x| sum + x);
-        let randomizer_contribution = self
-            .domains()
-            .trace
-            .mul_zerofier_with(weighted_sum_of_trace_randomizer_polynomials);
+            .for_each(|(block_index, sums)| {
+                let first_row = block_index * ROWS_PER_BLOCK;
+                let rows = first_row..first_row + sums.len();
+                for (column, &weight) in trace_table.columns().into_iter().zip_eq(weights) {
+                    let column = column.slice(s![rows.clone()]);
+                    let column = column.as_slice().expect("columns are contiguous");
+                    for (sum, &value) in sums.iter_mut().zip(column) {
+                        *sum += value * weight;
+                    }
+                }
+            });
+        let trace_domain = self.domains().trace;
+        let interpolant = trace_domain.par_interpolate(&weighted_sum_of_trace_columns);
 
-        weighted_sum_of_trace_columns + randomizer_contribution
+        // the weighted sum of the trace randomizers, coefficient by coefficient
+        let randomizers = (0..Self::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| self.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        let num_randomizer_coefficients = randomizers
+            .iter()
+            .map(|r| r.coefficients().len())
+            .max()
+            .unwrap_or(0);
+        let weighted_randomizer = (0..num_randomizer_coefficients)
+            .into_par_iter()
+            .map(|k| {
+                randomizers
+                    .iter()
+                    .zip(weights)
+                    .filter_map(|(r, &w)| r.coefficients().get(k).map(|&c| c * w))
+                    .sum::<XFieldElement>()
+            })
+            .collect::<Vec<_>>();
+
+        // interpolant + zerofier · randomizer, with the trace domain's
+        // zerofier being x^n - offset^n; see `randomized_interpolant`
+        let n = trace_domain.len();
+        let offset_to_the_n = trace_domain.offset().mod_pow(n as u64);
+        let mut coefficients = interpolant.into_coefficients();
+        coefficients.resize(n.max(coefficients.len()), XFieldElement::ZERO);
+        coefficients.extend_from_slice(&weighted_randomizer);
+        coefficients[..weighted_randomizer.len()]
+            .par_iter_mut()
+            .zip(&weighted_randomizer)
+            .for_each(|(c, &r)| *c -= r * offset_to_the_n);
+
+        Polynomial::new(coefficients)
     }
 
     /// # Panics
@@ -575,10 +762,9 @@ where
         // add trace randomizers to their columns
         // todo: this could be done using `Polynomial::batch_evaluate` if that
         //   function had more general trait bounds 🤷
-        let trace_domain_zerofier = domains.trace.zerofier();
         let zerofier_evals = indeterminates
             .par_iter()
-            .map(|&i| trace_domain_zerofier.evaluate::<_, Self::Field>(i))
+            .map(|&i| domains.trace.evaluate_zerofier(i))
             .collect::<Vec<_>>();
 
         let trace_randomizers = (0..Self::NUM_COLUMNS)
@@ -661,61 +847,6 @@ where
     }
 
     seed
-}
-
-/// Helper struct and function to absorb however many elements are available;
-/// used in the context of hashing rows in a streaming fashion.
-#[derive(Clone)]
-struct SpongeWithPendingAbsorb {
-    sponge: Tip5,
-
-    /// A re-usable buffer of pending input elements.
-    /// Only the first [`Self::num_symbols_pending`] elements are valid.
-    pending_input: [BFieldElement; RATE],
-    num_symbols_pending: usize,
-}
-
-impl SpongeWithPendingAbsorb {
-    pub fn new() -> Self {
-        Self {
-            sponge: Tip5::new(sponge::Domain::VariableLength),
-            pending_input: bfe_array![0; RATE],
-            num_symbols_pending: 0,
-        }
-    }
-
-    /// Similar to [`Tip5::absorb`] but buffers input elements until a full
-    /// block is available.
-    pub fn absorb<I>(&mut self, some_input: I)
-    where
-        I: IntoIterator,
-        I::Item: Borrow<BFieldElement>,
-    {
-        for symbol in some_input {
-            let &symbol = symbol.borrow();
-            self.pending_input[self.num_symbols_pending] = symbol;
-            self.num_symbols_pending += 1;
-            if self.num_symbols_pending == RATE {
-                self.num_symbols_pending = 0;
-                self.sponge.absorb(self.pending_input);
-            }
-        }
-    }
-
-    pub fn finalize(mut self) -> Digest {
-        // apply padding
-        self.pending_input[self.num_symbols_pending] = BFieldElement::one();
-        for i in self.num_symbols_pending + 1..RATE {
-            self.pending_input[i] = BFieldElement::zero();
-        }
-        self.sponge.absorb(self.pending_input);
-        self.num_symbols_pending = 0;
-
-        self.sponge.squeeze()[0..Digest::LEN]
-            .to_vec()
-            .try_into()
-            .unwrap()
-    }
 }
 
 /// The Master Main Table, as described in the [module documentation][self].
@@ -915,11 +1046,25 @@ impl MasterMainTable {
 
         // memory-like tables must be filled in before clock jump differences
         // are known, hence the break from the usual order
-        let clk_jump_diffs_op_stack =
-            OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
-        let clk_jump_diffs_ram = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
-        let clk_jump_diffs_jump_stack =
-            JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
+        let clk_jump_diffs_op_stack = {
+            profiler!(start "op stack table");
+            let filled = OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
+            profiler!(stop "op stack table");
+            filled
+        };
+        let clk_jump_diffs_ram = {
+            profiler!(start "ram table");
+            let filled = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
+            profiler!(stop "ram table");
+            filled
+        };
+        let clk_jump_diffs_jump_stack = {
+            profiler!(start "jump stack table");
+            let filled =
+                JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
+            profiler!(stop "jump stack table");
+            filled
+        };
 
         let clk_jump_diffs = ClkJumpDiffs {
             op_stack: clk_jump_diffs_op_stack,
@@ -927,13 +1072,25 @@ impl MasterMainTable {
             jump_stack: clk_jump_diffs_jump_stack,
         };
         let processor_table = master_main_table.table_mut(TableId::Processor);
+        profiler!(start "processor table");
         ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+        profiler!(stop "processor table");
 
+        profiler!(start "program table");
         ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
+        profiler!(stop "program table");
+        profiler!(start "hash table");
         HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
+        profiler!(stop "hash table");
+        profiler!(start "cascade table");
         CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
+        profiler!(stop "cascade table");
+        profiler!(start "lookup table");
         LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
+        profiler!(stop "lookup table");
+        profiler!(start "u32 table");
         U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
+        profiler!(stop "u32 table");
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.
@@ -1207,10 +1364,10 @@ pub fn initial_quotient_zerofier_inverse(
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
         .values()
-        .into_iter()
+        .into_par_iter()
         .map(|x| x - bfe!(1))
         .collect();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 pub fn consistency_quotient_zerofier_inverse(
@@ -1219,10 +1376,10 @@ pub fn consistency_quotient_zerofier_inverse(
 ) -> Array1<BFieldElement> {
     let zerofier_codeword = quotient_domain
         .values()
-        .iter()
+        .into_par_iter()
         .map(|x| x.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 pub fn transition_quotient_zerofier_inverse(
@@ -1236,7 +1393,7 @@ pub fn transition_quotient_zerofier_inverse(
         .par_iter()
         .map(|domain_value| domain_value.mod_pow_u32(trace_domain.len() as u32) - bfe!(1))
         .collect();
-    let subgroup_zerofier_inverse = BFieldElement::batch_inversion(subgroup_zerofier);
+    let subgroup_zerofier_inverse = BFieldElement::par_batch_inversion(subgroup_zerofier);
     let zerofier_inverse: Vec<_> = quotient_domain_values
         .into_par_iter()
         .zip_eq(subgroup_zerofier_inverse.into_par_iter())
@@ -1256,10 +1413,10 @@ pub fn terminal_quotient_zerofier_inverse(
     let trace_domain_generator_inverse = trace_domain.generator().inverse();
     let zerofier_codeword = quotient_domain
         .values()
-        .into_iter()
+        .into_par_iter()
         .map(|x| x - trace_domain_generator_inverse)
-        .collect_vec();
-    BFieldElement::batch_inversion(zerofier_codeword).into()
+        .collect();
+    BFieldElement::par_batch_inversion(zerofier_codeword).into()
 }
 
 /// Computes the quotient codeword, which is the randomized linear combination
@@ -1282,6 +1439,14 @@ pub fn all_quotients_combined(
     challenges: &Challenges,
     quotient_weights: &[XFieldElement],
 ) -> Vec<XFieldElement> {
+    // Rows are gathered into small, row-major buffers before evaluating the
+    // constraints on them: the generated constraint evaluation code accesses
+    // the rows' elements by index, which is notably faster for contiguous
+    // rows than for rows of a column-major table. Larger chunks read longer
+    // contiguous pieces of every column, which helps the hardware
+    // prefetchers; the two buffers should still fit into the L2 cache.
+    const ROWS_PER_CHUNK: usize = 64;
+
     assert_eq!(
         quotient_domain.len(),
         quotient_domain_master_main_table.nrows(),
@@ -1307,72 +1472,250 @@ pub fn all_quotients_combined(
     profiler!(stop "zerofier inverse");
 
     profiler!(start "evaluate AIR, compute quotient codeword");
-    let dot_product = |partial_row: Vec<_>, weights: &[_]| -> XFieldElement {
-        let pairs = partial_row.into_iter().zip_eq(weights.iter());
-        pairs.map(|(v, &w)| v * w).sum()
-    };
 
-    let quotient_codeword = (0..quotient_domain.len())
-        .into_par_iter()
-        .map(|row_index| {
-            let unit_distance = quotient_domain.len() / trace_domain.len();
-            let next_row_index = (row_index + unit_distance) % quotient_domain.len();
-            let current_row_main = quotient_domain_master_main_table.row(row_index);
-            let current_row_aux = quotient_domain_master_aux_table.row(row_index);
-            let next_row_main = quotient_domain_master_main_table.row(next_row_index);
-            let next_row_aux = quotient_domain_master_aux_table.row(next_row_index);
+    let num_rows = quotient_domain.len();
+    let unit_distance = num_rows / trace_domain.len();
+    let mut quotient_codeword = vec![XFieldElement::ZERO; num_rows];
+    quotient_codeword
+        .par_chunks_mut(ROWS_PER_CHUNK)
+        .enumerate()
+        .for_each(|(chunk_idx, quotient_values)| {
+            let first_row = chunk_idx * ROWS_PER_CHUNK;
+            let num_chunk_rows = quotient_values.len();
+            // The “next” rows are the current rows, shifted by the unit
+            // distance. Gathering both at once copies the overlap only once.
+            let num_gathered_rows = num_chunk_rows + unit_distance;
+            let rows_main = gather_rows(
+                quotient_domain_master_main_table,
+                first_row,
+                num_gathered_rows,
+            );
+            let rows_aux = gather_rows(
+                quotient_domain_master_aux_table,
+                first_row,
+                num_gathered_rows,
+            );
 
-            let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let initial_inner_product = dot_product(
-                initial_constraint_values,
-                &quotient_weights[..init_section_end],
-            );
-            let mut quotient_value = initial_inner_product * initial_zerofier_inverse[row_index];
+            for (i, quotient_value) in quotient_values.iter_mut().enumerate() {
+                let row_index = first_row + i;
+                let current_row_main = rows_main.row(i);
+                let current_row_aux = rows_aux.row(i);
+                let next_row_main = rows_main.row(i + unit_distance);
+                let next_row_aux = rows_aux.row(i + unit_distance);
 
-            let consistency_constraint_values = MasterAuxTable::evaluate_consistency_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let consistency_inner_product = dot_product(
-                consistency_constraint_values,
-                &quotient_weights[init_section_end..cons_section_end],
-            );
-            quotient_value += consistency_inner_product * consistency_zerofier_inverse[row_index];
+                let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    challenges,
+                );
+                let initial_inner_product = inner_product(
+                    &initial_constraint_values,
+                    &quotient_weights[..init_section_end],
+                    MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
+                );
+                let mut value = initial_inner_product * initial_zerofier_inverse[row_index];
 
-            let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
-                current_row_main,
-                current_row_aux,
-                next_row_main,
-                next_row_aux,
-                challenges,
-            );
-            let transition_inner_product = dot_product(
-                transition_constraint_values,
-                &quotient_weights[cons_section_end..tran_section_end],
-            );
-            quotient_value += transition_inner_product * transition_zerofier_inverse[row_index];
+                let consistency_constraint_values =
+                    MasterAuxTable::evaluate_consistency_constraints(
+                        current_row_main,
+                        current_row_aux,
+                        challenges,
+                    );
+                let consistency_inner_product = inner_product(
+                    &consistency_constraint_values,
+                    &quotient_weights[init_section_end..cons_section_end],
+                    MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
+                );
+                value += consistency_inner_product * consistency_zerofier_inverse[row_index];
 
-            let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
-                current_row_main,
-                current_row_aux,
-                challenges,
-            );
-            let terminal_inner_product = dot_product(
-                terminal_constraint_values,
-                &quotient_weights[tran_section_end..],
-            );
-            quotient_value += terminal_inner_product * terminal_zerofier_inverse[row_index];
-            quotient_value
-        })
-        .collect();
+                let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    next_row_main,
+                    next_row_aux,
+                    challenges,
+                );
+                let transition_inner_product = inner_product(
+                    &transition_constraint_values,
+                    &quotient_weights[cons_section_end..tran_section_end],
+                    MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
+                );
+                value += transition_inner_product * transition_zerofier_inverse[row_index];
+
+                let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
+                    current_row_main,
+                    current_row_aux,
+                    challenges,
+                );
+                let terminal_inner_product = inner_product(
+                    &terminal_constraint_values,
+                    &quotient_weights[tran_section_end..],
+                    MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
+                );
+                value += terminal_inner_product * terminal_zerofier_inverse[row_index];
+
+                *quotient_value = value;
+            }
+        });
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// Evaluate the randomized interpolant `interpolant + zerofier · randomizer` on
+/// the given domain, writing the values into `codeword`.
+///
+/// The trace zerofier must be constant on the domain, and `zerofier` must be
+/// that constant. This holds for cosets of subgroups of the trace domain; see
+/// also [`ArithmeticDomain::randomized_interpolant`].
+///
+/// The randomizer, whose degree is small, is added to the interpolant's
+/// scaled coefficients before the (single, in-place) NTT, which avoids
+/// evaluating it separately.
+///
+/// # Panics
+///
+/// Panics if the codeword's length differs from the domain's, or if the
+/// interpolant or the randomizer has more coefficients than the codeword is
+/// long.
+pub(crate) fn evaluate_randomized_interpolant_into<FF>(
+    interpolant: &[FF],
+    randomizer: &Polynomial<FF>,
+    zerofier: BFieldElement,
+    domain: ArithmeticDomain,
+    codeword: &mut [FF],
+) where
+    FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+{
+    let randomizer = randomizer.coefficients();
+    assert_eq!(domain.len(), codeword.len());
+    assert!(interpolant.len() <= codeword.len());
+    assert!(randomizer.len() <= codeword.len());
+
+    // Evaluating `p(x)` on the coset `offset·⟨ω⟩` is evaluating `p(offset·x)`
+    // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
+    let offset = domain.offset();
+    let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
+    let mut power = BFieldElement::ONE;
+    for (cell, &coefficient) in scaled_interpolant.iter_mut().zip(interpolant) {
+        *cell = coefficient * power;
+        power *= offset;
+    }
+    zero_padding.fill(FF::ZERO);
+
+    let mut power = zerofier;
+    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
+        *cell += coefficient * power;
+        power *= offset;
+    }
+
+    ntt(codeword);
+}
+
+/// The inner product `Σ values[i] · weights[i]`, where the first
+/// `num_base_values` values are known to be [lifted](BFieldElement::lift) base
+/// field elements.
+///
+/// Every product of two base field elements is accumulated without modular
+/// reduction; only the final sums are reduced. Additionally, for the lifted
+/// base field elements, the known-zero coefficients are skipped.
+fn inner_product(
+    values: &[XFieldElement],
+    weights: &[XFieldElement],
+    num_base_values: usize,
+) -> XFieldElement {
+    assert_eq!(values.len(), weights.len());
+    let (base_values, ext_values) = values.split_at(num_base_values);
+    let (base_weights, ext_weights) = weights.split_at(num_base_values);
+
+    // the coefficients of the product before reduction modulo the extension
+    // field's defining polynomial x^3 - x + 1
+    let mut sums = [UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1];
+    for (value, weight) in base_values.iter().zip(base_weights) {
+        debug_assert!(value.unlift().is_some());
+        let value = value.coefficients[0];
+        for (sum, &w) in sums.iter_mut().zip(&weight.coefficients) {
+            sum.add_product(value, w);
+        }
+    }
+    for (value, weight) in ext_values.iter().zip(ext_weights) {
+        for (i, &v) in value.coefficients.iter().enumerate() {
+            for (j, &w) in weight.coefficients.iter().enumerate() {
+                sums[i + j].add_product(v, w);
+            }
+        }
+    }
+
+    // x^3 = x - 1 and x^4 = x^2 - x
+    let [s0, s1, s2, s3, s4] = sums.map(UnreducedSum::reduce);
+    XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+}
+
+/// A sum of products of [`BFieldElement`]s, where the products are not reduced
+/// individually. Since the elements are in Montgomery representation, a single
+/// Montgomery reduction of the sum gives the reduced sum of the products.
+#[derive(Debug, Copy, Clone)]
+struct UnreducedSum(u128);
+
+impl UnreducedSum {
+    const ZERO: Self = Self(0);
+
+    /// The Montgomery reduction requires its input to be smaller than this.
+    const P_TIMES_2_POW_64: u128 = (BFieldElement::P as u128) << 64;
+
+    /// Equals 2^128 - p·2^64. Adding it after the sum wrapped around 2^128
+    /// keeps the sum's residue modulo p intact.
+    const WRAP_AROUND_CORRECTION: u128 = (1 << 96) - (1 << 64);
+
+    #[inline(always)]
+    fn add_product(&mut self, a: BFieldElement, b: BFieldElement) {
+        let product = u128::from(a.raw_u64()) * u128::from(b.raw_u64());
+        let (sum, wrapped_around) = self.0.overflowing_add(product);
+
+        // After a wrap-around, the sum is smaller than the product, which is at
+        // most (p-1)^2 = 2^128 - 2^97 + 2^64. Adding the correction can't
+        // overflow.
+        self.0 = sum + u128::from(wrapped_around) * Self::WRAP_AROUND_CORRECTION;
+    }
+
+    #[inline(always)]
+    fn reduce(self) -> BFieldElement {
+        let sum = if self.0 >= Self::P_TIMES_2_POW_64 {
+            self.0 - Self::P_TIMES_2_POW_64
+        } else {
+            self.0
+        };
+        BFieldElement::from_raw_u64(BFieldElement::montyred(sum))
+    }
+}
+
+/// Copy `num_rows` consecutive rows of the given table, starting at row
+/// `first_row` and wrapping around at the end of the table, into a new,
+/// row-major array.
+fn gather_rows<FF: FiniteField>(
+    table: ArrayView2<FF>,
+    first_row: usize,
+    num_rows: usize,
+) -> Array2<FF> {
+    let table_len = table.nrows();
+    let first_row = first_row % table_len;
+    let mut rows = Array2::zeros([num_rows, table.ncols()]);
+    if first_row + num_rows <= table_len {
+        // gathering column by column reads the (column-major) table
+        // contiguously
+        let source = table.slice(s![first_row..first_row + num_rows, ..]);
+        for (column_idx, column) in source.axis_iter(COL_AXIS).enumerate() {
+            for (row_idx, &element) in column.iter().enumerate() {
+                rows[[row_idx, column_idx]] = element;
+            }
+        }
+    } else {
+        for row_idx in 0..num_rows {
+            let source_row = table.row((first_row + row_idx) % table_len);
+            rows.row_mut(row_idx).assign(&source_row);
+        }
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -1533,7 +1876,7 @@ mod tests {
             let jit_digests = table.hash_all_fri_domain_rows();
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
 
             assert!(table.fri_domain_table().is_some());
             let cache_digests = table.hash_all_fri_domain_rows();
@@ -1546,6 +1889,55 @@ mod tests {
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
         row_hashes_are_identical(artifacts.master_main_table);
         row_hashes_are_identical(artifacts.master_aux_table);
+    }
+
+    fn naive_inner_product(values: &[XFieldElement], weights: &[XFieldElement]) -> XFieldElement {
+        values.iter().zip_eq(weights).map(|(&v, &w)| v * w).sum()
+    }
+
+    #[macro_rules_attr::apply(proptest)]
+    fn lazily_reduced_inner_product_equals_naive_inner_product(
+        #[strategy(arb())] base_values: Vec<BFieldElement>,
+        #[strategy(arb())] ext_values: Vec<XFieldElement>,
+        #[strategy(prop::collection::vec(arb(), #base_values.len() + #ext_values.len()))]
+        weights: Vec<XFieldElement>,
+    ) {
+        let num_base_values = base_values.len();
+        let values = base_values
+            .into_iter()
+            .map(|bfe| bfe.lift())
+            .chain(ext_values)
+            .collect_vec();
+
+        let expected = naive_inner_product(&values, &weights);
+        let actual = super::inner_product(&values, &weights, num_base_values);
+        prop_assert_eq!(expected, actual);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn lazily_reduced_inner_product_of_largest_elements_equals_naive_inner_product() {
+        // Products of the largest elements make the unreduced sums wrap around
+        // frequently.
+        let max = BFieldElement::new(BFieldElement::MAX);
+        let max_xfe = XFieldElement::new([max; EXTENSION_DEGREE]);
+        let min_raw = BFieldElement::from_raw_u64(0);
+        let max_raw = BFieldElement::from_raw_u64(BFieldElement::P - 1);
+        let max_raw_xfe = XFieldElement::new([max_raw; EXTENSION_DEGREE]);
+        let mixed_xfe = XFieldElement::new([max_raw, min_raw, max]);
+
+        for element in [max_xfe, max_raw_xfe, mixed_xfe] {
+            for num_base_values in [0, 1, 500, 1000] {
+                let values = (0..num_base_values)
+                    .map(|_| element.coefficients[0].lift())
+                    .chain(std::iter::repeat_n(element, 1000))
+                    .collect_vec();
+                let weights = vec![element; values.len()];
+
+                let expected = naive_inner_product(&values, &weights);
+                let actual = super::inner_product(&values, &weights, num_base_values);
+                assert_eq!(expected, actual);
+            }
+        }
     }
 
     #[macro_rules_attr::apply(proptest)]
@@ -1564,7 +1956,7 @@ mod tests {
             let jit_rows = table.reveal_rows(indices);
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
 
             assert!(table.fri_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);
@@ -2309,19 +2701,36 @@ mod tests {
         assert_eq!(9, trace_domain_element(AUX_U32_TABLE_START));
     }
 
-    #[macro_rules_attr::apply(proptest)]
-    fn sponge_with_pending_absorb_is_equivalent_to_usual_sponge(
-        #[strategy(arb())] elements: Vec<BFieldElement>,
-        #[strategy(0_usize..=#elements.len())] substring_index: usize,
-    ) {
-        let (substring_0, substring_1) = elements.split_at(substring_index);
-        let mut sponge = SpongeWithPendingAbsorb::new();
-        sponge.absorb(substring_0);
-        sponge.absorb(substring_1);
-        let pending_absorb_digest = sponge.finalize();
+    /// The batched, single-pass out-of-domain evaluation must agree with
+    /// evaluating every column's randomized interpolant.
+    #[macro_rules_attr::apply(test)]
+    fn out_of_domain_rows_agree_with_evaluating_column_interpolants() {
+        let artifacts =
+            crate::stark::tests::program_executing_every_instruction().generate_proof_artifacts();
+        let main = &artifacts.master_main_table;
+        let aux = &artifacts.master_aux_table;
+        let point = xfe!([7, 11, 13]);
+        let next_point = main.domains().trace.generator() * point;
+        let points = [point, next_point];
 
-        let expected_digest = Tip5::hash_varlen(&elements);
-        prop_assert_eq!(expected_digest, pending_absorb_digest);
+        let main_rows = main.out_of_domain_rows(&points);
+        let aux_rows = aux.out_of_domain_rows(&points);
+        for (i, &z) in points.iter().enumerate() {
+            assert_eq!(MasterMainTable::NUM_COLUMNS, main_rows[i].len());
+            for (col, &actual) in main_rows[i].iter().enumerate() {
+                let expected = main
+                    .randomized_column_interpolant(col)
+                    .evaluate::<_, XFieldElement>(z);
+                assert_eq!(expected, actual, "main column {col}, point {i}");
+            }
+            assert_eq!(MasterAuxTable::NUM_COLUMNS, aux_rows[i].len());
+            for (col, &actual) in aux_rows[i].iter().enumerate() {
+                let expected = aux
+                    .randomized_column_interpolant(col)
+                    .evaluate::<_, XFieldElement>(z);
+                assert_eq!(expected, actual, "aux column {col}, point {i}");
+            }
+        }
     }
 
     /// Test whether the AIR constraint evaluators are the same between

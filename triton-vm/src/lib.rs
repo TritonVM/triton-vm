@@ -186,6 +186,32 @@ use ::isa::program::Program;
 use crate::error::ProvingError;
 use crate::prelude::*;
 
+/// The prover allocates and frees a large number of large buffers from many
+/// threads at once. jemalloc handles this considerably better than the
+/// system allocator: on a 96-core machine, proving is about 10% faster
+/// overall. Since a binary can only have one global allocator, this is behind
+/// the (default) feature `jemalloc`, to be disabled by binaries that set
+/// their own. On platforms where jemalloc is unavailable, like wasm or
+/// Windows with MSVC, the feature has no effect.
+#[cfg(all(feature = "jemalloc", any(target_os = "linux", target_os = "macos")))]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// jemalloc's configuration, read at startup. Backing the allocations with
+/// transparent huge pages saves the page faults that otherwise dominate the
+/// many short-lived, large buffers of the prover; measured on a 96-core
+/// machine, this makes small proofs about 10% and large proofs about 15%
+/// faster. The background thread purges unused memory asynchronously
+/// instead of on the allocating threads. Capping the number of arenas
+/// bounds the memory that idle arenas hold on machines with many threads,
+/// where jemalloc would otherwise create four arenas per CPU; with the
+/// huge pages, each arena holds at least 2 MiB. Machines with few threads
+/// are unaffected, since their default is below the cap. The environment
+/// variable `_RJEM_MALLOC_CONF` overrides this.
+#[cfg(all(feature = "jemalloc", target_os = "linux"))]
+#[unsafe(export_name = "_rjem_malloc_conf")]
+static JEMALLOC_CONF: &[u8] = b"thp:always,metadata_thp:always,background_thread:true,narenas:32\0";
+
 pub mod aet;
 pub mod arithmetic_domain;
 pub mod challenges;

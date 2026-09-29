@@ -24,6 +24,7 @@ pub mod op_stack;
 pub mod processor;
 pub mod program;
 pub mod ram;
+pub(crate) mod running_arguments;
 pub mod u32;
 
 trait TraceTable: AIR {
@@ -132,12 +133,11 @@ mod tests {
     use rand::prelude::*;
     use rand::random;
 
+    use super::*;
     use crate::challenges::Challenges;
     use crate::prelude::Claim;
     use crate::table::degree_lowering::DegreeLoweringTable;
     use crate::tests::test;
-
-    use super::*;
 
     /// Verify that all nodes evaluate to a unique value when given a randomized
     /// input. If this is not the case two nodes that are not equal evaluate

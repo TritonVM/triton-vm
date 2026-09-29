@@ -18,6 +18,7 @@ use isa::op_stack::UnderflowIO;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
+use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::math::traits::FiniteField;
@@ -28,6 +29,7 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::par_sort_rows_into;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -183,15 +185,21 @@ impl TraceTable for OpStackTable {
     ) -> Vec<BFieldElement> {
         let mut op_stack_table =
             op_stack_table.slice_mut(s![0..aet.height_of_table(TableId::OpStack), ..]);
-        let trace_iter = aet.op_stack_underflow_trace.rows().into_iter();
+        let sort_keys = par_sort_rows_into(
+            op_stack_table.view_mut(),
+            aet.op_stack_underflow_trace.view(),
+            MainColumn::StackPointer.main_index(),
+            MainColumn::CLK.main_index(),
+        );
+        debug_assert!(
+            op_stack_table
+                .rows()
+                .into_iter()
+                .tuple_windows()
+                .all(|(row_0, row_1)| compare_rows(row_0, row_1) != Ordering::Greater)
+        );
 
-        let sorted_rows =
-            trace_iter.sorted_by(|row_0, row_1| compare_rows(row_0.view(), row_1.view()));
-        for (row_index, row) in sorted_rows.enumerate() {
-            op_stack_table.row_mut(row_index).assign(&row);
-        }
-
-        clock_jump_differences(op_stack_table.view())
+        clock_jump_differences(&sort_keys)
     }
 
     fn pad(mut op_stack_table: ArrayViewMut2<BFieldElement>, op_stack_table_len: usize) {
@@ -255,21 +263,15 @@ fn compare_rows(row_0: ArrayView1<BFieldElement>, row_1: ArrayView1<BFieldElemen
     compare_stack_pointers.then(compare_clocks)
 }
 
-fn clock_jump_differences(op_stack_table: ArrayView2<BFieldElement>) -> Vec<BFieldElement> {
-    let mut clock_jump_differences = vec![];
-    for consecutive_rows in op_stack_table.axis_windows(ROW_AXIS, 2) {
-        let current_row = consecutive_rows.row(0);
-        let next_row = consecutive_rows.row(1);
-        let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];
-        let next_stack_pointer = next_row[MainColumn::StackPointer.main_index()];
-        if current_stack_pointer == next_stack_pointer {
-            let current_clk = current_row[MainColumn::CLK.main_index()];
-            let next_clk = next_row[MainColumn::CLK.main_index()];
-            let clk_difference = next_clk - current_clk;
-            clock_jump_differences.push(clk_difference);
-        }
-    }
-    clock_jump_differences
+/// The clock jump differences between consecutive rows with equal stack
+/// pointers, given every row's stack pointer and clock. See also
+/// [`par_sort_rows_into`].
+fn clock_jump_differences(sort_keys: &[[u64; 2]]) -> Vec<BFieldElement> {
+    sort_keys
+        .par_windows(2)
+        .filter(|rows| rows[0][0] == rows[1][0])
+        .map(|rows| BFieldElement::new(rows[1][1]) - BFieldElement::new(rows[0][1]))
+        .collect()
 }
 
 #[cfg(test)]
@@ -284,6 +286,7 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::tests::proptest;
+    use crate::tests::test;
 
     #[macro_rules_attr::apply(proptest)]
     fn op_stack_table_entry_either_shrinks_stack_or_grows_stack(
@@ -352,6 +355,56 @@ pub(crate) mod tests {
         let clk_values = entries.iter().map(|entry| entry.clk).collect_vec();
         let all_clk_values_are_clk = clk_values.iter().all(|&c| c == clk);
         prop_assert!(all_clk_values_are_clk);
+    }
+
+    /// The original, sequential fill algorithm, kept as a reference.
+    fn reference_fill(
+        mut op_stack_table: ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<BFieldElement> {
+        let sorted_rows = aet
+            .op_stack_underflow_trace
+            .rows()
+            .into_iter()
+            .sorted_by(|row_0, row_1| compare_rows(row_0.view(), row_1.view()));
+        for (row_index, row) in sorted_rows.enumerate() {
+            op_stack_table.row_mut(row_index).assign(&row);
+        }
+
+        let mut clock_jump_differences = vec![];
+        for consecutive_rows in op_stack_table.axis_windows(ROW_AXIS, 2) {
+            let current_row = consecutive_rows.row(0);
+            let next_row = consecutive_rows.row(1);
+            let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];
+            let next_stack_pointer = next_row[MainColumn::StackPointer.main_index()];
+            if current_stack_pointer == next_stack_pointer {
+                let current_clk = current_row[MainColumn::CLK.main_index()];
+                let next_clk = next_row[MainColumn::CLK.main_index()];
+                clock_jump_differences.push(next_clk - current_clk);
+            }
+        }
+        clock_jump_differences
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn parallel_fill_agrees_with_reference_fill() {
+        let crate::shared_tests::TestableProgram {
+            program,
+            public_input,
+            non_determinism,
+            ..
+        } = crate::stark::tests::program_executing_every_instruction();
+        let (aet, _) =
+            crate::vm::VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let height = aet.height_of_table(TableId::OpStack);
+
+        let mut table = Array2::zeros((height, MainColumn::COUNT).f());
+        let clock_jump_differences = OpStackTable::fill(table.view_mut(), &aet, ());
+        let mut reference_table = Array2::zeros((height, MainColumn::COUNT).f());
+        let reference_clock_jump_differences = reference_fill(reference_table.view_mut(), &aet);
+
+        assert_eq!(reference_clock_jump_differences, clock_jump_differences);
+        assert_eq!(reference_table, table);
     }
 
     #[macro_rules_attr::apply(proptest)]

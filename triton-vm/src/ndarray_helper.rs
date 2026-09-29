@@ -4,12 +4,15 @@ use std::fmt::Debug;
 use std::mem::MaybeUninit;
 
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use ndarray::Ix;
 use ndarray::ShapeBuilder;
 use ndarray::s;
 use num_traits::ConstZero;
+use rayon::prelude::*;
+use twenty_first::prelude::BFieldElement;
 
 /// The [axis](Axis) that Triton VM uses for the rows of its tables.
 ///
@@ -81,6 +84,9 @@ where
     FF: ConstZero + Send + Sync + Copy,
 {
     let mut array = Array2::uninit(shape);
+    if let Some(memory) = array.as_slice_memory_order_mut() {
+        twenty_first::memory::advise_huge_pages(memory);
+    }
     array.par_mapv_inplace(|_| MaybeUninit::new(FF::ZERO));
 
     unsafe {
@@ -88,6 +94,84 @@ where
         // 1. The array is not sliced up.
         // 2. The array is fully initialized.
         array.assume_init()
+    }
+}
+
+/// Write the rows of `source` into `target`, sorted by the values in
+/// `primary_column`, breaking ties by the values in `secondary_column`.
+/// Returns those two values of every row, in the order of the rows in
+/// `target`.
+///
+/// Both the sorting and the copying are parallel. The copying is most
+/// efficient if `target` is column-major, as Triton VM's tables are.
+///
+/// # Panics
+///
+/// Panics if the shapes of `source` and `target` differ.
+pub fn par_sort_rows_into(
+    mut target: ArrayViewMut2<BFieldElement>,
+    source: ArrayView2<BFieldElement>,
+    primary_column: usize,
+    secondary_column: usize,
+) -> Vec<[u64; 2]> {
+    assert_eq!(source.dim(), target.dim());
+
+    let mut order = (0..source.nrows())
+        .into_par_iter()
+        .map(|row| {
+            let primary = source[[row, primary_column]].value();
+            let secondary = source[[row, secondary_column]].value();
+            (primary, secondary, row)
+        })
+        .collect::<Vec<_>>();
+    order.par_sort_unstable();
+
+    target
+        .axis_iter_mut(COL_AXIS)
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(column_index, mut column)| {
+            let source_column = source.column(column_index);
+            if let Some(column) = column.as_slice_mut() {
+                column
+                    .par_iter_mut()
+                    .zip(&order)
+                    .for_each(|(cell, &(_, _, row))| *cell = source_column[row]);
+            } else {
+                for (cell, &(_, _, row)) in column.iter_mut().zip(&order) {
+                    *cell = source_column[row];
+                }
+            }
+        });
+
+    order
+        .into_par_iter()
+        .map(|(primary, secondary, _)| [primary, secondary])
+        .collect()
+}
+
+/// Overwrite the given column of `table` with `values`, in parallel where the
+/// column is contiguous in memory.
+///
+/// # Panics
+///
+/// Panics if the number of values differs from the table's number of rows.
+pub fn par_fill_column<FF: Copy + Send + Sync>(
+    table: &mut ArrayViewMut2<FF>,
+    column_index: usize,
+    values: &[FF],
+) {
+    let mut column = table.column_mut(column_index);
+    assert_eq!(column.len(), values.len());
+    if let Some(column) = column.as_slice_mut() {
+        column
+            .par_iter_mut()
+            .zip(values)
+            .for_each(|(cell, &value)| *cell = value);
+    } else {
+        for (cell, &value) in column.iter_mut().zip(values) {
+            *cell = value;
+        }
     }
 }
 

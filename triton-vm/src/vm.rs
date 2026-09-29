@@ -1535,7 +1535,7 @@ pub(crate) mod tests {
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
     use rand::Rng;
-    use rand::RngCore;
+    use rand::RngExt;
     use rand::rngs::ThreadRng;
     use strum::EnumCount;
     use strum::EnumIter;
@@ -3152,6 +3152,41 @@ pub(crate) mod tests {
         assert!(0 == uninit_value.value());
         assert!(value == init_value);
 
+        program.prove_and_verify();
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 3))]
+    fn prove_verify_many_ram_accesses(
+        #[strategy(arb())] regions: [BFieldElement; 4],
+        #[strategy(vec((any::<bool>(), 0..4_usize, 0..16_usize, arb(), arb()), 4..50))]
+        accesses: Vec<(bool, usize, usize, NumberOfWords, [BFieldElement; 5])>,
+    ) {
+        let mut ram = HashMap::new();
+        let mut expected_output = vec![];
+        let mut instructions = vec![];
+        for (is_write, region, offset, n, values) in accesses {
+            let pointer = regions[region] + bfe!(offset);
+            if is_write {
+                // `write_mem` stores stack element i at address `pointer + i`
+                for (i, &value) in values[..n.num_words()].iter().enumerate().rev() {
+                    ram.insert(pointer + bfe!(i), value);
+                    instructions.extend(triton_asm!(push { value }));
+                }
+                instructions.extend(triton_asm!(push {pointer} write_mem {n} pop 1));
+            } else {
+                // `write_io` outputs the value read from the lowest address first
+                for i in (0..n.num_words()).rev() {
+                    let value = ram.get(&(pointer - bfe!(i))).copied();
+                    expected_output.push(value.unwrap_or_default());
+                }
+                instructions.extend(triton_asm!(push {pointer} read_mem {n} pop 1 write_io {n}));
+            }
+        }
+
+        let program = triton_program!({&instructions} halt);
+        let program = TestableProgram::new(program).use_stark(Stark::low_security());
+        let_assert!(Ok(output) = program.clone().run());
+        prop_assert_eq!(expected_output, output);
         program.prove_and_verify();
     }
 

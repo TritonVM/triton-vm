@@ -4,6 +4,8 @@ use air::cross_table_argument::LookupArg;
 use air::table::cascade::CascadeTable;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
+use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::s;
@@ -18,6 +20,9 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
+use crate::table::running_arguments::par_fractions;
+use crate::table::running_arguments::par_log_derivative;
+use crate::table::running_arguments::par_running_sum;
 
 type MainColumn = <CascadeTable as air::AIR>::MainColumn;
 type AuxColumn = <CascadeTable as air::AIR>::AuxColumn;
@@ -75,9 +80,6 @@ impl TraceTable for CascadeTable {
         assert_eq!(AuxColumn::COUNT, aux_table.ncols());
         assert_eq!(main_table.nrows(), aux_table.nrows());
 
-        let mut hash_table_log_derivative = LookupArg::default_initial();
-        let mut lookup_table_log_derivative = LookupArg::default_initial();
-
         let two_pow_8 = bfe!(1 << 8);
 
         let hash_indeterminate = challenges[ChallengeId::HashCascadeLookupIndeterminate];
@@ -88,37 +90,62 @@ impl TraceTable for CascadeTable {
         let lookup_input_weight = challenges[ChallengeId::LookupTableInputWeight];
         let lookup_output_weight = challenges[ChallengeId::LookupTableOutputWeight];
 
-        for row_idx in 0..main_table.nrows() {
-            let main_row = main_table.row(row_idx);
-            let is_padding = main_row[MainColumn::IsPadding.main_index()].is_one();
+        let rows = || {
+            (0..main_table.nrows())
+                .into_par_iter()
+                .map(|row_idx| main_table.row(row_idx))
+        };
+        let is_padding =
+            |row: ArrayView1<BFieldElement>| row[MainColumn::IsPadding.main_index()].is_one();
 
-            if !is_padding {
-                let look_in = two_pow_8 * main_row[MainColumn::LookInHi.main_index()]
-                    + main_row[MainColumn::LookInLo.main_index()];
-                let look_out = two_pow_8 * main_row[MainColumn::LookOutHi.main_index()]
-                    + main_row[MainColumn::LookOutLo.main_index()];
-                let compressed_row_hash =
-                    hash_input_weight * look_in + hash_output_weight * look_out;
-                let lookup_multiplicity = main_row[MainColumn::LookupMultiplicity.main_index()];
-                hash_table_log_derivative +=
-                    (hash_indeterminate - compressed_row_hash).inverse() * lookup_multiplicity;
+        // one fraction per (non-padding) row; inversions are batched
+        let hash_table_fractions = rows()
+            .map(|row| {
+                (!is_padding(row)).then(|| {
+                    let look_in = two_pow_8 * row[MainColumn::LookInHi.main_index()]
+                        + row[MainColumn::LookInLo.main_index()];
+                    let look_out = two_pow_8 * row[MainColumn::LookOutHi.main_index()]
+                        + row[MainColumn::LookOutLo.main_index()];
+                    let compressed_row =
+                        hash_input_weight * look_in + hash_output_weight * look_out;
+                    let lookup_multiplicity = row[MainColumn::LookupMultiplicity.main_index()];
+                    (
+                        hash_indeterminate - compressed_row,
+                        lookup_multiplicity.lift(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let hash_table_log_derivative =
+            par_log_derivative(&hash_table_fractions, LookupArg::default_initial());
 
-                let compressed_row_lo = lookup_input_weight
-                    * main_row[MainColumn::LookInLo.main_index()]
-                    + lookup_output_weight * main_row[MainColumn::LookOutLo.main_index()];
-                let compressed_row_hi = lookup_input_weight
-                    * main_row[MainColumn::LookInHi.main_index()]
-                    + lookup_output_weight * main_row[MainColumn::LookOutHi.main_index()];
-                lookup_table_log_derivative += (lookup_indeterminate - compressed_row_lo).inverse();
-                lookup_table_log_derivative += (lookup_indeterminate - compressed_row_hi).inverse();
-            }
+        // two fractions per (non-padding) row
+        let lookup_table_fraction = |row: ArrayView1<BFieldElement>, lo_or_hi: [MainColumn; 2]| {
+            (!is_padding(row)).then(|| {
+                let [in_col, out_col] = lo_or_hi;
+                let compressed_row = lookup_input_weight * row[in_col.main_index()]
+                    + lookup_output_weight * row[out_col.main_index()];
+                (lookup_indeterminate - compressed_row, XFieldElement::ONE)
+            })
+        };
+        let lookup_table_fractions_lo = rows()
+            .map(|row| lookup_table_fraction(row, [MainColumn::LookInLo, MainColumn::LookOutLo]))
+            .collect::<Vec<_>>();
+        let lookup_table_fractions_hi = rows()
+            .map(|row| lookup_table_fraction(row, [MainColumn::LookInHi, MainColumn::LookOutHi]))
+            .collect::<Vec<_>>();
+        let lookup_table_summands = par_fractions(&lookup_table_fractions_lo)
+            .into_par_iter()
+            .zip(par_fractions(&lookup_table_fractions_hi))
+            .map(|(lo, hi)| lo + hi)
+            .collect();
+        let lookup_table_log_derivative =
+            par_running_sum(lookup_table_summands, LookupArg::default_initial());
 
-            let mut auxiliary_row = aux_table.row_mut(row_idx);
-            auxiliary_row[AuxColumn::HashTableServerLogDerivative.aux_index()] =
-                hash_table_log_derivative;
-            auxiliary_row[AuxColumn::LookupTableClientLogDerivative.aux_index()] =
-                lookup_table_log_derivative;
-        }
+        Array1::from(hash_table_log_derivative)
+            .move_into(aux_table.column_mut(AuxColumn::HashTableServerLogDerivative.aux_index()));
+        Array1::from(lookup_table_log_derivative)
+            .move_into(aux_table.column_mut(AuxColumn::LookupTableClientLogDerivative.aux_index()));
         profiler!(stop "cascade table");
     }
 }

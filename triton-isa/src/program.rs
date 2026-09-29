@@ -440,7 +440,7 @@ mod tests {
     use assert2::let_assert;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
-    use rand::Rng;
+    use rand::RngExt;
     use test_strategy::proptest;
 
     use crate::triton_program;

@@ -930,7 +930,7 @@ pub mod tests {
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
-    use rand::Rng;
+    use rand::RngExt;
     use strum::EnumCount;
     use strum::IntoEnumIterator;
     use strum::VariantNames;
