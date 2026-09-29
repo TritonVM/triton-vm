@@ -3,6 +3,50 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+  ## [9.0.0](https://github.com/TritonVM/triton-vm/compare/v8.0.0..v9.0.0) - 2026-09-29
+
+  ### 🐛 Bug Fixes
+
+  - *(stark)* Decide on caching the LDE trace by available memory ([58a21a71](https://github.com/TritonVM/triton-vm/commit/58a21a71))
+
+  ### ⚡️ Performance
+
+  - *(stark)* Parallelize the prover's serial NTTs and batch inversions ([b3a75feb](https://github.com/TritonVM/triton-vm/commit/b3a75feb))
+  - *(table)* Parallelize hash and cascade table extension ([cd84f2da](https://github.com/TritonVM/triton-vm/commit/cd84f2da))
+  - *(table)* Speed up filling the u32 table ([568dc8c5](https://github.com/TritonVM/triton-vm/commit/568dc8c5))
+  - *(table)* Don't copy the trace domain per column for OOD rows ([d85c5411](https://github.com/TritonVM/triton-vm/commit/d85c5411))
+  - *(stark)* Store the cached low-degree extended table column-major ([2e6f2f8b](https://github.com/TritonVM/triton-vm/commit/2e6f2f8b))
+  - *(stark)* Evaluate LDE columns in place, gather larger row blocks ([4469b7cb](https://github.com/TritonVM/triton-vm/commit/4469b7cb))
+  - *(stark)* Request huge pages for the prover's large tables ([00812d86](https://github.com/TritonVM/triton-vm/commit/00812d86))
+  - *(table)* Share the zerofier tree across the Bézout computation ([5eaddbb4](https://github.com/TritonVM/triton-vm/commit/5eaddbb4))
+  - *(stark)* Parallelize the processor table extension and serial leftovers ([1836da48](https://github.com/TritonVM/triton-vm/commit/1836da48))
+  - *(table)* Fill RAM and op stack tables in parallel ([03b8ffbe](https://github.com/TritonVM/triton-vm/commit/03b8ffbe))
+  - (!) Use jemalloc as the global allocator by default ([ae87bae7](https://github.com/TritonVM/triton-vm/commit/ae87bae7))
+  - *(stark)* Hash rows in batches ([3ed38cb0](https://github.com/TritonVM/triton-vm/commit/3ed38cb0))
+  - *(stark)* Interpolate randomized trace columns in one buffer ([e9ffdfd8](https://github.com/TritonVM/triton-vm/commit/e9ffdfd8))
+  - *(stark)* Evaluate LDE columns with the fused coset transform ([6f9ef4de](https://github.com/TritonVM/triton-vm/commit/6f9ef4de))
+  - Configure jemalloc for transparent huge pages ([8e16a7b7](https://github.com/TritonVM/triton-vm/commit/8e16a7b7))
+  - *(stark)* Compute out-of-domain rows in one pass over each table ([4d637f7e](https://github.com/TritonVM/triton-vm/commit/4d637f7e))
+  - Cap jemalloc's number of arenas ([a24c9aff](https://github.com/TritonVM/triton-vm/commit/a24c9aff))
+  - *(stark)* Evaluate quotient segments straight into their tables ([0e4611dd](https://github.com/TritonVM/triton-vm/commit/0e4611dd))
+  - *(stark)* Parallelize the linear combination and DEEP arithmetic ([346256fc](https://github.com/TritonVM/triton-vm/commit/346256fc))
+  - *(constraints)* Index rows as fixed-size arrays in evaluation code ([b47624cc](https://github.com/TritonVM/triton-vm/commit/b47624cc))
+  - *(stark)* Defer reductions in the quotients' inner products ([ca6c0c64](https://github.com/TritonVM/triton-vm/commit/ca6c0c64))
+  - *(stark)* Gather current and next rows into one buffer ([7df8e8d8](https://github.com/TritonVM/triton-vm/commit/7df8e8d8))
+  - *(table)* Hash uncached tables' rows coset by coset ([d97d88fb](https://github.com/TritonVM/triton-vm/commit/d97d88fb))
+  - *(stark)* Add trace randomizers before the NTT in the uncached path ([fafcd36a](https://github.com/TritonVM/triton-vm/commit/fafcd36a))
+  - *(stark)* Free the uncached path's working tables before segmentifying ([652c24fc](https://github.com/TritonVM/triton-vm/commit/652c24fc))
+
+  ### ⚙️  Miscellaneous
+
+  - Use twenty-first's huge page helper ([50387f52](https://github.com/TritonVM/triton-vm/commit/50387f52))
+  - (!) Depend on twenty-first v3.0.0 ([9821fcdd](https://github.com/TritonVM/triton-vm/commit/9821fcdd))
+
+  ### ✅ Testing
+
+  - Prove/verify on many RAM accesses ([47d84f25](https://github.com/TritonVM/triton-vm/commit/47d84f25))
+
+
 ## [8.0.0](https://github.com/TritonVM/triton-vm/compare/v7.0.0..v8.0.0) - 2026-08-24
 
 ### 🐛 Bug Fixes
