@@ -50,7 +50,6 @@
 //! [master_aux_table]: MasterAuxTable
 //! [master_quot_table]: all_quotients_combined
 
-use std::borrow::Borrow;
 use std::mem::MaybeUninit;
 use std::ops::Add;
 use std::ops::Mul;
@@ -131,19 +130,18 @@ use ndarray::Zip;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::s;
+use num_traits::ConstOne;
 use num_traits::ConstZero;
-use num_traits::One;
 use num_traits::ToBytes;
-use num_traits::Zero;
 use rand::distr::StandardUniform;
 use rand::prelude::*;
 use rayon::prelude::*;
 use strum::EnumCount;
+use twenty_first::math::ntt::intt;
+use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
-use twenty_first::tip5::RATE;
-use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -518,7 +516,7 @@ where
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
     /// in the tree.
-    fn merkle_tree(&self) -> MerkleTree {
+    fn merkle_tree(&mut self) -> MerkleTree {
         profiler!(start "leafs");
         let hashed_rows = self.hash_all_fri_domain_rows();
         profiler!(stop "leafs");
@@ -530,7 +528,7 @@ where
         merkle_tree
     }
 
-    fn hash_all_fri_domain_rows(&self) -> Vec<Digest> {
+    fn hash_all_fri_domain_rows(&mut self) -> Vec<Digest> {
         if let Some(fri_domain_table) = self.fri_domain_table() {
             profiler!(start "hash rows" ("hash"));
             let all_digests = Self::hash_rows_of_column_major_table(fri_domain_table);
@@ -539,39 +537,92 @@ where
             return all_digests;
         }
 
-        // Now knowing that the low-degree extensions are not cached, hash all
-        // FRI domain rows of the table using just-in-time low-degree-extension.
-        let num_threads = rayon::current_num_threads().max(1);
-        let eval_domain = self.evaluation_domain();
-        let mut sponge_states = vec![SpongeWithPendingAbsorb::new(); eval_domain.len()];
+        // Now knowing that the low-degree extensions are not cached, hash the
+        // FRI domain's rows coset by coset. Every coset is as long as the trace
+        // domain, and all columns are low-degree extended onto it at once,
+        // which allows hashing the coset's rows in their entirety. Hence, the
+        // additional memory is one table the size of the trace table,
+        // independent of the number of threads.
+        let domains = self.domains();
+        let trace_domain = domains.trace;
+        let fri_domain = domains.fri;
+        let num_rows = trace_domain.len();
+        let num_cosets = fri_domain.len() / num_rows;
+        assert_eq!(fri_domain.len(), num_cosets * num_rows);
 
-        let column_indices = Array1::from_iter(0..Self::NUM_COLUMNS);
-        let mut codewords = Array2::zeros([eval_domain.len(), num_threads]);
-        for column_indices in column_indices.axis_chunks_iter(ROW_AXIS, num_threads) {
+        profiler!(start "fetch trace randomizers");
+        let randomizers = (0..Self::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| self.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        profiler!(stop "fetch trace randomizers");
+
+        // The trace table's columns are replaced by their interpolants'
+        // coefficients here and restored below.
+        profiler!(start "interpolate" ("LDE"));
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        profiler!(stop "interpolate");
+
+        let num_rows_u64 = u64::try_from(num_rows).unwrap();
+        let trace_offset_inverse = trace_domain.offset().inverse();
+        let trace_offset_to_the_n = trace_domain.offset().mod_pow(num_rows_u64);
+        let mut coset_table = ndarray_helper::par_zeros((num_rows, Self::NUM_COLUMNS).f());
+        let mut all_digests = vec![Digest::default(); fri_domain.len()];
+        for coset_index in 0..num_cosets {
+            // The coset's points are `coset_offset · trace_generator^i`.
+            let coset_offset =
+                fri_domain.offset() * fri_domain.generator().mod_pow(coset_index as u64);
+
             profiler!(start "LDE" ("LDE"));
-            let mut codewords = codewords.slice_mut(s![.., 0..column_indices.len()]);
-            Zip::from(column_indices)
-                .and(codewords.axis_iter_mut(COL_AXIS))
-                .par_for_each(|&col_idx, target_column| {
-                    let column_interpolant = self.randomized_column_interpolant(col_idx);
-                    let lde_codeword = eval_domain.evaluate(&column_interpolant);
-                    Array1::from(lde_codeword).move_into(target_column);
+            // A randomized interpolant is `interpolant + zerofier · randomizer`.
+            // The trace zerofier, `X^n - offset^n`, is constant on the coset.
+            let zerofier = coset_offset.mod_pow(num_rows_u64) - trace_offset_to_the_n;
+            let interpolant_scale = coset_offset * trace_offset_inverse;
+            Zip::from(coset_table.axis_iter_mut(COL_AXIS))
+                .and(self.trace_table().axis_iter(COL_AXIS))
+                .and(ArrayView1::from(&randomizers))
+                .par_for_each(|mut codeword, coefficients, randomizer| {
+                    let codeword = codeword.as_slice_mut().unwrap();
+                    let coefficients = coefficients.as_slice().unwrap();
+                    let randomizer = randomizer.coefficients();
+                    assert!(randomizer.len() <= codeword.len());
+
+                    let mut power = BFieldElement::ONE;
+                    for (cell, &coefficient) in codeword.iter_mut().zip(coefficients) {
+                        *cell = coefficient * power;
+                        power *= interpolant_scale;
+                    }
+                    let mut power = zerofier;
+                    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
+                        *cell += coefficient * power;
+                        power *= coset_offset;
+                    }
+                    ntt(codeword);
                 });
             profiler!(stop "LDE");
+
             profiler!(start "hash rows" ("hash"));
-            sponge_states
+            let coset_digests = Self::hash_rows_of_column_major_table(coset_table.view());
+            all_digests
                 .par_iter_mut()
-                .zip(codewords.axis_iter(ROW_AXIS))
-                .for_each(|(sponge, row)| {
-                    sponge.absorb(Self::Field::bfe_slice(row.to_slice().unwrap()))
-                });
+                .skip(coset_index)
+                .step_by(num_cosets)
+                .zip(coset_digests)
+                .for_each(|(digest, coset_digest)| *digest = coset_digest);
             profiler!(stop "hash rows");
         }
 
-        sponge_states
+        profiler!(start "restore trace" ("LDE"));
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
             .into_par_iter()
-            .map(|sponge| sponge.finalize())
-            .collect()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        profiler!(stop "restore trace");
+
+        all_digests
     }
 
     /// Hash every row of the given (column-major) table.
@@ -798,61 +849,6 @@ where
     }
 
     seed
-}
-
-/// Helper struct and function to absorb however many elements are available;
-/// used in the context of hashing rows in a streaming fashion.
-#[derive(Clone)]
-struct SpongeWithPendingAbsorb {
-    sponge: Tip5,
-
-    /// A re-usable buffer of pending input elements.
-    /// Only the first [`Self::num_symbols_pending`] elements are valid.
-    pending_input: [BFieldElement; RATE],
-    num_symbols_pending: usize,
-}
-
-impl SpongeWithPendingAbsorb {
-    pub fn new() -> Self {
-        Self {
-            sponge: Tip5::new(sponge::Domain::VariableLength),
-            pending_input: bfe_array![0; RATE],
-            num_symbols_pending: 0,
-        }
-    }
-
-    /// Similar to [`Tip5::absorb`] but buffers input elements until a full
-    /// block is available.
-    pub fn absorb<I>(&mut self, some_input: I)
-    where
-        I: IntoIterator,
-        I::Item: Borrow<BFieldElement>,
-    {
-        for symbol in some_input {
-            let &symbol = symbol.borrow();
-            self.pending_input[self.num_symbols_pending] = symbol;
-            self.num_symbols_pending += 1;
-            if self.num_symbols_pending == RATE {
-                self.num_symbols_pending = 0;
-                self.sponge.absorb(self.pending_input);
-            }
-        }
-    }
-
-    pub fn finalize(mut self) -> Digest {
-        // apply padding
-        self.pending_input[self.num_symbols_pending] = BFieldElement::one();
-        for i in self.num_symbols_pending + 1..RATE {
-            self.pending_input[i] = BFieldElement::zero();
-        }
-        self.sponge.absorb(self.pending_input);
-        self.num_symbols_pending = 0;
-
-        self.sponge.squeeze()[0..Digest::LEN]
-            .to_vec()
-            .try_into()
-            .unwrap()
-    }
 }
 
 /// The Master Main Table, as described in the [module documentation][self].
@@ -2655,21 +2651,6 @@ mod tests {
         assert_eq!(7, trace_domain_element(AUX_CASCADE_TABLE_START));
         assert_eq!(8, trace_domain_element(AUX_LOOKUP_TABLE_START));
         assert_eq!(9, trace_domain_element(AUX_U32_TABLE_START));
-    }
-
-    #[macro_rules_attr::apply(proptest)]
-    fn sponge_with_pending_absorb_is_equivalent_to_usual_sponge(
-        #[strategy(arb())] elements: Vec<BFieldElement>,
-        #[strategy(0_usize..=#elements.len())] substring_index: usize,
-    ) {
-        let (substring_0, substring_1) = elements.split_at(substring_index);
-        let mut sponge = SpongeWithPendingAbsorb::new();
-        sponge.absorb(substring_0);
-        sponge.absorb(substring_1);
-        let pending_absorb_digest = sponge.finalize();
-
-        let expected_digest = Tip5::hash_varlen(&elements);
-        prop_assert_eq!(expected_digest, pending_absorb_digest);
     }
 
     /// The batched, single-pass out-of-domain evaluation must agree with
