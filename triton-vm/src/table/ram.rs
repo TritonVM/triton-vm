@@ -280,18 +280,21 @@ fn make_ram_table_consistent(
 
     let ram_pointer = |row: usize| BFieldElement::new(sort_keys[row][0]);
     let clk = |row: usize| BFieldElement::new(sort_keys[row][1]);
-    let is_last_of_group =
-        |row: usize| row + 1 == num_rows || group_of_row[row] != group_of_row[row + 1];
+    // Whether the RAM pointer changes from the given row to the next one.
+    // The last row has no next row.
+    let ram_pointer_changes =
+        |row: usize| row + 1 < num_rows && group_of_row[row] != group_of_row[row + 1];
 
-    // The RAM pointer difference to the next row is zero within a group;
-    // those differences are excluded from the batch inversion.
+    // The inverse of the RAM pointer difference to the next row is zero
+    // where the pointer does not change (and in the last row); only the
+    // non-zero differences take part in the batch inversion.
     let ramp_differences = (0..num_rows)
         .into_par_iter()
         .map(|row| {
-            if is_last_of_group(row) {
-                BFieldElement::ONE
-            } else {
+            if ram_pointer_changes(row) {
                 ram_pointer(row + 1) - ram_pointer(row)
+            } else {
+                BFieldElement::ONE
             }
         })
         .collect::<Vec<_>>();
@@ -299,7 +302,7 @@ fn make_ram_table_consistent(
     ramp_difference_inverses
         .par_iter_mut()
         .enumerate()
-        .filter(|(row, _)| is_last_of_group(*row))
+        .filter(|(row, _)| !ram_pointer_changes(*row))
         .for_each(|(_, inverse)| *inverse = BFieldElement::ZERO);
     par_fill_column(
         ram_table,
@@ -326,7 +329,7 @@ fn make_ram_table_consistent(
 
     (0..num_rows - 1)
         .into_par_iter()
-        .filter(|&row| !is_last_of_group(row))
+        .filter(|&row| !ram_pointer_changes(row))
         .map(|row| clk(row + 1) - clk(row))
         .collect()
 }
@@ -482,12 +485,87 @@ fn auxiliary_column_clock_jump_difference_lookup_log_derivative(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
+    use num_traits::Zero;
     use proptest::prelude::*;
     use proptest_arbitrary_adapter::arb;
 
     use super::*;
     use crate::tests::proptest;
     use crate::tests::test;
+
+    /// The original, sequential fill algorithm, kept as a reference.
+    fn reference_fill(
+        mut ram_table: ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<BFieldElement> {
+        let sorted_rows = aet
+            .ram_trace
+            .rows()
+            .into_iter()
+            .sorted_by(|row_0, row_1| compare_rows(row_0.view(), row_1.view()));
+        for (row_index, row) in sorted_rows.enumerate() {
+            ram_table.row_mut(row_index).assign(&row);
+        }
+        let all_ram_pointers = ram_table.column(MainColumn::RamPointer.main_index());
+        let unique_ram_pointers = all_ram_pointers.iter().unique().copied().collect_vec();
+        let (mut bezout_0, mut bezout_1) =
+            bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
+
+        if ram_table.nrows() == 0 {
+            return vec![];
+        }
+        let mut current_bcpc_0 = bezout_0.pop().unwrap();
+        let mut current_bcpc_1 = bezout_1.pop().unwrap();
+        ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient0.main_index()] =
+            current_bcpc_0;
+        ram_table.row_mut(0)[MainColumn::BezoutCoefficientPolynomialCoefficient1.main_index()] =
+            current_bcpc_1;
+        let mut clock_jump_differences = vec![];
+        for row_idx in 0..ram_table.nrows() - 1 {
+            let (mut curr_row, mut next_row) =
+                ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+            let ramp_diff = next_row[MainColumn::RamPointer.main_index()]
+                - curr_row[MainColumn::RamPointer.main_index()];
+            let clk_diff =
+                next_row[MainColumn::CLK.main_index()] - curr_row[MainColumn::CLK.main_index()];
+            if ramp_diff.is_zero() {
+                clock_jump_differences.push(clk_diff);
+            } else {
+                current_bcpc_0 = bezout_0.pop().unwrap();
+                current_bcpc_1 = bezout_1.pop().unwrap();
+            }
+            curr_row[MainColumn::InverseOfRampDifference.main_index()] =
+                ramp_diff.inverse_or_zero();
+            next_row[MainColumn::BezoutCoefficientPolynomialCoefficient0.main_index()] =
+                current_bcpc_0;
+            next_row[MainColumn::BezoutCoefficientPolynomialCoefficient1.main_index()] =
+                current_bcpc_1;
+        }
+        clock_jump_differences
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn parallel_fill_agrees_with_reference_fill() {
+        let crate::shared_tests::TestableProgram {
+            program,
+            public_input,
+            non_determinism,
+            ..
+        } = crate::stark::tests::program_executing_every_instruction();
+        let (aet, _) =
+            crate::vm::VM::trace_execution(program, public_input, non_determinism).unwrap();
+        let height = aet.height_of_table(TableId::Ram);
+
+        let mut table = Array2::zeros((height, MainColumn::COUNT).f());
+        let clock_jump_differences = RamTable::fill(table.view_mut(), &aet, ());
+        let mut reference_table = Array2::zeros((height, MainColumn::COUNT).f());
+        let reference_clock_jump_differences = reference_fill(reference_table.view_mut(), &aet);
+
+        assert_eq!(reference_clock_jump_differences, clock_jump_differences);
+        for row in 0..height {
+            assert_eq!(reference_table.row(row), table.row(row), "row {row}");
+        }
+    }
 
     #[macro_rules_attr::apply(proptest)]
     fn ram_table_call_can_be_converted_to_table_row(

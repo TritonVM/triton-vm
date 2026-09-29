@@ -2530,6 +2530,36 @@ mod tests {
         prop_assert_eq!(expected_digest, pending_absorb_digest);
     }
 
+    /// The batched, single-pass out-of-domain evaluation must agree with
+    /// evaluating every column's randomized interpolant.
+    #[macro_rules_attr::apply(test)]
+    fn out_of_domain_rows_agree_with_evaluating_column_interpolants() {
+        let artifacts =
+            crate::stark::tests::program_executing_every_instruction().generate_proof_artifacts();
+        let main = &artifacts.master_main_table;
+        let aux = &artifacts.master_aux_table;
+        let point = xfe!([7, 11, 13]);
+        let next_point = main.domains().trace.generator() * point;
+        let points = [point, next_point];
+
+        let main_rows = main.out_of_domain_rows(&points);
+        let aux_rows = aux.out_of_domain_rows(&points);
+        for (i, &z) in points.iter().enumerate() {
+            for col in 0..MasterMainTable::NUM_COLUMNS {
+                let expected = main
+                    .randomized_column_interpolant(col)
+                    .evaluate::<_, XFieldElement>(z);
+                assert_eq!(expected, main_rows[i][col], "main column {col}, point {i}");
+            }
+            for col in 0..MasterAuxTable::NUM_COLUMNS {
+                let expected = aux
+                    .randomized_column_interpolant(col)
+                    .evaluate::<_, XFieldElement>(z);
+                assert_eq!(expected, aux_rows[i][col], "aux column {col}, point {i}");
+            }
+        }
+    }
+
     /// Test whether the AIR constraint evaluators are the same between
     ///  (a) the time when this test was written or last updated; and
     ///  (b) the time when the test is being executed.
