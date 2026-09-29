@@ -10,6 +10,7 @@ use itertools::izip;
 use ndarray::Zip;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
+use num_traits::ConstZero;
 use rand::prelude::*;
 use rand::random;
 use rayon::prelude::*;
@@ -480,18 +481,35 @@ impl Prover {
             middle_rand_seg_quot_polys @ ..,
             last_rand_seg_quot_poly,
         ] = randomized_quotient_segment_polynomials;
-        let shared_randomized_quotient_segments_combination_polynomial = middle_rand_seg_quot_polys
-            .into_iter()
-            .zip_eq(weights.quot_segments.iter().skip(1).dropping_back(1))
-            .map(|(poly, &w)| poly * w)
-            .reduce(|l, r| l + r)
-            .unwrap();
-        let randomized_quotient_segments_ood_poly_p = first_rand_seg_quot_poly
-            * weights.quot_segments.first().copied().unwrap()
-            + shared_randomized_quotient_segments_combination_polynomial.clone();
-        let randomized_quotient_segments_ood_poly_r = last_rand_seg_quot_poly
-            * weights.quot_segments.last().copied().unwrap()
-            + shared_randomized_quotient_segments_combination_polynomial;
+        // Every combination is computed in the buffer of a polynomial it
+        // replaces, which keeps the peak memory at the segments themselves.
+        let quot_segment_weights = weights.quot_segments.as_slice().unwrap();
+        let [middle_weights @ .., last_weight] = &quot_segment_weights[1..] else {
+            unreachable!("there are at least two quotient segments")
+        };
+        let mut middle_rand_seg_quot_polys = middle_rand_seg_quot_polys.into_iter();
+        let first_middle_rand_seg_quot_poly = middle_rand_seg_quot_polys.next().unwrap();
+        let other_middle_rand_seg_quot_polys = middle_rand_seg_quot_polys.collect_vec();
+        let shared_randomized_quotient_segments_combination_polynomial = par_linear_combination(
+            first_middle_rand_seg_quot_poly,
+            middle_weights[0],
+            &other_middle_rand_seg_quot_polys.iter().collect_vec(),
+            &middle_weights[1..],
+        );
+        drop(other_middle_rand_seg_quot_polys);
+        let randomized_quotient_segments_ood_poly_p = par_linear_combination(
+            first_rand_seg_quot_poly,
+            quot_segment_weights[0],
+            &[&shared_randomized_quotient_segments_combination_polynomial],
+            &[XFieldElement::ONE],
+        );
+        let randomized_quotient_segments_ood_poly_r = par_linear_combination(
+            shared_randomized_quotient_segments_combination_polynomial,
+            XFieldElement::ONE,
+            &[&last_rand_seg_quot_poly],
+            &[*last_weight],
+        );
+        drop(last_rand_seg_quot_poly);
         profiler!(stop "quotient");
 
         // Each evaluation is a single NTT, which is not parallelized
@@ -532,7 +550,7 @@ impl Prover {
 
         profiler!(start "main&aux curr row");
         let out_of_domain_curr_row_main_and_aux_value =
-            main_and_aux_combination_polynomial.evaluate(out_of_domain_point_curr_row);
+            main_and_aux_combination_polynomial.par_evaluate(out_of_domain_point_curr_row);
         let main_and_aux_curr_row_deep_codeword = Self::deep_codeword(
             &main_and_aux_codeword,
             &short_domain_values,
@@ -543,7 +561,7 @@ impl Prover {
 
         profiler!(start "main&aux next row");
         let out_of_domain_next_row_main_and_aux_value =
-            main_and_aux_combination_polynomial.evaluate(out_of_domain_point_next_row);
+            main_and_aux_combination_polynomial.par_evaluate(out_of_domain_point_next_row);
         let main_and_aux_next_row_deep_codeword = Self::deep_codeword(
             &main_and_aux_codeword,
             &short_domain_values,
@@ -554,7 +572,8 @@ impl Prover {
 
         profiler!(start "randomized segmented quotient");
         let out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value =
-            randomized_quotient_segments_ood_poly_p.evaluate(ood_point_curr_row_pow_num_segments);
+            randomized_quotient_segments_ood_poly_p
+                .par_evaluate(ood_point_curr_row_pow_num_segments);
         let randomized_quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
             &randomized_quotient_segments_ood_codeword_p,
             &short_domain_values,
@@ -564,7 +583,7 @@ impl Prover {
 
         let out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value =
             randomized_quotient_segments_ood_poly_r
-                .evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
+                .par_evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
         let randomized_quotient_segments_curr_row_times_zeta_deep_codeword = Self::deep_codeword(
             &randomized_quotient_segments_ood_codeword_r,
             &short_domain_values,
@@ -2023,6 +2042,38 @@ impl Stark {
     ) -> XFieldElement {
         (in_domain_value - out_of_domain_value) / (in_domain_point - out_of_domain_point)
     }
+}
+
+/// The linear combination `weight · polynomial + Σ weights[i] · summands[i]`,
+/// computed in parallel over the coefficients and in `polynomial`'s buffer.
+/// Sequential polynomial arithmetic costs one pass over memory per operation,
+/// which adds up for long polynomials.
+fn par_linear_combination(
+    polynomial: Polynomial<XFieldElement>,
+    weight: XFieldElement,
+    summands: &[&Polynomial<XFieldElement>],
+    weights: &[XFieldElement],
+) -> Polynomial<'static, XFieldElement> {
+    assert_eq!(summands.len(), weights.len());
+    let summands = summands.iter().map(|p| p.coefficients()).collect_vec();
+    let mut coefficients = polynomial.into_coefficients();
+    let len = summands
+        .iter()
+        .map(|s| s.len())
+        .fold(coefficients.len(), usize::max);
+    coefficients.reserve_exact(len - coefficients.len());
+    coefficients.resize(len, XFieldElement::ZERO);
+    coefficients
+        .par_iter_mut()
+        .enumerate()
+        .for_each(|(i, coefficient)| {
+            *coefficient = summands
+                .iter()
+                .zip(weights)
+                .filter_map(|(s, &w)| s.get(i).map(|&c| c * w))
+                .fold(*coefficient * weight, |acc, x| acc + x);
+        });
+    Polynomial::new(coefficients)
 }
 
 impl Default for Stark {

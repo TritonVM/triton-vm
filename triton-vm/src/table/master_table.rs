@@ -620,30 +620,63 @@ where
     ) -> Polynomial<'_, XFieldElement> {
         assert_eq!(Self::NUM_COLUMNS, weights.len());
 
-        let weighted_sum_of_trace_columns = self
-            .trace_table()
-            .axis_iter(ROW_AXIS)
-            .into_par_iter()
-            .map(|row| row.iter().zip_eq(&weights).map(|(&r, &w)| r * w).sum())
-            .collect::<Vec<_>>();
-        let weighted_sum_of_trace_columns = self
-            .domains()
-            .trace
-            .par_interpolate(&weighted_sum_of_trace_columns);
-
-        let weighted_sum_of_trace_randomizer_polynomials = weights
-            .as_slice()
-            .unwrap()
-            .par_iter()
+        // The table is column-major, so the rows are summed block by block:
+        // within a block, every column's contiguous piece is read once.
+        const ROWS_PER_BLOCK: usize = 1 << 11;
+        let trace_table = self.trace_table();
+        let weights = weights.as_slice().unwrap();
+        let mut weighted_sum_of_trace_columns = vec![XFieldElement::ZERO; trace_table.nrows()];
+        weighted_sum_of_trace_columns
+            .par_chunks_mut(ROWS_PER_BLOCK)
             .enumerate()
-            .map(|(i, &w)| self.trace_randomizer_for_column(i).scalar_mul(w))
-            .reduce(Polynomial::zero, |sum, x| sum + x);
-        let randomizer_contribution = self
-            .domains()
-            .trace
-            .mul_zerofier_with(weighted_sum_of_trace_randomizer_polynomials);
+            .for_each(|(block_index, sums)| {
+                let first_row = block_index * ROWS_PER_BLOCK;
+                let rows = first_row..first_row + sums.len();
+                for (column, &weight) in trace_table.columns().into_iter().zip_eq(weights) {
+                    let column = column.slice(s![rows.clone()]);
+                    let column = column.as_slice().expect("columns are contiguous");
+                    for (sum, &value) in sums.iter_mut().zip(column) {
+                        *sum += value * weight;
+                    }
+                }
+            });
+        let trace_domain = self.domains().trace;
+        let interpolant = trace_domain.par_interpolate(&weighted_sum_of_trace_columns);
 
-        weighted_sum_of_trace_columns + randomizer_contribution
+        // the weighted sum of the trace randomizers, coefficient by coefficient
+        let randomizers = (0..Self::NUM_COLUMNS)
+            .into_par_iter()
+            .map(|i| self.trace_randomizer_for_column(i))
+            .collect::<Vec<_>>();
+        let num_randomizer_coefficients = randomizers
+            .iter()
+            .map(|r| r.coefficients().len())
+            .max()
+            .unwrap_or(0);
+        let weighted_randomizer = (0..num_randomizer_coefficients)
+            .into_par_iter()
+            .map(|k| {
+                randomizers
+                    .iter()
+                    .zip(weights)
+                    .filter_map(|(r, &w)| r.coefficients().get(k).map(|&c| c * w))
+                    .sum::<XFieldElement>()
+            })
+            .collect::<Vec<_>>();
+
+        // interpolant + zerofier · randomizer, with the trace domain's
+        // zerofier being x^n - offset^n; see `randomized_interpolant`
+        let n = trace_domain.len();
+        let offset_to_the_n = trace_domain.offset().mod_pow(n as u64);
+        let mut coefficients = interpolant.into_coefficients();
+        coefficients.resize(n.max(coefficients.len()), XFieldElement::ZERO);
+        coefficients.extend_from_slice(&weighted_randomizer);
+        coefficients[..weighted_randomizer.len()]
+            .par_iter_mut()
+            .zip(&weighted_randomizer)
+            .for_each(|(c, &r)| *c -= r * offset_to_the_n);
+
+        Polynomial::new(coefficients)
     }
 
     /// # Panics
