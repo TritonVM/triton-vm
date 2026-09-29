@@ -26,6 +26,7 @@ use twenty_first::prelude::*;
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
+use crate::config::CacheDecision;
 use crate::error::ProofStreamError;
 use crate::error::ProvingError;
 use crate::error::USIZE_TO_U64_ERR;
@@ -314,7 +315,8 @@ impl Prover {
         master_main_table.pad();
         profiler!(stop "pad");
 
-        master_main_table.maybe_low_degree_extend_all_columns();
+        let cache_decision = Self::lde_trace_cache_decision(&master_main_table);
+        master_main_table.maybe_low_degree_extend_all_columns(cache_decision);
 
         profiler!(start "Merkle tree");
         let main_merkle_tree = master_main_table.merkle_tree();
@@ -332,7 +334,7 @@ impl Prover {
         profiler!(stop "main tables");
 
         profiler!(start "aux tables");
-        master_aux_table.maybe_low_degree_extend_all_columns();
+        master_aux_table.maybe_low_degree_extend_all_columns(cache_decision);
 
         profiler!(start "Merkle tree");
         let aux_merkle_tree = master_aux_table.merkle_tree();
@@ -696,6 +698,28 @@ impl Prover {
         profiler!(stop "open trace leafs");
 
         Ok(proof_stream.into())
+    }
+
+    /// Whether to cache the low-degree extended trace, unless configured
+    /// explicitly: only if the memory available to this process suffices.
+    ///
+    /// The decision is made once for both tables since caching only one of
+    /// them does not help; see [`Self::compute_quotient_segments`].
+    fn lde_trace_cache_decision(main_table: &MasterMainTable) -> Option<CacheDecision> {
+        if let Some(decision) = crate::config::cache_lde_trace() {
+            return Some(decision);
+        }
+
+        let num_rows = main_table.evaluation_domain().len();
+        let bytes_per_row = MasterMainTable::NUM_COLUMNS * size_of::<BFieldElement>()
+            + MasterAuxTable::NUM_COLUMNS * size_of::<XFieldElement>();
+        let cache_bytes = u64::try_from(num_rows * bytes_per_row).unwrap_or(u64::MAX);
+
+        // The rest of proof generation needs memory, too: for a padded height
+        // of 2^21, the peak memory consumption is 1.3 times the size of the
+        // cached tables. Leave some headroom on top.
+        let required_bytes = cache_bytes.saturating_mul(3) / 2;
+        crate::config::automatic_lde_trace_caching(required_bytes)
     }
 
     fn compute_quotient_segments(
@@ -2366,11 +2390,11 @@ pub(crate) mod tests {
             Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
 
         debug_assert!(main.fri_domain_table().is_none());
-        main.maybe_low_degree_extend_all_columns();
+        main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
         debug_assert!(main.fri_domain_table().is_some());
 
         debug_assert!(aux.fri_domain_table().is_none());
-        aux.maybe_low_degree_extend_all_columns();
+        aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
         debug_assert!(aux.fri_domain_table().is_some());
 
         let cache_segments =
@@ -2406,10 +2430,10 @@ pub(crate) mod tests {
             let quot_dom = domains.quotient;
 
             if cache_decision == CacheDecision::Cache {
-                main.maybe_low_degree_extend_all_columns();
+                main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
                 assert!(main.fri_domain_table().is_some());
 
-                aux.maybe_low_degree_extend_all_columns();
+                aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
                 assert!(aux.fri_domain_table().is_some());
             }
 

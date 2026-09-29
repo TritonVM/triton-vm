@@ -243,19 +243,20 @@ where
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Low-degree extend all columns of the trace table (including randomizers)
-    /// _if_ it can be [cached]. In that case, the resulting low-degree extended
-    /// columns can be accessed using [`quotient_domain_table`][table] and
-    /// [`fri_domain_table`][Self::fri_domain_table].
+    /// _if_ it is to be [cached]. In that case, the resulting low-degree
+    /// extended columns can be accessed using [`quotient_domain_table`][table]
+    /// and [`fri_domain_table`][Self::fri_domain_table]. Without a decision,
+    /// the table is cached if the required memory can be reserved.
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
-    fn maybe_low_degree_extend_all_columns(&mut self) {
+    fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
 
         let mut extended_trace: Vec<MaybeUninit<Self::Field>> = Vec::with_capacity(0);
-        match crate::config::cache_lde_trace() {
+        match cache_decision {
             Some(CacheDecision::NoCache) => return,
             Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
             None => {
@@ -1828,7 +1829,7 @@ mod tests {
             let jit_digests = table.hash_all_fri_domain_rows();
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
 
             assert!(table.fri_domain_table().is_some());
             let cache_digests = table.hash_all_fri_domain_rows();
@@ -1908,7 +1909,7 @@ mod tests {
             let jit_rows = table.reveal_rows(indices);
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns();
+            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
 
             assert!(table.fri_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);
