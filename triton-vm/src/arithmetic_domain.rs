@@ -207,8 +207,17 @@ impl ArithmeticDomain {
             + 'static,
     {
         let (offset, length) = (self.offset, self.length);
-        let evaluate_from =
-            |chunk| Polynomial::new_borrowed(chunk).par_fast_coset_evaluate(offset, length);
+        let evaluate_from = |chunk: &[FF]| {
+            // Evaluating into uninitialized memory avoids zero-initializing
+            // and then overwriting the codeword; the transform initializes it.
+            let mut codeword = twenty_first::memory::vec_with_capacity(length);
+            Polynomial::new_borrowed(chunk)
+                .par_fast_coset_evaluate_into(offset, codeword.spare_capacity_mut());
+            // SAFETY: `par_fast_coset_evaluate_into` initializes every one
+            // of the `length` elements of the spare capacity.
+            unsafe { codeword.set_len(length) };
+            codeword
+        };
 
         let mut indexed_chunks = (0..).zip(polynomial.coefficients().chunks(length));
         let mut values = indexed_chunks.next().map_or_else(
@@ -225,6 +234,26 @@ impl ArithmeticDomain {
         }
 
         values
+    }
+
+    /// Like [`par_evaluate`](Self::par_evaluate), but writing the codeword
+    /// into the given, possibly uninitialized memory. On return, every element
+    /// of `codeword` is initialized. See [`evaluate_into`](Self::evaluate_into).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients of the polynomial exceeds the
+    /// [length](Self::len) of this domain, or if the length of `codeword`
+    /// does not equal it.
+    pub fn par_evaluate_into<FF>(
+        &self,
+        polynomial: &Polynomial<FF>,
+        codeword: &mut [MaybeUninit<FF>],
+    ) where
+        FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
+    {
+        assert_eq!(self.length, codeword.len());
+        polynomial.par_fast_coset_evaluate_into(self.offset, codeword);
     }
 
     /// Like [`interpolate`](Self::interpolate), but using a parallel NTT.

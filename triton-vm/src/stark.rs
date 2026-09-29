@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::ops::AddAssign;
+use std::mem::MaybeUninit;
 use std::ops::Mul;
 use std::ops::RangeInclusive;
 
@@ -1165,7 +1165,9 @@ impl Prover {
             .unwrap()
             .with_offset(segment_domain_offset);
 
-        let mut quotient_codewords = Array2::zeros([fri_domain.len(), NUM_SEGMENTS]);
+        // Column-major, like the codewords of the cached path: consumers rely
+        // on contiguous columns.
+        let mut quotient_codewords = Array2::zeros([fri_domain.len(), NUM_SEGMENTS].f());
         let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
         Zip::from(quotient_segments.axis_iter(COL_AXIS))
             .and(quotient_codewords.axis_iter_mut(COL_AXIS))
@@ -1187,8 +1189,10 @@ impl Prover {
         quotient_codeword: Array1<XFieldElement>,
         quotient_domain: ArithmeticDomain,
     ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
-        let quotient_interpolation_poly =
-            quotient_domain.par_interpolate(&quotient_codeword.to_vec());
+        let quotient_codeword = quotient_codeword
+            .as_slice()
+            .expect("codeword is contiguous");
+        let quotient_interpolation_poly = quotient_domain.par_interpolate(quotient_codeword);
 
         Self::split_polynomial_into_segments(quotient_interpolation_poly)
     }
@@ -1235,19 +1239,36 @@ impl Prover {
         quotient_segment_polynomials: &[Polynomial<XFieldElement>; NUM_QUOTIENT_SEGMENTS],
         fri_domain: ArithmeticDomain,
     ) -> Array2<XFieldElement> {
-        let fri_domain_codewords: Vec<_> = quotient_segment_polynomials
+        // The result is column-major: every segment's codeword is evaluated
+        // directly into its column, without any intermediate copy. The next
+        // step, quotient randomization, also only performs well on a
+        // column-major array.
+        let mut codewords =
+            Self::uninitialized_column_major_table(fri_domain.len(), NUM_QUOTIENT_SEGMENTS);
+        for (segment, mut column) in quotient_segment_polynomials
             .iter()
-            .flat_map(|segment| fri_domain.par_evaluate(segment))
-            .collect();
+            .zip(codewords.columns_mut())
+        {
+            let column = column.as_slice_mut().expect("columns are contiguous");
+            fri_domain.par_evaluate_into(segment, column);
+        }
+        // SAFETY: Every column was written to by `par_evaluate_into`, which
+        // initializes every element of the column. The columns partition the
+        // table.
+        unsafe { codewords.assume_init() }
+    }
 
-        // Constructing the result in column-major form is easier here.
-        // Additionally, the next step, quotient randomization, adds a column,
-        // which only has good performance if the array is column-major.
-        Array2::from_shape_vec(
-            [fri_domain.len(), NUM_QUOTIENT_SEGMENTS].f(),
-            fri_domain_codewords,
-        )
-        .unwrap()
+    /// A column-major table with uninitialized entries.
+    fn uninitialized_column_major_table<FF>(
+        num_rows: usize,
+        num_columns: usize,
+    ) -> Array2<MaybeUninit<FF>> {
+        let num_elements = num_rows * num_columns;
+        let mut elements = twenty_first::memory::vec_with_capacity(num_elements);
+        // SAFETY: `MaybeUninit<FF>` has no validity requirements, and the
+        // capacity suffices.
+        unsafe { elements.set_len(num_elements) };
+        Array2::from_shape_vec([num_rows, num_columns].f(), elements).unwrap()
     }
 
     /// Construct the randomized segmented quotient table, as well as the
@@ -1318,22 +1339,36 @@ impl Prover {
             .iter()
             .chain(std::iter::once(randomizer_poly))
             .collect_vec();
-        let mut codewords = polys_to_evaluate
+        // Every polynomial is evaluated directly into its column of the
+        // randomized table; the segments' codewords are then added in
+        // parallel. This avoids copying the (large) table to add a column.
+        let mut randomized_segment_codewords = Self::uninitialized_column_major_table(
+            ldt_domain.len(),
+            NUM_RANDOMIZED_QUOTIENT_SEGMENTS,
+        );
+        for (poly, mut column) in polys_to_evaluate
             .into_iter()
-            .map(|poly| ldt_domain.par_evaluate(poly))
-            .collect::<Vec<_>>();
-        let quotient_segment_randomizer_codeword = codewords.pop().unwrap();
-
-        let mut randomized_segment_codewords = segment_codewords;
-        randomized_segment_codewords
-            .push_column(Array1::from(quotient_segment_randomizer_codeword).view())
-            .unwrap();
-        for (mut s_i_codeword, s_i_addend_codeword) in randomized_segment_codewords
+            .zip(randomized_segment_codewords.columns_mut())
+        {
+            let column = column.as_slice_mut().expect("columns are contiguous");
+            ldt_domain.par_evaluate_into(poly, column);
+        }
+        // SAFETY: Every column was written to by `par_evaluate_into`, which
+        // initializes every element of the column. The columns partition the
+        // table.
+        let mut randomized_segment_codewords =
+            unsafe { randomized_segment_codewords.assume_init() };
+        for (mut s_i_codeword, segment_codeword) in randomized_segment_codewords
             .columns_mut()
             .into_iter()
-            .zip(codewords)
+            .zip(segment_codewords.columns())
         {
-            s_i_codeword.add_assign(&Array1::from(s_i_addend_codeword));
+            let s_i_codeword = s_i_codeword.as_slice_mut().expect("columns are contiguous");
+            let segment_codeword = segment_codeword.as_slice().expect("columns are contiguous");
+            s_i_codeword
+                .par_iter_mut()
+                .zip(segment_codeword)
+                .for_each(|(s_i, &segment)| *s_i += segment);
         }
 
         (randomized_segment_codewords, randomized_segment_polynomials)
