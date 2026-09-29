@@ -2,14 +2,46 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
+use air::table::NUM_AUX_COLUMNS;
+use air::table::NUM_MAIN_COLUMNS;
 use itertools::Itertools;
 use ndarray::ArrayView1;
+use strum::EnumCount;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::challenges::Challenges;
 use crate::table::ConstraintType;
+use crate::table::degree_lowering::DegreeLoweringAuxColumn;
+use crate::table::degree_lowering::DegreeLoweringMainColumn;
 use crate::table::master_table::MasterAuxTable;
+
+/// The number of leading columns of a main row that constraints can refer to.
+const CONSTRAINED_MAIN_ROW_LEN: usize = NUM_MAIN_COLUMNS + DegreeLoweringMainColumn::COUNT;
+
+/// The number of leading columns of an auxiliary row that constraints can refer
+/// to. Notably, no constraint refers to the batch randomizers.
+const CONSTRAINED_AUX_ROW_LEN: usize = NUM_AUX_COLUMNS + DegreeLoweringAuxColumn::COUNT;
+
+/// Shadow each given row with a reference to a fixed-size array of the row's
+/// leading elements, copying them only if the row is not contiguous in memory.
+///
+/// The generated constraint evaluation code indexes into the rows with
+/// constants. For a fixed-size array, such an access compiles to a single
+/// load. For an [`ArrayView1`], it also computes the offset from the view's
+/// stride and checks the bounds, which bloats the (already large) code.
+macro_rules! fixed_size_rows {
+    ($($row:ident: [$field:ty; $len:expr]),+ $(,)?) => {$(
+        let buffer: [$field; $len];
+        let $row: &[$field; $len] = match $row.as_slice() {
+            Some(slice) => slice[..$len].try_into().unwrap(),
+            None => {
+                buffer = std::array::from_fn(|i| $row[i]);
+                &buffer
+            }
+        };
+    )+};
+}
 
 include!(concat!(env!("OUT_DIR"), "/evaluate_constraints.rs"));
 

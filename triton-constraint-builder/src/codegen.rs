@@ -154,6 +154,10 @@ impl RustBackend {
                 aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
+                fixed_size_rows!(
+                    main_row: [#field; CONSTRAINED_MAIN_ROW_LEN],
+                    aux_row: [XFieldElement; CONSTRAINED_AUX_ROW_LEN],
+                );
                 #init_constraints
             }
 
@@ -163,6 +167,10 @@ impl RustBackend {
                 aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
+                fixed_size_rows!(
+                    main_row: [#field; CONSTRAINED_MAIN_ROW_LEN],
+                    aux_row: [XFieldElement; CONSTRAINED_AUX_ROW_LEN],
+                );
                 #cons_constraints
             }
 
@@ -174,6 +182,12 @@ impl RustBackend {
                 next_aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
+                fixed_size_rows!(
+                    current_main_row: [#field; CONSTRAINED_MAIN_ROW_LEN],
+                    current_aux_row: [XFieldElement; CONSTRAINED_AUX_ROW_LEN],
+                    next_main_row: [#field; CONSTRAINED_MAIN_ROW_LEN],
+                    next_aux_row: [XFieldElement; CONSTRAINED_AUX_ROW_LEN],
+                );
                 #tran_constraints
             }
 
@@ -183,6 +197,10 @@ impl RustBackend {
                 aux_row: ArrayView1<XFieldElement>,
                 challenges: &Challenges,
             ) -> Vec<XFieldElement> {
+                fixed_size_rows!(
+                    main_row: [#field; CONSTRAINED_MAIN_ROW_LEN],
+                    aux_row: [XFieldElement; CONSTRAINED_AUX_ROW_LEN],
+                );
                 #term_constraints
             }
         }
