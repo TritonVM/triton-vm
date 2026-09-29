@@ -90,7 +90,7 @@ strum = { version = "0.27", features = ["derive"] }
 syn = "2.0"
 test-strategy = "0.4.2"
 thiserror = "2.0"
-twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", branch = "thv/faster-ntt" }
+twenty-first = "3.0.0"
 unicode-width = "0.2"
 web-time = "1.1"
 
