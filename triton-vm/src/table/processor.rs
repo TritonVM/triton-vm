@@ -37,6 +37,9 @@ use crate::table::running_arguments::par_running_sum;
 type MainColumn = <ProcessorTable as air::AIR>::MainColumn;
 type AuxColumn = <ProcessorTable as air::AIR>::AuxColumn;
 
+/// A pair of consecutive rows: the current row and the next row.
+type RowPair<'a> = (ArrayView1<'a, BFieldElement>, ArrayView1<'a, BFieldElement>);
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub(super) struct ClkJumpDiffs {
     pub op_stack: Vec<BFieldElement>,
@@ -154,8 +157,7 @@ fn par_rows<'a>(
 /// The pairs of consecutive rows of the table, in parallel.
 fn par_row_windows<'a>(
     main_table: ArrayView2<'a, BFieldElement>,
-) -> impl IndexedParallelIterator<Item = (ArrayView1<'a, BFieldElement>, ArrayView1<'a, BFieldElement>)>
-+ 'a {
+) -> impl IndexedParallelIterator<Item = RowPair<'a>> + 'a {
     (1..main_table.nrows()).into_par_iter().map(move |row_idx| {
         (
             main_table.index_axis_move(ROW_AXIS, row_idx - 1),

@@ -1613,7 +1613,7 @@ pub(crate) fn evaluate_randomized_interpolant_into<FF>(
 }
 
 /// The inner product `Σ values[i] · weights[i]`, where the first
-/// `num_base_values` values are known to be [lifted](XFieldElement::lift) base
+/// `num_base_values` values are known to be [lifted](BFieldElement::lift) base
 /// field elements.
 ///
 /// Every product of two base field elements is accumulated without modular
