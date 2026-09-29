@@ -109,13 +109,14 @@ pub(crate) fn automatic_lde_trace_caching(required_bytes: u64) -> Option<CacheDe
 
 /// The number of bytes of memory available to this process: the system's
 /// available memory, or less if the process's control group or any of its
-/// ancestors limits the memory further. `None` if unknown.
+/// ancestors limits the memory further. `None` if unknown, which is the case
+/// on platforms other than Linux and Android.
 ///
 /// Notably, a failing (or succeeding) allocation is not a good indicator: with
 /// memory overcommitment, which is the default on Linux, allocating much more
 /// than is available succeeds, and the process is killed later, when the
 /// memory is actually used.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn available_memory() -> Option<u64> {
     let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
     let system_available = parse_mem_available(&meminfo)?;
@@ -127,14 +128,14 @@ fn available_memory() -> Option<u64> {
     Some(control_group_available.map_or(system_available, |c| c.min(system_available)))
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn available_memory() -> Option<u64> {
     None
 }
 
 /// The value of `MemAvailable` in the given contents of `/proc/meminfo`, in
 /// bytes.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", target_os = "android", test))]
 fn parse_mem_available(meminfo: &str) -> Option<u64> {
     let kibibytes = meminfo
         .lines()
@@ -151,7 +152,7 @@ fn parse_mem_available(meminfo: &str) -> Option<u64> {
 /// The memory, in bytes, that the limits of the control group (v2) given by
 /// the contents of `/proc/self/cgroup`, and of all its ancestors, leave
 /// available. `None` if there is no limit, or if it cannot be determined.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn control_group_available_memory(cgroup: &str) -> Option<u64> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
     let mut directory = std::path::Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/'));
@@ -205,7 +206,7 @@ mod tests {
         assert_eq!(None, parse_mem_available("MemAvailable: lots\n"));
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     #[macro_rules_attr::apply(test)]
     fn automatic_lde_trace_caching_depends_on_required_memory() {
         assert_eq!(Some(CacheDecision::Cache), automatic_lde_trace_caching(0));
