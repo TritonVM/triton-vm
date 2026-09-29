@@ -981,6 +981,11 @@ impl Prover {
         }
         profiler!(stop "calculate quotients");
 
+        // The working tables are as large as the trace. Freeing them before
+        // segmentification lowers the peak memory consumption.
+        drop(main_columns);
+        drop(aux_columns);
+
         profiler!(start "segmentify");
         let segmentification = Self::segmentify::<NUM_QUOTIENT_SEGMENTS>(
             quotient_multicoset_evaluations,
