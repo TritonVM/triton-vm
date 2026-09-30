@@ -711,14 +711,16 @@ impl Prover {
             return Some(decision);
         }
 
-        let num_rows = main_table.evaluation_domain().len();
-        let bytes_per_row = MasterMainTable::NUM_COLUMNS * size_of::<BFieldElement>()
-            + MasterAuxTable::NUM_COLUMNS * size_of::<XFieldElement>();
-        let cache_bytes = u64::try_from(num_rows * bytes_per_row).unwrap_or(u64::MAX);
+        // Compute in `u64` as usize may overflow on 32-bit machines.
+        let num_rows = main_table.evaluation_domain().len() as u64;
+        let bytes_per_row = (MasterMainTable::NUM_COLUMNS * size_of::<BFieldElement>()
+            + MasterAuxTable::NUM_COLUMNS * size_of::<XFieldElement>())
+            as u64;
+        let cache_bytes = num_rows.saturating_mul(bytes_per_row);
 
         // The rest of proof generation needs memory, too: for a padded height
         // of 2^21, the peak memory consumption is 1.3 times the size of the
-        // cached tables. Leave some headroom on top.
+        // cached tables. Leave some margin.
         let required_bytes = cache_bytes.saturating_mul(3) / 2;
         crate::config::automatic_lde_trace_caching(required_bytes)
     }
