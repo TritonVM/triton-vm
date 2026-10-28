@@ -3,6 +3,21 @@
 All notable changes are documented in this file.
 Lines marked “(!)” indicate a breaking change.
 
+## [9.0.1](https://github.com/TritonVM/triton-vm/compare/v9.0.0..v9.0.1) - 2026-10-28
+
+### 🐛 Bug Fixes
+
+- *(wasm32)* Don't overflow when calculating required RAM ([2f3d6178](https://github.com/TritonVM/triton-vm/commit/2f3d6178))
+
+### ⚡️ Performance
+
+- *(table)* Hash rows straight from the columns ([f77a3a98](https://github.com/TritonVM/triton-vm/commit/f77a3a98))
+
+### ⚙️ Miscellaneous
+
+- Upgrade twenty-first dependency ([90a2fb2c](https://github.com/TritonVM/triton-vm/commit/90a2fb2c))
+- Keep `proptest` dependency below 1.12 ([4a5011e5](https://github.com/TritonVM/triton-vm/commit/4a5011e5))
+
   ## [9.0.0](https://github.com/TritonVM/triton-vm/compare/v8.0.0..v9.0.0) - 2026-09-29
 
   ### 🐛 Bug Fixes
