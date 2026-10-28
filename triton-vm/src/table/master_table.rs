@@ -142,6 +142,7 @@ use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
+use twenty_first::tip5::ColumnElement;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -195,6 +196,7 @@ where
         + Add<XFieldElement, Output = XFieldElement>,
 {
     type Field: BfeSlice
+        + ColumnElement
         + Add<BFieldElement, Output = Self::Field>
         + MulAssign<BFieldElement>
         + From<BFieldElement>
@@ -625,33 +627,40 @@ where
 
     /// Hash every row of the given (column-major) table.
     ///
-    /// Since rows are not contiguous in memory, a bunch of rows is gathered
-    /// into a small, row-major buffer before hashing.
+    /// Rows are hashed straight from the columns, a bunch of rows at a time:
+    /// [`Tip5::hash_rows_of_columns`] reads consecutive rows of every column,
+    /// which is how the SIMD lanes want them anyway.
     fn hash_rows_of_column_major_table(table: ArrayView2<Self::Field>) -> Vec<Digest> {
         // Larger chunks read longer contiguous pieces of every column, which
-        // helps the hardware prefetchers. The buffer for one chunk of rows
-        // should still fit into the L2 cache, even for the auxiliary table
-        // with its wider elements.
+        // helps the hardware prefetchers. One chunk of rows should still fit
+        // into the L2 cache, even for the auxiliary table with its wider
+        // elements.
         const ROWS_PER_CHUNK: usize = 128;
 
-        let num_columns = table.ncols();
         let mut digests = vec![Digest::default(); table.nrows()];
         digests
             .par_chunks_mut(ROWS_PER_CHUNK)
             .zip(table.axis_chunks_iter(ROW_AXIS, ROWS_PER_CHUNK))
             .for_each(|(digests, rows)| {
-                let mut buffer = Array2::<Self::Field>::zeros([rows.nrows(), num_columns]);
-                for (column_idx, column) in rows.axis_iter(COL_AXIS).enumerate() {
-                    for (row_idx, &element) in column.iter().enumerate() {
-                        buffer[[row_idx, column_idx]] = element;
-                    }
-                }
-                let rows = buffer
-                    .rows()
-                    .into_iter()
-                    .map(|row| Self::Field::bfe_slice(row.to_slice().unwrap()))
+                // The FRI domain table can be a strided view of a longer
+                // table. Then, the chunk's columns are not contiguous and have
+                // to be gathered first.
+                let gathered_rows;
+                let rows = if rows.stride_of(ROW_AXIS) == 1 {
+                    rows
+                } else {
+                    gathered_rows = {
+                        let mut buffer = Array2::zeros(rows.raw_dim().f());
+                        buffer.assign(&rows);
+                        buffer
+                    };
+                    gathered_rows.view()
+                };
+                let columns = rows
+                    .axis_iter(COL_AXIS)
+                    .map(|column| column.to_slice().unwrap())
                     .collect_vec();
-                digests.copy_from_slice(&Tip5::hash_varlen_many(&rows));
+                digests.copy_from_slice(&Tip5::hash_rows_of_columns(&columns));
             });
 
         digests
