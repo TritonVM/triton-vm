@@ -79,7 +79,7 @@ nom-language = "0.1.0"
 num-traits = "0.2"
 prettyplease = "0.2"
 proc-macro2 = "1.0"
-proptest = { version = "1.9", default-features = false, features = ["std"] }
+proptest = { version = ">=1.9, <1.12", default-features = false, features = ["std"] }
 proptest-arbitrary-adapter = "0.1"
 quote = "1.0"
 rand = "0.10"
