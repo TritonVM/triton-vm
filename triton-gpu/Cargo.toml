@@ -23,6 +23,7 @@ metal = ["dep:metal", "dep:objc"]
 twenty-first.workspace = true
 thiserror.workspace = true
 num-traits.workspace = true
+rayon.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = { version = "0.33", optional = true }
@@ -33,5 +34,4 @@ cc = "1.2"
 
 [dev-dependencies]
 rand = "0.9"
-rayon = "1"
 

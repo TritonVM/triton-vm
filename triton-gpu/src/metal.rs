@@ -121,6 +121,9 @@ pub struct MetalBackend {
     queue: CommandQueue,
     p: Pipelines,
     pending: RefCell<Option<Pending>>,
+    /// Committed command buffers that may still run, with their tickets.
+    in_flight: RefCell<std::collections::VecDeque<(u64, CommandBuffer)>>,
+    next_ticket: std::cell::Cell<u64>,
     dummy: Buffer,
 }
 
@@ -169,6 +172,8 @@ impl MetalBackend {
                 queue,
                 p,
                 pending: RefCell::new(None),
+                in_flight: RefCell::new(std::collections::VecDeque::new()),
+                next_ticket: std::cell::Cell::new(1),
                 dummy,
             })
         })
@@ -187,19 +192,44 @@ impl MetalBackend {
         f(&pending.as_ref().unwrap().enc);
     }
 
-    fn flush(&self) -> Result<()> {
-        let Some(p) = self.pending.borrow_mut().take() else {
-            return Ok(());
-        };
-        p.enc.end_encoding();
-        p.cb.commit();
-        p.cb.wait_until_completed();
-        match p.cb.status() {
-            MTLCommandBufferStatus::Completed => Ok(()),
-            s => Err(Error::Backend(format!(
-                "Metal command buffer ended with status {s:?}"
-            ))),
+    /// Commit the open command buffer, if any, without waiting.
+    fn commit(&self) -> u64 {
+        let ticket = self.next_ticket.get();
+        if let Some(p) = self.pending.borrow_mut().take() {
+            p.enc.end_encoding();
+            p.cb.commit();
+            self.in_flight.borrow_mut().push_back((ticket, p.cb));
+            self.next_ticket.set(ticket + 1);
+            return ticket;
         }
+        ticket - 1
+    }
+
+    /// Wait for all committed command buffers up to and including `ticket`.
+    fn wait_for(&self, ticket: u64) -> Result<()> {
+        loop {
+            let front = {
+                let mut q = self.in_flight.borrow_mut();
+                match q.front() {
+                    Some((t, _)) if *t <= ticket => q.pop_front(),
+                    _ => None,
+                }
+            };
+            let Some((_, cb)) = front else { return Ok(()) };
+            cb.wait_until_completed();
+            if cb.status() != MTLCommandBufferStatus::Completed {
+                return Err(Error::Backend(format!(
+                    "Metal command buffer ended with status {:?}",
+                    cb.status()
+                )));
+            }
+        }
+    }
+
+    /// Commit everything and wait for all of it.
+    fn flush(&self) -> Result<()> {
+        self.commit();
+        self.wait_for(u64::MAX)
     }
 
     fn threads(pso: &ComputePipelineState, want: u64) -> u64 {
@@ -274,6 +304,22 @@ impl Backend for MetalBackend {
 
     fn synchronize(&self) -> Result<()> {
         self.flush()
+    }
+
+    fn unified_memory(&self) -> bool {
+        true
+    }
+
+    fn host_ptr(&self, buf: &MetalBuffer) -> Option<*mut u64> {
+        Some(buf.buf.contents() as *mut u64)
+    }
+
+    fn submit(&self) -> Result<u64> {
+        Ok(self.commit())
+    }
+
+    fn wait(&self, ticket: u64) -> Result<()> {
+        self.wait_for(ticket)
     }
 
     fn ntt_pass(
@@ -364,8 +410,9 @@ impl Backend for MetalBackend {
     }
 
     fn rows_init(&self, state: &MetalBuffer, num_rows: u64) -> Result<()> {
-        // Shared memory: zero it from the CPU (after pending GPU work).
-        self.flush()?;
+        // Shared memory: zero it from the CPU. The state buffer belongs to
+        // one row hasher, which initializes it before any GPU work uses it,
+        // so there is nothing to wait for (and the pipeline keeps running).
         unsafe {
             ptr::write_bytes(
                 state.buf.contents() as *mut u64,

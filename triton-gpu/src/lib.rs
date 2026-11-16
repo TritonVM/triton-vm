@@ -71,14 +71,35 @@ pub struct Config {
     /// Upper bound for the device memory used by one column chunk, including
     /// scratch space. Smaller means lighter; larger means fewer launches.
     pub chunk_bytes: usize,
+
+    /// Whether [`Gpu::lde_hash_cosets`] splits the work between CPU and GPU.
+    pub hybrid: Hybrid,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             chunk_bytes: 512 << 20,
+            hybrid: Hybrid::Auto,
         }
     }
+}
+
+/// The hybrid CPU + GPU pipeline of [`Gpu::lde_hash_cosets`].
+///
+/// The CPU cores compute the low-degree extension (NTTs) of one column chunk
+/// while the GPU hashes the rows of the previous chunk, through two buffers
+/// in shared memory. Each processor does what it is best at, at the same
+/// time, and no data is copied between them. Needs a backend whose buffers
+/// the CPU can access ([`Backend::host_ptr`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hybrid {
+    /// On for unified-memory GPUs (Apple silicon), off otherwise.
+    Auto,
+    /// Always, if the backend's buffers are accessible to the CPU.
+    On,
+    /// Never: everything on the GPU.
+    Off,
 }
 
 /// The result of [`Gpu::merkle_tree`]: all nodes in twenty-first's layout
@@ -132,6 +153,9 @@ macro_rules! dispatch {
 }
 
 impl AnyGpu {
+    pub fn set_config(&mut self, config: Config) {
+        dispatch!(self, g => g.config = config)
+    }
     pub fn name(&self) -> String {
         dispatch!(self, g => g.backend.name())
     }
@@ -669,6 +693,22 @@ impl<B: Backend> Gpu<B> {
                 "need one randomizer of length ≤ num_rows per column".into(),
             ));
         }
+        let hybrid = match self.config.hybrid {
+            Hybrid::On => true,
+            Hybrid::Off => false,
+            Hybrid::Auto => self.backend.unified_memory(),
+        };
+        if hybrid && self.backend.host_ptr(&self.dummy).is_some() {
+            return self.lde_hash_cosets_hybrid(
+                interpolants,
+                num_rows,
+                randomizers,
+                fri_offset,
+                fri_generator,
+                num_cosets,
+            );
+        }
+
         let nc = FF::NCOMP as usize;
         let flat = FF::as_u64s(interpolants);
         let col_u64s = num_rows * nc;
@@ -729,6 +769,125 @@ impl<B: Backend> Gpu<B> {
             }
             for (j, d) in hasher.finish()?.into_iter().enumerate() {
                 all[coset + j * num_cosets] = d;
+            }
+        }
+        Ok(all)
+    }
+}
+
+impl<B: Backend> Gpu<B> {
+    /// See [`Hybrid`]. Same inputs and outputs as [`Gpu::lde_hash_cosets`].
+    fn lde_hash_cosets_hybrid<FF: GpuField>(
+        &self,
+        interpolants: &[FF],
+        num_rows: usize,
+        randomizers: &[Vec<FF>],
+        fri_offset: BFieldElement,
+        fri_generator: BFieldElement,
+        num_cosets: usize,
+    ) -> Result<Vec<Digest>> {
+        use rayon::prelude::*;
+
+        let num_cols = interpolants.len() / num_rows;
+        let nc = FF::NCOMP as usize;
+        let col_u64s = num_rows * nc;
+        // Two slots: the CPU fills one while the GPU hashes the other.
+        let cols = self.chunk_cols(2 * col_u64s, num_cols);
+        let slots = [
+            self.backend.alloc(cols * col_u64s)?,
+            self.backend.alloc(cols * col_u64s)?,
+        ];
+        let layout = Layout {
+            col_stride: col_u64s as u64,
+            ncomp: nc as u32,
+            len: num_rows as u32,
+        };
+
+        // Per slot: the ticket of the GPU work reading it, and the digests
+        // to collect once that work is done.
+        let mut tickets: [Option<u64>; 2] = [None, None];
+        type Finished<Buf> = Option<(usize, Buf, Buf)>; // coset, digests, state
+        let mut finished: [Finished<B::Buffer>; 2] = [None, None];
+        let mut all = vec![Digest::default(); num_rows * num_cosets];
+
+        let collect = |coset: usize, digests: &B::Buffer, all: &mut [Digest]| {
+            let ptr = self.backend.host_ptr(digests).expect("host-visible buffer");
+            // SAFETY: the GPU work writing the digests is done (waited for).
+            let raw = unsafe { std::slice::from_raw_parts(ptr, num_rows * DIGEST_LEN) };
+            for (j, c) in raw.chunks_exact(DIGEST_LEN).enumerate() {
+                all[coset + j * num_cosets] =
+                    Digest::new(std::array::from_fn(|i| BFieldElement::from_raw_u64(c[i])));
+            }
+        };
+
+        let mut item = 0;
+        for coset in 0..num_cosets {
+            let coset_offset = fri_offset * fri_generator.mod_pow_u32(coset as u32);
+            let zerofier = coset_offset.mod_pow_u32(num_rows as u32) - BFieldElement::ONE;
+            let state = self.backend.alloc(num_rows * STATE_SIZE)?;
+            self.backend.rows_init(&state, num_rows as u64)?;
+            let mut pos = 0;
+            let mut state = Some(state);
+            for first in (0..num_cols).step_by(cols) {
+                let s = item % 2;
+                item += 1;
+                if let Some(t) = tickets[s].take() {
+                    self.backend.wait(t)?;
+                }
+                if let Some((c, digests, _state)) = finished[s].take() {
+                    collect(c, &digests, &mut all);
+                }
+
+                // CPU: low-degree extend this chunk straight into the slot,
+                // all cores, while the GPU still hashes the previous chunk.
+                let cc = cols.min(num_cols - first);
+                let ptr = self
+                    .backend
+                    .host_ptr(&slots[s])
+                    .expect("host-visible buffer");
+                // SAFETY: the slot holds `cc` columns of FF; no GPU work uses it
+                // (its ticket was waited for above).
+                let out =
+                    unsafe { std::slice::from_raw_parts_mut(ptr.cast::<FF>(), cc * num_rows) };
+                out.par_chunks_mut(num_rows)
+                    .enumerate()
+                    .for_each(|(j, column)| {
+                        let col = first + j;
+                        FF::cpu_coset_lde(
+                            &interpolants[col * num_rows..(col + 1) * num_rows],
+                            &randomizers[col],
+                            zerofier,
+                            coset_offset,
+                            column,
+                        );
+                    });
+
+                // GPU: hash the rows of this chunk.
+                let st = state.as_ref().unwrap();
+                let vcols = (cc * nc) as u32;
+                self.backend.rows_absorb(
+                    st,
+                    num_rows as u64,
+                    pos,
+                    (&slots[s], 0, layout),
+                    vcols,
+                )?;
+                pos = (pos + vcols) % 10;
+                if first + cc == num_cols {
+                    let digests = self.backend.alloc(num_rows * DIGEST_LEN)?;
+                    self.backend
+                        .rows_finish(st, num_rows as u64, pos, &digests)?;
+                    finished[s] = Some((coset, digests, state.take().unwrap()));
+                }
+                tickets[s] = Some(self.backend.submit()?);
+            }
+        }
+        for s in 0..2 {
+            if let Some(t) = tickets[s].take() {
+                self.backend.wait(t)?;
+            }
+            if let Some((c, digests, _state)) = finished[s].take() {
+                collect(c, &digests, &mut all);
             }
         }
         Ok(all)

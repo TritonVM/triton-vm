@@ -208,20 +208,41 @@ fn check_merkle<B: Backend>(gpu: &Gpu<B>) {
 
 fn check_lde_hash_cosets<B: Backend>(gpu: &Gpu<B>) {
     let mut r = rng(5);
-    let (rows, cols, num_cosets) = (64usize, 13usize, 4usize);
-    let fri_len = rows * num_cosets;
-    let fri_generator = BFieldElement::primitive_root_of_unity(fri_len as u64).unwrap();
-    let fri_offset = BFieldElement::generator();
+    let (rows, cols) = (64usize, 13usize);
     let interp = bfes(&mut r, rows * cols);
     let rands: Vec<Vec<BFieldElement>> = (0..cols)
         .map(|j| bfes(&mut r, if j == 0 { rows } else { 3 }))
         .collect();
+    check_lde_hash_cosets_for(gpu, &interp, &rands, rows, 4);
+
+    let interp = xfes(&mut r, rows * 5);
+    let rands: Vec<Vec<XFieldElement>> = (0..5).map(|j| xfes(&mut r, j * 7)).collect();
+    check_lde_hash_cosets_for(gpu, &interp, &rands, rows, 2);
+}
+
+fn check_lde_hash_cosets_for<B: Backend, FF>(
+    gpu: &Gpu<B>,
+    interp: &[FF],
+    rands: &[Vec<FF>],
+    rows: usize,
+    num_cosets: usize,
+) where
+    FF: triton_gpu::GpuField
+        + twenty_first::math::traits::FiniteField
+        + std::ops::MulAssign<BFieldElement>
+        + std::ops::Mul<BFieldElement, Output = FF>
+        + twenty_first::tip5::ColumnElement,
+{
+    let cols = interp.len() / rows;
+    let fri_len = rows * num_cosets;
+    let fri_generator = BFieldElement::primitive_root_of_unity(fri_len as u64).unwrap();
+    let fri_offset = BFieldElement::generator();
 
     let mut expected = vec![Digest::default(); fri_len];
     for coset in 0..num_cosets {
         let off = fri_offset * fri_generator.mod_pow_u32(coset as u32);
         let z = off.mod_pow_u32(rows as u32) - BFieldElement::ONE;
-        let mut table = vec![BFieldElement::ZERO; rows * cols];
+        let mut table = vec![FF::ZERO; rows * cols];
         for j in 0..cols {
             reference_randomized_lde(
                 &interp[j * rows..(j + 1) * rows],
@@ -231,13 +252,13 @@ fn check_lde_hash_cosets<B: Backend>(gpu: &Gpu<B>) {
                 &mut table[j * rows..(j + 1) * rows],
             );
         }
-        let columns: Vec<&[BFieldElement]> = table.chunks(rows).collect();
+        let columns: Vec<&[FF]> = table.chunks(rows).collect();
         for (i, d) in Tip5::hash_rows_of_columns(&columns).into_iter().enumerate() {
             expected[coset + i * num_cosets] = d;
         }
     }
     let got = gpu
-        .lde_hash_cosets(&interp, rows, &rands, fri_offset, fri_generator, num_cosets)
+        .lde_hash_cosets(interp, rows, rands, fri_offset, fri_generator, num_cosets)
         .unwrap();
     assert_eq!(expected, got);
 }
@@ -287,11 +308,33 @@ fn cpu_reference_multipass_plans() {
 #[test]
 fn cpu_reference_chunked_streaming() {
     use triton_gpu::{cpu::CpuBackend, Config};
-    let gpu = Gpu::with_config(CpuBackend::default(), Config { chunk_bytes: 1 }).unwrap();
+    let gpu = Gpu::with_config(
+        CpuBackend::default(),
+        Config {
+            chunk_bytes: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     check_ntt(&gpu, &[0, 3, 9]);
     check_lde(&gpu);
     check_hash_rows(&gpu);
     check_lde_hash_cosets(&gpu);
+}
+
+/// The hybrid CPU + GPU pipeline gives the same digests, with large and
+/// with tiny column chunks (many pipeline steps, both buffers in use).
+#[cfg(feature = "cpu")]
+#[test]
+fn cpu_reference_hybrid_pipeline() {
+    use triton_gpu::{cpu::CpuBackend, Config, Hybrid};
+    for chunk_bytes in [512 << 20, 1, 3 * 64 * 8 * 2] {
+        let config = Config {
+            chunk_bytes,
+            hybrid: Hybrid::On,
+        };
+        check_lde_hash_cosets(&Gpu::with_config(CpuBackend::default(), config).unwrap());
+    }
 }
 
 #[cfg(feature = "cuda")]
@@ -309,10 +352,21 @@ fn cuda_matches_twenty_first() {
     check_all(&gpu, &(0..=20).collect::<Vec<_>>());
     let small = Gpu::with_config(
         triton_gpu::cuda::CudaBackend::new(0).unwrap(),
-        triton_gpu::Config { chunk_bytes: 1 },
+        triton_gpu::Config {
+            chunk_bytes: 1,
+            ..Default::default()
+        },
     )
     .unwrap();
     check_lde_hash_cosets(&small);
+    for hybrid in [triton_gpu::Hybrid::Off, triton_gpu::Hybrid::On] {
+        let config = triton_gpu::Config {
+            hybrid,
+            ..Default::default()
+        };
+        let gpu = Gpu::with_config(triton_gpu::cuda::CudaBackend::new(0).unwrap(), config);
+        check_lde_hash_cosets(&gpu.unwrap());
+    }
 }
 
 #[cfg(all(feature = "metal", target_os = "macos"))]
@@ -330,8 +384,19 @@ fn metal_matches_twenty_first() {
     check_all(&gpu, &(0..=20).collect::<Vec<_>>());
     let small = Gpu::with_config(
         triton_gpu::metal::MetalBackend::new().unwrap(),
-        triton_gpu::Config { chunk_bytes: 1 },
+        triton_gpu::Config {
+            chunk_bytes: 1,
+            ..Default::default()
+        },
     )
     .unwrap();
     check_lde_hash_cosets(&small);
+    for hybrid in [triton_gpu::Hybrid::Off, triton_gpu::Hybrid::On] {
+        let config = triton_gpu::Config {
+            hybrid,
+            ..Default::default()
+        };
+        let gpu = Gpu::with_config(triton_gpu::metal::MetalBackend::new().unwrap(), config);
+        check_lde_hash_cosets(&gpu.unwrap());
+    }
 }

@@ -29,7 +29,10 @@ fn main() -> triton_gpu::Result<()> {
     let gen = BFieldElement::primitive_root_of_unity((rows * cosets) as u64).unwrap();
     let gpu = Gpu::with_config(
         triton_gpu::cpu::CpuBackend::default(),
-        Config { chunk_bytes: chunk },
+        Config {
+            chunk_bytes: chunk,
+            ..Default::default()
+        },
     )?;
     let t = std::time::Instant::now();
     let d = gpu.lde_hash_cosets(

@@ -91,6 +91,32 @@ pub trait Backend {
     /// Block until all enqueued work is done.
     fn synchronize(&self) -> Result<()>;
 
+    /// Whether CPU and GPU share memory (unified memory, e.g. Apple silicon).
+    /// Such backends profit from the hybrid CPU + GPU pipeline.
+    fn unified_memory(&self) -> bool {
+        false
+    }
+
+    /// A host pointer to the buffer's memory, if the CPU can access it
+    /// directly. Accesses must not race with GPU work using the buffer:
+    /// [`Self::wait`] for that work's ticket first.
+    fn host_ptr(&self, _buf: &Self::Buffer) -> Option<*mut u64> {
+        None
+    }
+
+    /// Start all enqueued work without waiting for it. Returns a ticket for
+    /// [`Self::wait`].
+    fn submit(&self) -> Result<u64> {
+        self.synchronize()?;
+        Ok(0)
+    }
+
+    /// Block until the work of `ticket`, and all work submitted before it,
+    /// is done.
+    fn wait(&self, _ticket: u64) -> Result<()> {
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn ntt_pass(
         &self,

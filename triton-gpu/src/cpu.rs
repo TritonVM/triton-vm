@@ -89,6 +89,10 @@ impl Backend for CpuBackend {
         Ok(())
     }
 
+    fn host_ptr(&self, buf: &CpuBuffer) -> Option<*mut u64> {
+        Some(buf.ptr(0))
+    }
+
     fn ntt_pass(
         &self,
         src: (&CpuBuffer, usize, Layout),
