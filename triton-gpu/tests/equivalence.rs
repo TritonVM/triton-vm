@@ -242,6 +242,14 @@ fn check_lde_hash_cosets<B: Backend>(gpu: &Gpu<B>) {
     assert_eq!(expected, got);
 }
 
+/// With `TRITON_GPU_REQUIRE_HARDWARE=1`, a missing GPU fails the test
+/// (with the backend's error, e.g. a shader compilation error) instead of
+/// skipping it.
+#[allow(dead_code)]
+fn require_hardware() -> bool {
+    std::env::var("TRITON_GPU_REQUIRE_HARDWARE").is_ok_and(|v| v == "1")
+}
+
 fn check_all<B: Backend>(gpu: &Gpu<B>, log_ns: &[u32]) {
     check_ntt(gpu, log_ns);
     check_lde(gpu);
@@ -289,9 +297,13 @@ fn cpu_reference_chunked_streaming() {
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_matches_twenty_first() {
-    let Ok(b) = triton_gpu::cuda::CudaBackend::new(0) else {
-        eprintln!("no CUDA device, skipping");
-        return;
+    let b = match triton_gpu::cuda::CudaBackend::new(0) {
+        Ok(b) => b,
+        Err(e) if require_hardware() => panic!("CUDA backend unavailable: {e}"),
+        Err(e) => {
+            eprintln!("no CUDA device ({e}), skipping");
+            return;
+        }
     };
     let gpu = Gpu::new(b).unwrap();
     check_all(&gpu, &(0..=20).collect::<Vec<_>>());
@@ -306,9 +318,13 @@ fn cuda_matches_twenty_first() {
 #[cfg(all(feature = "metal", target_os = "macos"))]
 #[test]
 fn metal_matches_twenty_first() {
-    let Ok(b) = triton_gpu::metal::MetalBackend::new() else {
-        eprintln!("no Metal device, skipping");
-        return;
+    let b = match triton_gpu::metal::MetalBackend::new() {
+        Ok(b) => b,
+        Err(e) if require_hardware() => panic!("Metal backend unavailable: {e}"),
+        Err(e) => {
+            eprintln!("no Metal device ({e}), skipping");
+            return;
+        }
     };
     let gpu = Gpu::new(b).unwrap();
     check_all(&gpu, &(0..=20).collect::<Vec<_>>());

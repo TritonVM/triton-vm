@@ -278,6 +278,42 @@ mod tests {
         assert_identical_proofs(&looping);
     }
 
+    /// On a machine with a GPU (Metal or CUDA, if compiled in), the real GPU
+    /// produces byte-identical proofs. Skipped without a GPU, unless
+    /// `TVM_REQUIRE_GPU=1`.
+    #[macro_rules_attr::apply(test)]
+    fn gpu_hardware_produces_identical_proofs() {
+        let hardware = triton_gpu::best_hardware();
+        let require = std::env::var("TVM_REQUIRE_GPU").is_ok_and(|v| v == "1");
+        match hardware {
+            Ok(gpu) => eprintln!("testing on {}", gpu.name()),
+            Err(e) if require => panic!("no GPU available: {e}"),
+            Err(_) => return,
+        }
+
+        let program = TestableProgram::new(triton_program! {
+            read_io 1
+            call loop
+            write_io 1
+            halt
+            loop:
+                dup 0 push 0 eq skiz return
+                push -1 add
+                recurse
+        })
+        .with_input(bfe_vec![1500]);
+        for cache in [CacheDecision::NoCache, CacheDecision::Cache] {
+            let cpu = prove_with(GpuMode::Off, cache, &program);
+            let before = num_successful_gpu_operations();
+            let gpu = prove_with(GpuMode::Auto, cache, &program);
+            assert!(
+                num_successful_gpu_operations() > before,
+                "GPU not used ({cache:?})"
+            );
+            assert_eq!(cpu, gpu, "proofs differ ({cache:?})");
+        }
+    }
+
     fn assert_identical_proofs(program: &TestableProgram) {
         for cache in [CacheDecision::NoCache, CacheDecision::Cache] {
             let cpu = prove_with(GpuMode::Off, cache, program);
