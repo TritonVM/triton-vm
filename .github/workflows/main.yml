@@ -47,6 +47,14 @@ jobs:
       - name: Run tests
         run: cargo nextest run --no-fail-fast --all-targets
 
+        # The GPU code paths, run on the CPU reference backend: proofs must be
+        # identical with and without them, also with the Metal arithmetic.
+      - name: Run GPU-path tests (CPU reference backend)
+        if: runner.os == 'Linux'
+        run: |
+          cargo nextest run --no-fail-fast -p triton-vm --features gpu -E 'test(/^gpu::/)'
+          TRITON_GPU_WIDE_MUL_32=1 cargo nextest run --no-fail-fast -p triton-gpu
+
         # doctests are special [^1] but this step does not incur a performance penalty [^2]
         #
         # [^1]: https://nexte.st/book/usage.html#limitations

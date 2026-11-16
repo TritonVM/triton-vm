@@ -43,6 +43,10 @@ twenty-first.workspace = true
 unicode-width.workspace = true
 web-time.workspace = true
 
+# Optional GPU acceleration, see `src/gpu.rs`. Off by default.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+triton-gpu = { workspace = true, optional = true, features = ["cpu"] }
+
 [dev-dependencies]
 assert2.workspace = true
 constraint-circuit.workspace = true
@@ -85,6 +89,13 @@ no_profile = [] # see `profiler.rs` for an explanation of this seemingly backwar
 # Use jemalloc as the global allocator. See `lib.rs` for details. Disable
 # this feature if the binary sets its own global allocator.
 jemalloc = ["dep:tikv-jemallocator"]
+# GPU code paths with automatic CPU fallback (and the CPU reference backend
+# for testing). See `src/gpu.rs`.
+gpu = ["dep:triton-gpu"]
+# Apple GPUs (macOS).
+gpu-metal = ["gpu", "triton-gpu/metal"]
+# NVIDIA GPUs (needs the CUDA toolkit).
+gpu-cuda = ["gpu", "triton-gpu/cuda"]
 
 [lints]
 workspace = true

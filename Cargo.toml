@@ -5,6 +5,7 @@ members = [
     "triton-constraint-circuit",
     "triton-isa",
     "triton-vm",
+    "triton-gpu",
 ]
 resolver = "2"
 
@@ -54,6 +55,11 @@ package = "triton-constraint-circuit"
 version = "9.0.1"
 path = "triton-isa"
 package = "triton-isa"
+
+[workspace.dependencies.triton-gpu]
+version = "9.0.1"
+path = "triton-gpu"
+default-features = false
 
 [workspace.dependencies.criterion]
 package = "codspeed-criterion-compat"
