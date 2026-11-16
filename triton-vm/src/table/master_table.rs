@@ -295,6 +295,42 @@ where
             extended_trace.set_len(num_elements);
         }
 
+        // GPU path (feature `gpu`): evaluate all column polynomials on the
+        // evaluation domain at once, straight into the table's memory.
+        #[cfg(feature = "gpu")]
+        let evaluated_on_gpu = {
+            profiler!(start "GPU: evaluation");
+            let m = interpolation_polynomials
+                .iter()
+                .map(|p| p.coefficients().len())
+                .max()
+                .unwrap_or(0)
+                .max(1);
+            let done = m <= num_rows && {
+                let zero = Self::Field::from(BFieldElement::ZERO);
+                let mut coefficients = vec![zero; m * Self::NUM_COLUMNS];
+                for (column, polynomial) in coefficients
+                    .chunks_exact_mut(m)
+                    .zip(interpolation_polynomials.iter())
+                {
+                    let c = polynomial.coefficients();
+                    column[..c.len()].copy_from_slice(c);
+                }
+                crate::gpu::evaluate_columns_into(
+                    &coefficients,
+                    m,
+                    num_rows,
+                    evaluation_domain.offset(),
+                    &mut extended_trace,
+                )
+                .is_some()
+            };
+            profiler!(stop "GPU: evaluation");
+            done
+        };
+        #[cfg(not(feature = "gpu"))]
+        let evaluated_on_gpu = false;
+
         // The table is column-major (“`F`”): every column is a contiguous
         // codeword. This lets the (parallel, per-column) evaluation below
         // write its results without any re-arrangement of memory, which is
@@ -304,16 +340,19 @@ where
         let mut extended_columns = Array2::from_shape_vec(shape, extended_trace).unwrap();
 
         profiler!(start "evaluation");
-        Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
-            .and(interpolation_polynomials.axis_iter(ROW_AXIS))
-            .par_for_each(|mut lde_column, interpolant| {
-                // The NTT runs in place, directly in the table's column: no
-                // temporary allocation, no copy.
-                let lde_column = lde_column.as_slice_mut().unwrap();
-                evaluation_domain.evaluate_into(&interpolant[()], lde_column);
-            });
-        // SAFETY: Every column of the table was written to by `evaluate_into`,
-        // which initializes every element of the column. The columns
+        if !evaluated_on_gpu {
+            Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
+                .and(interpolation_polynomials.axis_iter(ROW_AXIS))
+                .par_for_each(|mut lde_column, interpolant| {
+                    // The NTT runs in place, directly in the table's column:
+                    // no temporary allocation, no copy.
+                    let lde_column = lde_column.as_slice_mut().unwrap();
+                    evaluation_domain.evaluate_into(&interpolant[()], lde_column);
+                });
+        }
+        // SAFETY: Every column of the table was written to, either by
+        // `evaluate_into`, which initializes every element of the column, or
+        // by the GPU, which writes every element of the table. The columns
         // partition the table. Hence, every element is initialized.
         let extended_columns = unsafe { extended_columns.assume_init() };
         profiler!(stop "evaluation");
@@ -553,6 +592,39 @@ where
         let num_cosets = fri_domain.len() / num_rows;
         assert_eq!(fri_domain.len(), num_cosets * num_rows);
 
+        // GPU path (feature `gpu`): interpolate, extend coset by coset, and
+        // hash rows on the GPU; only the digests come back. Falls through to
+        // the CPU code below if no GPU is available or anything fails.
+        #[cfg(feature = "gpu")]
+        if trace_domain.offset() == BFieldElement::ONE {
+            profiler!(start "GPU: LDE & hash rows" ("hash"));
+            let randomizers = (0..Self::NUM_COLUMNS)
+                .into_par_iter()
+                .map(|i| self.trace_randomizer_for_column(i).coefficients().to_vec())
+                .collect::<Vec<_>>();
+            let fri_offset = fri_domain.offset();
+            let fri_generator = fri_domain.generator();
+            let mut trace = self.trace_table_mut();
+            let column_major = trace.strides() == [1, num_rows as isize];
+            let digests = trace
+                .as_slice_memory_order_mut()
+                .filter(|_| column_major)
+                .and_then(|trace| {
+                    crate::gpu::hash_all_fri_domain_rows(
+                        trace,
+                        num_rows,
+                        &randomizers,
+                        fri_offset,
+                        fri_generator,
+                        num_cosets,
+                    )
+                });
+            profiler!(stop "GPU: LDE & hash rows");
+            if let Some(digests) = digests {
+                return digests;
+            }
+        }
+
         profiler!(start "fetch trace randomizers");
         let randomizers = (0..Self::NUM_COLUMNS)
             .into_par_iter()
@@ -636,6 +708,18 @@ where
         // into the L2 cache, even for the auxiliary table with its wider
         // elements.
         const ROWS_PER_CHUNK: usize = 128;
+
+        // GPU path (feature `gpu`), for tables that are contiguous in memory.
+        #[cfg(feature = "gpu")]
+        if table.nrows() > 0
+            && table.ncols() > 0
+            && table.strides() == [1, table.nrows() as isize]
+            && let Some(digests) = table
+                .as_slice_memory_order()
+                .and_then(|t| crate::gpu::hash_rows(t, table.nrows()))
+        {
+            return digests;
+        }
 
         let mut digests = vec![Digest::default(); table.nrows()];
         digests
