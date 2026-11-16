@@ -126,9 +126,9 @@ kernel void tg_rows_absorb_k(
     constant TgRowsArgs &a          [[buffer(2)]],
     uint gid                        [[thread_position_in_grid]],
     uint tid                        [[thread_index_in_threadgroup]],
-    uint3 tpg                       [[threads_per_threadgroup]])
+    uint tpg                        [[threads_per_threadgroup]])
 {
-    TG_LOAD_LUT(lut, tid, tpg.x);
+    TG_LOAD_LUT(lut, tid, tpg);
     if ((ulong)gid < a.num_rows) {
         tg_rows_absorb(state, gid, a.num_rows, a.pos, data, a.l, a.num_vcols, lut);
     }
@@ -140,9 +140,9 @@ kernel void tg_rows_finish_k(
     constant TgRowsArgs &a          [[buffer(2)]],
     uint gid                        [[thread_position_in_grid]],
     uint tid                        [[thread_index_in_threadgroup]],
-    uint3 tpg                       [[threads_per_threadgroup]])
+    uint tpg                        [[threads_per_threadgroup]])
 {
-    TG_LOAD_LUT(lut, tid, tpg.x);
+    TG_LOAD_LUT(lut, tid, tpg);
     if ((ulong)gid < a.num_rows) {
         tg_rows_finish(state, gid, a.num_rows, a.pos, digests, lut);
     }
@@ -153,9 +153,9 @@ kernel void tg_merkle_level_k(
     constant TgMerkleArgs &a        [[buffer(1)]],
     uint gid                        [[thread_position_in_grid]],
     uint tid                        [[thread_index_in_threadgroup]],
-    uint3 tpg                       [[threads_per_threadgroup]])
+    uint tpg                        [[threads_per_threadgroup]])
 {
-    TG_LOAD_LUT(lut, tid, tpg.x);
+    TG_LOAD_LUT(lut, tid, tpg);
     if ((ulong)gid < a.count) { tg_merkle_node(nodes, a.first + gid, lut); }
 }
 
