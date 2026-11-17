@@ -1,0 +1,37 @@
+[package]
+name = "triton-gpu"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Metal and CUDA kernels for the Triton VM prover: batched NTT/iNTT, coset LDE, Tip5 row hashing and Merkle trees, bit-identical to twenty-first"
+license.workspace = true
+build = "build.rs"
+
+[features]
+default = ["cpu"]
+# Reference backend: the same kernel code, run on the CPU. Used for verification.
+cpu = []
+# NVIDIA GPUs. Needs the CUDA toolkit (nvcc) at build time and the CUDA runtime at run time.
+cuda = []
+# Apple GPUs. macOS only.
+metal = ["dep:metal", "dep:objc"]
+
+[dependencies]
+twenty-first.workspace = true
+thiserror.workspace = true
+num-traits.workspace = true
+rayon.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = { version = "0.33", optional = true }
+objc = { version = "0.2", optional = true }
+
+[build-dependencies]
+cc = "1.2"
+
+[dev-dependencies]
+rand = "0.9"
+
