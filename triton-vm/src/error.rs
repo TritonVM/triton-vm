@@ -153,6 +153,9 @@ pub enum ProvingError {
     #[error("the verifier-supplied randomness causes a violation of the Zero-Knowledge property")]
     ZeroKnowledgeViolation,
 
+    #[error("padded height 2^{log2_padded_height} exceeds the verifier's maximum of 2^28")]
+    PaddedHeightTooLarge { log2_padded_height: u32 },
+
     #[error(transparent)]
     MerkleTreeError(#[from] MerkleTreeError),
 
@@ -172,7 +175,7 @@ pub enum ProvingError {
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum VerificationError {
-    #[error("received a log₂ padded height larger than (or equal to) 30")]
+    #[error("received a log₂ padded height larger than 28")]
     Log2PaddedHeightTooLarge,
 
     #[error("received and computed out-of-domain quotient values don't match")]

@@ -52,6 +52,14 @@ use crate::table::master_table::evaluate_randomized_interpolant_into;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::offset_rng_seed;
 
+/// The largest log₂ of the padded height that the verifier accepts.
+///
+/// With the default [`Stark`] parameters, a padded height of 2^28 already gives
+/// a [FRI domain](Fri) of length 2^31. One more doubling gives a FRI domain of
+/// length 2^32, for which the leaf indices of the corresponding Merkle trees
+/// are no longer `u32`s.
+pub(crate) const MAX_LOG2_PADDED_HEIGHT: u32 = 28;
+
 /// The number of segments the quotient polynomial is split into.
 /// Helps keeping the FRI domain small.
 ///
@@ -279,6 +287,16 @@ impl Prover {
         self
     }
 
+    /// Fail early instead of producing a proof that the verifier would reject.
+    /// See [`MAX_LOG2_PADDED_HEIGHT`].
+    fn ensure_verifiable_padded_height(padded_height: usize) -> Result<(), ProvingError> {
+        let log2_padded_height = padded_height.ilog2();
+        if log2_padded_height > MAX_LOG2_PADDED_HEIGHT {
+            return Err(ProvingError::PaddedHeightTooLarge { log2_padded_height });
+        }
+        Ok(())
+    }
+
     /// See also [`Stark::prove`].
     pub fn prove(
         self,
@@ -292,6 +310,7 @@ impl Prover {
 
         profiler!(start "derive additional parameters");
         let padded_height = aet.padded_height();
+        Self::ensure_verifiable_padded_height(padded_height)?;
         let fri = self.parameters.fri(padded_height)?;
         let domains = ProverDomains::derive(
             padded_height,
@@ -1506,7 +1525,7 @@ impl Verifier {
         profiler!(start "derive additional parameters");
         let log2_padded_height = proof_stream.dequeue()?.try_into_log2_padded_height()?;
 
-        if log2_padded_height >= 30 {
+        if log2_padded_height > MAX_LOG2_PADDED_HEIGHT {
             return Err(VerificationError::Log2PaddedHeightTooLarge);
         };
 
@@ -2517,7 +2536,8 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(proptest)]
     fn too_high_padded_height_results_in_immediate_verification_failure(
-        #[strategy(30_u32..)] height: u32,
+        #[strategy(prop_oneof![Just(MAX_LOG2_PADDED_HEIGHT + 1), (MAX_LOG2_PADDED_HEIGHT + 1)..])]
+        height: u32,
     ) {
         let program = triton_program!(halt);
         let claim = Claim::about_program(&program);
@@ -2536,6 +2556,17 @@ pub(crate) mod tests {
 
         let verdict = stark.verify(&claim, &proof);
         let_assert!(Err(VerificationError::Log2PaddedHeightTooLarge) = verdict);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn prover_rejects_padded_height_the_verifier_rejects() {
+        let max = 1 << MAX_LOG2_PADDED_HEIGHT;
+        assert!(Prover::ensure_verifiable_padded_height(max).is_ok());
+        let_assert!(
+            Err(ProvingError::PaddedHeightTooLarge { log2_padded_height }) =
+                Prover::ensure_verifiable_padded_height(2 * max)
+        );
+        assert!(MAX_LOG2_PADDED_HEIGHT + 1 == log2_padded_height);
     }
 
     #[macro_rules_attr::apply(test)]
