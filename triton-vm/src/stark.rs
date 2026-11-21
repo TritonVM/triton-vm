@@ -483,8 +483,14 @@ impl Prover {
 
         profiler!(start "aux" ("CC"));
         let aux_combination_poly = master_aux_table.weighted_sum_of_columns(weights.aux);
+        let main_and_aux_combination_polynomial = par_linear_combination(
+            main_combination_poly,
+            XFieldElement::ONE,
+            &[&aux_combination_poly],
+            &[XFieldElement::ONE],
+        );
+        drop(aux_combination_poly);
         profiler!(stop "aux");
-        let main_and_aux_combination_polynomial = main_combination_poly + aux_combination_poly;
 
         profiler!(start "quotient" ("CC"));
         let [
@@ -523,15 +529,25 @@ impl Prover {
         drop(last_rand_seg_quot_poly);
         profiler!(stop "quotient");
 
-        // Each evaluation is a single NTT, which is not parallelized
-        // internally. Evaluating the three polynomials concurrently keeps
-        // more than one core busy.
+        // A single evaluation does not keep all threads busy, even though it
+        // is parallelized internally. Hence, the three polynomials are
+        // evaluated concurrently.
         profiler!(start "evaluate" ("LDE"));
-        let main_and_aux_codeword = short_domain.par_evaluate(&main_and_aux_combination_polynomial);
-        let randomized_quotient_segments_ood_codeword_p =
-            short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_p);
-        let randomized_quotient_segments_ood_codeword_r =
-            short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_r);
+        let (
+            main_and_aux_codeword,
+            (
+                randomized_quotient_segments_ood_codeword_p,
+                randomized_quotient_segments_ood_codeword_r,
+            ),
+        ) = rayon::join(
+            || short_domain.par_evaluate(&main_and_aux_combination_polynomial),
+            || {
+                rayon::join(
+                    || short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_p),
+                    || short_domain.par_evaluate(&randomized_quotient_segments_ood_poly_r),
+                )
+            },
+        );
         profiler!(stop "evaluate");
 
         profiler!(stop "linear combination");
