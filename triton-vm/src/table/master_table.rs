@@ -444,13 +444,20 @@ where
         let mut extended_columns = Array2::from_shape_vec(shape, extended_trace).unwrap();
 
         profiler!(start "evaluation");
+        // With fewer columns than threads, evaluating one column per thread
+        // leaves threads idle.
+        let is_parallel_within_columns = Self::NUM_COLUMNS < rayon::current_num_threads();
         Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
             .and(interpolation_polynomials.axis_iter(ROW_AXIS))
             .par_for_each(|mut lde_column, interpolant| {
                 // The NTT runs in place, directly in the table's column: no
                 // temporary allocation, no copy.
                 let lde_column = lde_column.as_slice_mut().unwrap();
-                evaluation_domain.evaluate_into(&interpolant[()], lde_column);
+                if is_parallel_within_columns {
+                    evaluation_domain.par_evaluate_into(&interpolant[()], lde_column);
+                } else {
+                    evaluation_domain.evaluate_into(&interpolant[()], lde_column);
+                }
             });
         // SAFETY: Every column of the table was written to by `evaluate_into`,
         // which initializes every element of the column. The columns
