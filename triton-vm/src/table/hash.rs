@@ -12,11 +12,13 @@ use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
+use num_traits::ConstZero;
 use num_traits::Zero;
 use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::tip5::NUM_ROUNDS;
+use twenty_first::prelude::tip5::NUM_SPLIT_AND_LOOKUP;
 use twenty_first::prelude::tip5::STATE_SIZE;
 use twenty_first::prelude::*;
 
@@ -55,12 +57,71 @@ pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4]
 ///
 /// [ci]: air::table_column::HashMainColumn::CI
 pub(crate) fn trace_to_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
-    let mut table_rows = Array2::default([0, MainColumn::COUNT]);
-    for (round_number, &trace_row) in trace.iter().enumerate() {
-        let table_row = trace_row_to_table_row(trace_row, round_number);
-        table_rows.push_row(table_row.view()).unwrap();
+    const INVERSE_COLUMNS: [MainColumn; NUM_SPLIT_AND_LOOKUP] = [
+        MainColumn::State0Inv,
+        MainColumn::State1Inv,
+        MainColumn::State2Inv,
+        MainColumn::State3Inv,
+    ];
+
+    let mut table_rows = Array2::zeros([trace.len(), MainColumn::COUNT]);
+    for (round_number, (&trace_row, table_row)) in
+        trace.iter().zip(table_rows.rows_mut()).enumerate()
+    {
+        let row = Array1::zeros([MainColumn::COUNT]);
+        let row = fill_row_with_round_number(row, round_number);
+        let row = fill_row_with_split_state_elements_using_trace_row(row, trace_row);
+        let row = fill_row_with_unsplit_state_elements_using_trace_row(row, trace_row);
+        let row = fill_row_with_round_constants_for_round(row, round_number);
+        row.move_into(table_row);
     }
+
+    // Inverting field elements is expensive, and every row needs several
+    // inverses. Batch inversion gets all of the trace's inverses for the
+    // price of a single inversion and a few multiplications.
+    let to_invert = trace
+        .iter()
+        .flat_map(|trace_row| &trace_row[..NUM_SPLIT_AND_LOOKUP])
+        .map(|&state_element| complement_of_highest_2_limbs(state_element))
+        .collect_vec();
+    let inverses = batch_inverse_or_zero(&to_invert);
+    for (mut table_row, row_inverses) in table_rows
+        .rows_mut()
+        .into_iter()
+        .zip(inverses.chunks_exact(NUM_SPLIT_AND_LOOKUP))
+    {
+        for (column, &inverse) in INVERSE_COLUMNS.iter().zip(row_inverses) {
+            table_row[column.main_index()] = inverse;
+        }
+    }
+
     table_rows
+}
+
+/// The inverse-or-zero of every given element, using one inversion in total.
+fn batch_inverse_or_zero(elements: &[BFieldElement]) -> Vec<BFieldElement> {
+    // the products of all non-zero elements before the respective index
+    let mut running_product = BFieldElement::ONE;
+    let mut prefix_products = Vec::with_capacity(elements.len());
+    for &element in elements {
+        prefix_products.push(running_product);
+        if !element.is_zero() {
+            running_product *= element;
+        }
+    }
+
+    // the inverse of the product of all non-zero elements up to and including
+    // the respective index
+    let mut running_inverse = running_product.inverse();
+    let mut inverses = vec![BFieldElement::ZERO; elements.len()];
+    for (i, &element) in elements.iter().enumerate().rev() {
+        if !element.is_zero() {
+            inverses[i] = running_inverse * prefix_products[i];
+            running_inverse *= element;
+        }
+    }
+
+    inverses
 }
 
 pub(crate) fn trace_row_to_table_row(
@@ -207,13 +268,19 @@ fn fill_row_with_state_inverses_using_trace_row(
 /// `highest` is the most significant limb of the given `state_element`, and
 /// `mid_high` the second-most significant limb.
 fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
+    complement_of_highest_2_limbs(state_element).inverse_or_zero()
+}
+
+/// 2^32 - 1 - 2^16·`highest` - `mid_high` where `highest` is the most
+/// significant limb of the given `state_element`, and `mid_high` the
+/// second-most significant limb.
+fn complement_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
     let limbs = base_field_element_into_16_bit_limbs(state_element);
     let highest: u64 = limbs[3].into();
     let mid_high: u64 = limbs[2].into();
     let high_limbs = bfe!((highest << 16) + mid_high);
     let two_pow_32_minus_1 = bfe!((1_u64 << 32) - 1);
-    let to_invert = two_pow_32_minus_1 - high_limbs;
-    to_invert.inverse_or_zero()
+    two_pow_32_minus_1 - high_limbs
 }
 
 fn fill_row_with_round_constants_for_round(

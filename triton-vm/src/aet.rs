@@ -89,6 +89,16 @@ pub struct AlgebraicExecutionTrace {
 
     /// Records how often each entry in the lookup table was looked up.
     pub lookup_table_lookup_multiplicities: [u64; AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT],
+
+    /// For every 16-bit limb, its (presumed) index in
+    /// [`Self::cascade_table_lookup_multiplicities`], or [`u32::MAX`] if
+    /// unknown. Looking up a limb's multiplicity by index is a lot cheaper
+    /// than hashing the limb, and this happens for every limb of every
+    /// split-and-lookup S-box of every recorded permutation.
+    ///
+    /// This is only a hint: every use must check that the entry at the index
+    /// is the limb's entry, since the map is public and can be modified.
+    cascade_table_index_hints: Vec<u32>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
@@ -120,6 +130,7 @@ impl AlgebraicExecutionTrace {
             u32_entries: IndexMap::new(),
             cascade_table_lookup_multiplicities: IndexMap::new(),
             lookup_table_lookup_multiplicities: [0; Self::LOOKUP_TABLE_HEIGHT],
+            cascade_table_index_hints: vec![u32::MAX; 1 << u16::BITS],
         };
         aet.fill_program_hash_trace();
         aet
@@ -324,10 +335,26 @@ impl AlgebraicExecutionTrace {
     /// corresponding entries in the cascade table and/or the lookup table.
     fn increase_lookup_multiplicities_for_state_element(&mut self, state_element: BFieldElement) {
         for limb in table::hash::base_field_element_into_16_bit_limbs(state_element) {
+            let index_hint = self.cascade_table_index_hints[usize::from(limb)] as usize;
+            if let Some((&hinted_limb, multiplicity)) = self
+                .cascade_table_lookup_multiplicities
+                .get_index_mut(index_hint)
+                && hinted_limb == limb
+            {
+                *multiplicity += 1;
+                continue;
+            }
+
             match self.cascade_table_lookup_multiplicities.entry(limb) {
-                Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
+                Occupied(mut cascade_table_entry) => {
+                    let index = cascade_table_entry.index();
+                    *cascade_table_entry.get_mut() += 1;
+                    self.cascade_table_index_hints[usize::from(limb)] = index as u32;
+                }
                 Vacant(cascade_table_entry) => {
+                    let index = cascade_table_entry.index();
                     cascade_table_entry.insert(1);
+                    self.cascade_table_index_hints[usize::from(limb)] = index as u32;
                     self.increase_lookup_table_multiplicities_for_limb(limb);
                 }
             }
