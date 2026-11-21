@@ -1053,53 +1053,64 @@ impl MasterMainTable {
             low_degree_extended_table: None,
         };
 
-        // memory-like tables must be filled in before clock jump differences
-        // are known, hence the break from the usual order
-        let clk_jump_diffs_op_stack = {
-            profiler!(start "op stack table");
-            let filled = OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
-            profiler!(stop "op stack table");
-            filled
-        };
-        let clk_jump_diffs_ram = {
-            profiler!(start "ram table");
-            let filled = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
-            profiler!(stop "ram table");
-            filled
-        };
-        let clk_jump_diffs_jump_stack = {
-            profiler!(start "jump stack table");
-            let filled =
-                JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
-            profiler!(stop "jump stack table");
-            filled
-        };
+        let [
+            program_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+            cascade_table,
+            lookup_table,
+            u32_table,
+        ]: [_; TableId::COUNT] = horizontal_multi_slice_mut(
+            master_main_table.trace_table.view_mut(),
+            &partial_sums(&[
+                ProgramMainColumn::COUNT,
+                ProcessorMainColumn::COUNT,
+                OpStackMainColumn::COUNT,
+                RamMainColumn::COUNT,
+                JumpStackMainColumn::COUNT,
+                HashMainColumn::COUNT,
+                CascadeMainColumn::COUNT,
+                LookupMainColumn::COUNT,
+                U32MainColumn::COUNT,
+            ]),
+        )
+        .try_into()
+        .unwrap();
+
+        // The tables are independent of each other, with one exception: the
+        // processor table needs the clock jump differences of the memory-like
+        // tables. Hence, all other tables are filled concurrently. They do
+        // not show up in the profile individually: the profiler is local to
+        // this thread, and the tables are filled on threads of the pool.
+        profiler!(start "all but processor table");
+        let mut clk_jump_diffs_op_stack = vec![];
+        let mut clk_jump_diffs_jump_stack = vec![];
+        let clk_jump_diffs_ram = rayon::scope(|scope| {
+            scope.spawn(|_| clk_jump_diffs_op_stack = OpStackTable::fill(op_stack_table, aet, ()));
+            scope.spawn(|_| {
+                clk_jump_diffs_jump_stack = JumpStackTable::fill(jump_stack_table, aet, ());
+            });
+            scope.spawn(|_| ProgramTable::fill(program_table, aet, ()));
+            scope.spawn(|_| HashTable::fill(hash_table, aet, ()));
+            scope.spawn(|_| CascadeTable::fill(cascade_table, aet, ()));
+            scope.spawn(|_| LookupTable::fill(lookup_table, aet, ()));
+            scope.spawn(|_| U32Table::fill(u32_table, aet, ()));
+
+            RamTable::fill(ram_table, aet, ())
+        });
+        profiler!(stop "all but processor table");
 
         let clk_jump_diffs = ClkJumpDiffs {
             op_stack: clk_jump_diffs_op_stack,
             ram: clk_jump_diffs_ram,
             jump_stack: clk_jump_diffs_jump_stack,
         };
-        let processor_table = master_main_table.table_mut(TableId::Processor);
         profiler!(start "processor table");
         ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
         profiler!(stop "processor table");
-
-        profiler!(start "program table");
-        ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
-        profiler!(stop "program table");
-        profiler!(start "hash table");
-        HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
-        profiler!(stop "hash table");
-        profiler!(start "cascade table");
-        CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
-        profiler!(stop "cascade table");
-        profiler!(start "lookup table");
-        LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
-        profiler!(stop "lookup table");
-        profiler!(start "u32 table");
-        U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
-        profiler!(stop "u32 table");
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.
