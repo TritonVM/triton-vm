@@ -385,8 +385,54 @@ impl RustBackend {
             return Self::binding_name(circuit);
         };
 
-        let lhs = self.evaluate_single_node(&lhs.borrow());
-        let rhs = self.evaluate_single_node(&rhs.borrow());
+        let (lhs, rhs) = (lhs.borrow(), rhs.borrow());
+
+        // Multiplying by the constant -1 is how the circuits express negation
+        // and subtraction, both of which are a lot cheaper than a
+        // multiplication.
+        let is_minus_one = |circuit: &ConstraintCircuit<II>| matches!(circuit.expression, CircuitExpression::BConst(c) if c == BFieldElement::new(BFieldElement::MAX));
+        let negated_operand = |circuit: &ConstraintCircuit<II>| {
+            if self.scope.contains(&circuit.id) {
+                return None;
+            }
+            let CircuitExpression::BinOp(BinOp::Mul, lhs, rhs) = &circuit.expression else {
+                return None;
+            };
+            let (lhs, rhs) = (lhs.borrow(), rhs.borrow());
+            if is_minus_one(&lhs) {
+                Some(self.evaluate_single_node(&rhs))
+            } else if is_minus_one(&rhs) {
+                Some(self.evaluate_single_node(&lhs))
+            } else {
+                None
+            }
+        };
+
+        match binop {
+            BinOp::Add => {
+                if let Some(subtrahend) = negated_operand(&rhs) {
+                    let minuend = self.evaluate_single_node(&lhs);
+                    return quote!((#minuend) - (#subtrahend));
+                }
+                if let Some(subtrahend) = negated_operand(&lhs) {
+                    let minuend = self.evaluate_single_node(&rhs);
+                    return quote!((#minuend) - (#subtrahend));
+                }
+            }
+            BinOp::Mul => {
+                if is_minus_one(&lhs) {
+                    let operand = self.evaluate_single_node(&rhs);
+                    return quote!(-(#operand));
+                }
+                if is_minus_one(&rhs) {
+                    let operand = self.evaluate_single_node(&lhs);
+                    return quote!(-(#operand));
+                }
+            }
+        }
+
+        let lhs = self.evaluate_single_node(&lhs);
+        let rhs = self.evaluate_single_node(&rhs);
         quote!((#lhs) #binop (#rhs))
     }
 
