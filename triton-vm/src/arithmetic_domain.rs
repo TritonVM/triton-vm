@@ -386,6 +386,20 @@ impl ArithmeticDomain {
         self.generator.mod_pow_u32(n) * self.offset
     }
 
+    /// The inverses of the first `num_values` [values](Self::values) that
+    /// make up this domain.
+    ///
+    /// No inversion of any domain value is needed: the inverse of
+    /// `offset · generator^i` is `offset^-1 · (generator^-1)^i`.
+    pub(crate) fn inverses_of_first_values(&self, num_values: usize) -> Vec<BFieldElement> {
+        let inverses = Self {
+            offset: self.offset.inverse(),
+            generator: self.generator.inverse(),
+            length: num_values,
+        };
+        inverses.values()
+    }
+
     /// All the values that make up this domain.
     pub fn values(&self) -> Vec<BFieldElement> {
         // Each chunk starts from its own power of the generator, so that the

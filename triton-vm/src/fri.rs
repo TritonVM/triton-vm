@@ -2,7 +2,6 @@ use itertools::Itertools;
 use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::math::polynomial::barycentric_evaluate;
-use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -45,7 +44,7 @@ struct ProverRound {
 }
 
 impl FriProver<'_> {
-    fn commit(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
+    fn commit(&mut self, codeword: Vec<XFieldElement>) -> ProverResult<()> {
         self.commit_to_first_round(codeword)?;
         for _ in 0..self.num_rounds {
             self.commit_to_next_round()?;
@@ -55,8 +54,8 @@ impl FriProver<'_> {
         Ok(())
     }
 
-    fn commit_to_first_round(&mut self, codeword: &[XFieldElement]) -> ProverResult<()> {
-        let first_round = ProverRound::new(self.first_round_domain, codeword.to_vec())?;
+    fn commit_to_first_round(&mut self, codeword: Vec<XFieldElement>) -> ProverResult<()> {
+        let first_round = ProverRound::new(self.first_round_domain, codeword)?;
         self.commit_to_round(&first_round);
         self.store_round(first_round);
         Ok(())
@@ -174,10 +173,8 @@ impl ProverRound {
         let one = xfe!(1);
         let two_inverse = xfe!(2).inverse();
 
-        let domain_points = self.domain.values();
-        let domain_point_inverses = BFieldElement::par_batch_inversion(domain_points);
-
         let n = self.codeword.len();
+        let domain_point_inverses = self.domain.inverses_of_first_values(n / 2);
         (0..n / 2)
             .into_par_iter()
             .map(|i| {
@@ -531,6 +528,15 @@ impl Fri {
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
+        proof_stream: &mut ProofStream,
+    ) -> ProverResult<Vec<usize>> {
+        self.prove_owned(codeword.to_vec(), proof_stream)
+    }
+
+    /// Like [`Self::prove`], but without copying the codeword.
+    pub(crate) fn prove_owned(
+        &self,
+        codeword: Vec<XFieldElement>,
         proof_stream: &mut ProofStream,
     ) -> ProverResult<Vec<usize>> {
         let mut prover = self.prover(proof_stream);

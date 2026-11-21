@@ -641,7 +641,7 @@ impl Prover {
 
         profiler!(start "FRI");
         let revealed_current_row_indices =
-            fri.prove(&fri_combination_codeword, &mut proof_stream)?;
+            fri.prove_owned(fri_combination_codeword, &mut proof_stream)?;
         assert_eq!(
             self.parameters.num_collinearity_checks,
             revealed_current_row_indices.len()
