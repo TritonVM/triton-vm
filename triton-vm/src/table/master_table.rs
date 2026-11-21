@@ -1269,35 +1269,38 @@ impl MasterMainTable {
 
         // The tables are independent of each other, with one exception: the
         // processor table needs the clock jump differences of the memory-like
-        // tables. Hence, all other tables are filled concurrently. They do
-        // not show up in the profile individually: the profiler is local to
-        // this thread, and the tables are filled on threads of the pool.
-        profiler!(start "all but processor table");
-        let mut clk_jump_diffs_op_stack = vec![];
-        let mut clk_jump_diffs_jump_stack = vec![];
-        let clk_jump_diffs_ram = rayon::scope(|scope| {
-            scope.spawn(|_| clk_jump_diffs_op_stack = OpStackTable::fill(op_stack_table, aet, ()));
-            scope.spawn(|_| {
-                clk_jump_diffs_jump_stack = JumpStackTable::fill(jump_stack_table, aet, ());
-            });
+        // tables. Those are known as soon as the memory-like tables' rows are
+        // sorted, which is early. Hence, all tables are filled concurrently,
+        // with the processor table starting a little later. The tables do not
+        // show up in the profile individually: the profiler is local to this
+        // thread, and the tables are filled on threads of the pool.
+        rayon::scope(|scope| {
             scope.spawn(|_| ProgramTable::fill(program_table, aet, ()));
             scope.spawn(|_| HashTable::fill(hash_table, aet, ()));
             scope.spawn(|_| CascadeTable::fill(cascade_table, aet, ()));
             scope.spawn(|_| LookupTable::fill(lookup_table, aet, ()));
             scope.spawn(|_| U32Table::fill(u32_table, aet, ()));
 
-            RamTable::fill(ram_table, aet, ())
-        });
-        profiler!(stop "all but processor table");
+            let ((op_stack, jump_stack), (ram, fill_remaining_ram_table_columns)) = rayon::join(
+                || {
+                    rayon::join(
+                        || OpStackTable::fill(op_stack_table, aet, ()),
+                        || JumpStackTable::fill(jump_stack_table, aet, ()),
+                    )
+                },
+                || crate::table::ram::fill_in_two_steps(ram_table, aet),
+            );
 
-        let clk_jump_diffs = ClkJumpDiffs {
-            op_stack: clk_jump_diffs_op_stack,
-            ram: clk_jump_diffs_ram,
-            jump_stack: clk_jump_diffs_jump_stack,
-        };
-        profiler!(start "processor table");
-        ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
-        profiler!(stop "processor table");
+            // the remaining columns of the RAM table take the longest
+            scope.spawn(|_| fill_remaining_ram_table_columns());
+
+            let clk_jump_diffs = ClkJumpDiffs {
+                op_stack,
+                ram,
+                jump_stack,
+            };
+            ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+        });
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.

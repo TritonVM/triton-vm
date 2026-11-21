@@ -16,6 +16,7 @@ use ndarray::prelude::*;
 use num_traits::ConstOne;
 use num_traits::ConstZero;
 use num_traits::One;
+use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use strum::EnumCount;
@@ -67,54 +68,13 @@ impl TraceTable for RamTable {
     type FillReturnInfo = Vec<BFieldElement>;
 
     fn fill(
-        mut ram_table: ArrayViewMut2<BFieldElement>,
+        ram_table: ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
         _: Self::FillParam,
     ) -> Self::FillReturnInfo {
-        let mut ram_table = ram_table.slice_mut(s![0..aet.height_of_table(TableId::Ram), ..]);
+        let (clock_jump_differences, fill_remaining_columns) = fill_in_two_steps(ram_table, aet);
+        fill_remaining_columns();
 
-        profiler!(start "ram: sort");
-        let sort_keys = par_sort_rows_into(
-            ram_table.view_mut(),
-            aet.ram_trace.view(),
-            MainColumn::RamPointer.main_index(),
-            MainColumn::CLK.main_index(),
-        );
-        debug_assert!(
-            ram_table
-                .rows()
-                .into_iter()
-                .tuple_windows()
-                .all(|(row_0, row_1)| compare_rows(row_0, row_1) != Ordering::Greater)
-        );
-        profiler!(stop "ram: sort");
-
-        // Every change of the RAM pointer starts a new group of rows. The
-        // groups' pointers are the unique RAM pointers, in ascending order.
-        profiler!(start "ram: unique");
-        let mut unique_ram_pointers = vec![];
-        let mut group_of_row = Vec::with_capacity(sort_keys.len());
-        for (row, &[ram_pointer, _]) in sort_keys.iter().enumerate() {
-            if row == 0 || ram_pointer != sort_keys[row - 1][0] {
-                unique_ram_pointers.push(BFieldElement::new(ram_pointer));
-            }
-            group_of_row.push(unique_ram_pointers.len() - 1);
-        }
-        profiler!(stop "ram: unique");
-        profiler!(start "ram: bezout");
-        let (bezout_0, bezout_1) =
-            bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
-        profiler!(stop "ram: bezout");
-
-        profiler!(start "ram: consistent");
-        let clock_jump_differences = make_ram_table_consistent(
-            &mut ram_table,
-            &sort_keys,
-            &group_of_row,
-            &bezout_0,
-            &bezout_1,
-        );
-        profiler!(stop "ram: consistent");
         clock_jump_differences
     }
 
@@ -240,14 +200,83 @@ pub fn bezout_coefficient_polynomials_coefficients(
         &zerofier_tree,
         &lagrange_weights,
     );
-    let one_minus_fd_b = Polynomial::one() - fd.par_fast_multiply(&b);
-    let a = one_minus_fd_b.par_clean_divide(rp);
+
+    // The tree is not needed anymore, and freeing its many nodes takes a
+    // while.
+    let other_coefficient = || {
+        let one_minus_fd_b = Polynomial::one() - fd.par_fast_multiply(&b);
+        one_minus_fd_b.par_clean_divide(rp)
+    };
+    let (a, ()) = rayon::join(other_coefficient, || drop(zerofier_tree));
 
     let mut coefficients_0 = a.into_coefficients();
     let mut coefficients_1 = b.into_coefficients();
     coefficients_0.resize(unique_roots.len(), BFieldElement::ZERO);
     coefficients_1.resize(unique_roots.len(), BFieldElement::ZERO);
     (coefficients_0, coefficients_1)
+}
+
+/// [Fill](TraceTable::fill) the RAM table in two steps.
+///
+/// The first step, which is done when this function returns, sorts the rows
+/// and gives the clock jump differences. The second step, which is the
+/// returned function, fills in the columns that are derived from the sorted
+/// rows. The second step takes much longer than the first because it
+/// computes the Bézout coefficients. Since the Processor Table only depends
+/// on the clock jump differences, the split allows filling it concurrently to
+/// the second step.
+pub(super) fn fill_in_two_steps<'a>(
+    mut ram_table: ArrayViewMut2<'a, BFieldElement>,
+    aet: &AlgebraicExecutionTrace,
+) -> (Vec<BFieldElement>, impl FnOnce() + Send + use<'a>) {
+    let num_rows = aet.height_of_table(TableId::Ram);
+    let sort_keys = par_sort_rows_into(
+        ram_table.slice_mut(s![0..num_rows, ..]),
+        aet.ram_trace.view(),
+        MainColumn::RamPointer.main_index(),
+        MainColumn::CLK.main_index(),
+    );
+    debug_assert!(
+        ram_table
+            .slice(s![0..num_rows, ..])
+            .rows()
+            .into_iter()
+            .tuple_windows()
+            .all(|(row_0, row_1)| compare_rows(row_0, row_1) != Ordering::Greater)
+    );
+
+    // between consecutive rows with equal RAM pointers
+    let clock_jump_differences = sort_keys
+        .par_windows(2)
+        .filter(|rows| rows[0][0] == rows[1][0])
+        .map(|rows| BFieldElement::new(rows[1][1]) - BFieldElement::new(rows[0][1]))
+        .collect();
+
+    let fill_remaining_columns = move || {
+        // Every change of the RAM pointer starts a new group of rows. The
+        // groups' pointers are the unique RAM pointers, in ascending order.
+        let mut unique_ram_pointers = vec![];
+        let mut group_of_row = Vec::with_capacity(sort_keys.len());
+        for (row, &[ram_pointer, _]) in sort_keys.iter().enumerate() {
+            if row == 0 || ram_pointer != sort_keys[row - 1][0] {
+                unique_ram_pointers.push(BFieldElement::new(ram_pointer));
+            }
+            group_of_row.push(unique_ram_pointers.len() - 1);
+        }
+        let (bezout_0, bezout_1) =
+            bezout_coefficient_polynomials_coefficients(&unique_ram_pointers);
+
+        let mut ram_table = ram_table.slice_mut(s![0..num_rows, ..]);
+        make_ram_table_consistent(
+            &mut ram_table,
+            &sort_keys,
+            &group_of_row,
+            &bezout_0,
+            &bezout_1,
+        );
+    };
+
+    (clock_jump_differences, fill_remaining_columns)
 }
 
 /// - Set inverse of RAM pointer difference
@@ -265,7 +294,7 @@ fn make_ram_table_consistent(
     group_of_row: &[usize],
     bezout_coefficient_polynomial_coefficients_0: &[BFieldElement],
     bezout_coefficient_polynomial_coefficients_1: &[BFieldElement],
-) -> Vec<BFieldElement> {
+) {
     let num_rows = sort_keys.len();
     let num_groups = bezout_coefficient_polynomial_coefficients_0.len();
     assert_eq!(
@@ -275,12 +304,11 @@ fn make_ram_table_consistent(
     assert_eq!(num_rows, group_of_row.len());
     if num_rows == 0 {
         assert_eq!(0, num_groups);
-        return vec![];
+        return;
     }
     assert_eq!(num_groups, group_of_row[num_rows - 1] + 1);
 
     let ram_pointer = |row: usize| BFieldElement::new(sort_keys[row][0]);
-    let clk = |row: usize| BFieldElement::new(sort_keys[row][1]);
     // Whether the RAM pointer changes from the given row to the next one.
     // The last row has no next row.
     let ram_pointer_changes =
@@ -327,12 +355,6 @@ fn make_ram_table_consistent(
             .collect::<Vec<_>>();
         par_fill_column(ram_table, column.main_index(), &column_values);
     }
-
-    (0..num_rows - 1)
-        .into_par_iter()
-        .filter(|&row| !ram_pointer_changes(row))
-        .map(|row| clk(row + 1) - clk(row))
-        .collect()
 }
 
 fn auxiliary_column_running_product_of_ramp_and_formal_derivative(
