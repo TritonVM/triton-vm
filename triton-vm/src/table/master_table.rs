@@ -1814,38 +1814,46 @@ fn inner_product(
 /// A sum of products of [`BFieldElement`]s, where the products are not reduced
 /// individually. Since the elements are in Montgomery representation, a single
 /// Montgomery reduction of the sum gives the reduced sum of the products.
+///
+/// The sum is `carries · 2^128 + low`.
 #[derive(Debug, Copy, Clone)]
-struct UnreducedSum(u128);
+struct UnreducedSum {
+    low: u128,
+    carries: u64,
+}
 
 impl UnreducedSum {
-    const ZERO: Self = Self(0);
+    const ZERO: Self = Self { low: 0, carries: 0 };
 
     /// The Montgomery reduction requires its input to be smaller than this.
     const P_TIMES_2_POW_64: u128 = (BFieldElement::P as u128) << 64;
 
-    /// Equals 2^128 - p·2^64. Adding it after the sum wrapped around 2^128
-    /// keeps the sum's residue modulo p intact.
-    const WRAP_AROUND_CORRECTION: u128 = (1 << 96) - (1 << 64);
+    /// The Montgomery reduction of 2^128, i.e., 2^64 mod p.
+    const REDUCED_CARRY: u64 = u32::MAX as u64;
 
     #[inline(always)]
     fn add_product(&mut self, a: BFieldElement, b: BFieldElement) {
         let product = u128::from(a.raw_u64()) * u128::from(b.raw_u64());
-        let (sum, wrapped_around) = self.0.overflowing_add(product);
-
-        // After a wrap-around, the sum is smaller than the product, which is at
-        // most (p-1)^2 = 2^128 - 2^97 + 2^64. Adding the correction can't
-        // overflow.
-        self.0 = sum + u128::from(wrapped_around) * Self::WRAP_AROUND_CORRECTION;
+        let (low, carry) = self.low.overflowing_add(product);
+        self.low = low;
+        self.carries += u64::from(carry);
     }
 
+    /// The reduced sum. The number of summands must be smaller than 2^31.
     #[inline(always)]
     fn reduce(self) -> BFieldElement {
-        let sum = if self.0 >= Self::P_TIMES_2_POW_64 {
-            self.0 - Self::P_TIMES_2_POW_64
+        let low = if self.low >= Self::P_TIMES_2_POW_64 {
+            self.low - Self::P_TIMES_2_POW_64
         } else {
-            self.0
+            self.low
         };
-        BFieldElement::from_raw_u64(BFieldElement::montyred(sum))
+        let low = BFieldElement::from_raw_u64(BFieldElement::montyred(low));
+
+        // fewer than 2^31 carries: the product is smaller than p
+        debug_assert!(self.carries < 1 << 31);
+        let carries = BFieldElement::from_raw_u64(self.carries * Self::REDUCED_CARRY);
+
+        low + carries
     }
 }
 
