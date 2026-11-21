@@ -550,11 +550,9 @@ where
                     .iter()
                     .zip_eq(numerators.chunks_exact_mut(num_columns))
                 {
-                    let mut numerator = XFieldElement::ZERO;
-                    for (&value, &weight) in column.iter().zip_eq(&weights[rows.clone()]) {
-                        numerator += value * weight;
-                    }
-                    numerators[column_index] = numerator;
+                    let mut sums = UnreducedProduct::ZERO;
+                    sums.add_products(column, &weights[rows.clone()]);
+                    numerators[column_index] = sums.reduce();
                 }
             }
             numerators
@@ -827,8 +825,9 @@ where
         weights: Array1<XFieldElement>,
     ) -> Polynomial<'_, XFieldElement> {
         // The table is column-major, so the rows are summed block by block:
-        // within a block, every column's contiguous piece is read once.
-        const ROWS_PER_BLOCK: usize = 1 << 11;
+        // within a block, every column's contiguous piece is read once. A
+        // block's unreduced sums fit into the L2 cache.
+        const ROWS_PER_BLOCK: usize = 1 << 10;
 
         assert_eq!(Self::NUM_COLUMNS, weights.len());
 
@@ -841,12 +840,14 @@ where
             .for_each(|(block_index, sums)| {
                 let first_row = block_index * ROWS_PER_BLOCK;
                 let rows = first_row..first_row + sums.len();
+                let mut unreduced_sums = vec![UnreducedProduct::ZERO; sums.len()];
                 for (column, &weight) in trace_table.columns().into_iter().zip_eq(weights) {
                     let column = column.slice(s![rows.clone()]);
                     let column = column.as_slice().expect("columns are contiguous");
-                    for (sum, &value) in sums.iter_mut().zip(column) {
-                        *sum += value * weight;
-                    }
+                    UnreducedProduct::add_scaled(&mut unreduced_sums, column, weight);
+                }
+                for (sum, unreduced_sum) in sums.iter_mut().zip(unreduced_sums) {
+                    *sum = unreduced_sum.reduce();
                 }
             });
         let trace_domain = self.domains().trace;
@@ -1797,27 +1798,95 @@ fn inner_product(
     let (base_values, ext_values) = values.split_at(num_base_values);
     let (base_weights, ext_weights) = weights.split_at(num_base_values);
 
-    // the coefficients of the product before reduction modulo the extension
-    // field's defining polynomial x^3 - x + 1
-    let mut sums = [UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1];
-    for (value, weight) in base_values.iter().zip(base_weights) {
+    let mut sums = UnreducedProduct::ZERO;
+    for (value, &weight) in base_values.iter().zip(base_weights) {
         debug_assert!(value.unlift().is_some());
-        let value = value.coefficients[0];
-        for (sum, &w) in sums.iter_mut().zip(&weight.coefficients) {
+        sums.add_base_product(value.coefficients[0], weight);
+    }
+    sums.add_products(ext_values, ext_weights);
+
+    sums.reduce()
+}
+
+/// A sum of products of field elements with [`XFieldElement`]s, where neither
+/// the products of the coefficients nor the product polynomials are reduced
+/// individually: these are the coefficients of the sum of the products before
+/// reduction modulo the extension field's defining polynomial x^3 - x + 1.
+#[derive(Debug, Copy, Clone)]
+struct UnreducedProduct([UnreducedSum; 2 * EXTENSION_DEGREE - 1]);
+
+impl UnreducedProduct {
+    const ZERO: Self = Self([UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1]);
+
+    #[inline(always)]
+    fn add_base_product(&mut self, value: BFieldElement, weight: XFieldElement) {
+        for (sum, &w) in self.0.iter_mut().zip(&weight.coefficients) {
             sum.add_product(value, w);
         }
     }
-    for (value, weight) in ext_values.iter().zip(ext_weights) {
+
+    #[inline(always)]
+    fn add_extension_product(&mut self, value: XFieldElement, weight: XFieldElement) {
         for (i, &v) in value.coefficients.iter().enumerate() {
             for (j, &w) in weight.coefficients.iter().enumerate() {
-                sums[i + j].add_product(v, w);
+                self.0[i + j].add_product(v, w);
             }
         }
     }
 
-    // x^3 = x - 1 and x^4 = x^2 - x
-    let [s0, s1, s2, s3, s4] = sums.map(UnreducedSum::reduce);
-    XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+    /// Add `Σ values[i] · weights[i]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the numbers of values and weights differ.
+    #[inline]
+    fn add_products<FF: BfeSlice>(&mut self, values: &[FF], weights: &[XFieldElement]) {
+        assert_eq!(values.len(), weights.len());
+        let limbs = FF::bfe_slice(values);
+        if size_of::<FF>() == size_of::<BFieldElement>() {
+            for (&value, &weight) in limbs.iter().zip(weights) {
+                self.add_base_product(value, weight);
+            }
+        } else {
+            let (values, []) = limbs.as_chunks::<EXTENSION_DEGREE>() else {
+                unreachable!("field elements are base or extension field elements");
+            };
+            for (&value, &weight) in values.iter().zip(weights) {
+                self.add_extension_product(XFieldElement::new(value), weight);
+            }
+        }
+    }
+
+    /// Add `values[i] · weight` to `sums[i]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the numbers of sums and values differ.
+    #[inline]
+    fn add_scaled<FF: BfeSlice>(sums: &mut [Self], values: &[FF], weight: XFieldElement) {
+        assert_eq!(sums.len(), values.len());
+        let limbs = FF::bfe_slice(values);
+        if size_of::<FF>() == size_of::<BFieldElement>() {
+            for (sum, &value) in sums.iter_mut().zip(limbs) {
+                sum.add_base_product(value, weight);
+            }
+        } else {
+            let (values, []) = limbs.as_chunks::<EXTENSION_DEGREE>() else {
+                unreachable!("field elements are base or extension field elements");
+            };
+            for (sum, &value) in sums.iter_mut().zip(values) {
+                sum.add_extension_product(XFieldElement::new(value), weight);
+            }
+        }
+    }
+
+    /// The reduced sum. The number of summands must be smaller than 2^29.
+    #[inline(always)]
+    fn reduce(self) -> XFieldElement {
+        // x^3 = x - 1 and x^4 = x^2 - x
+        let [s0, s1, s2, s3, s4] = self.0.map(UnreducedSum::reduce);
+        XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+    }
 }
 
 /// A sum of products of [`BFieldElement`]s, where the products are not reduced
