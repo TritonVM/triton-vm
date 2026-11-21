@@ -44,6 +44,7 @@ use crate::proof_stream::ProofStream;
 use crate::table::RandQuotientSegments;
 use crate::table::auxiliary_table::Evaluable;
 use crate::table::master_table::BfeSlice;
+use crate::table::master_table::LdeMemory;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
@@ -302,6 +303,13 @@ impl Prover {
         proof_stream.enqueue(ProofItem::Log2PaddedHeight(padded_height.ilog2()));
         profiler!(stop "derive additional parameters");
 
+        // Reserving the memory for the low-degree-extended tables early
+        // makes it available faster once it is needed.
+        let cache_decision = Self::lde_trace_cache_decision(domains);
+        let lde_num_rows = domains.quotient.len().max(domains.fri.len());
+        let main_lde_memory =
+            LdeMemory::reserve(lde_num_rows * MasterMainTable::NUM_COLUMNS, cache_decision);
+
         profiler!(start "main tables");
         profiler!(start "create" ("gen"));
         let mut master_main_table = MasterMainTable::new(
@@ -316,8 +324,10 @@ impl Prover {
         master_main_table.pad();
         profiler!(stop "pad");
 
-        let cache_decision = Self::lde_trace_cache_decision(&master_main_table);
-        master_main_table.maybe_low_degree_extend_all_columns(cache_decision);
+        master_main_table.maybe_low_degree_extend_all_columns_into(main_lde_memory);
+
+        let aux_lde_memory =
+            LdeMemory::reserve(lde_num_rows * MasterAuxTable::NUM_COLUMNS, cache_decision);
 
         profiler!(start "Merkle tree");
         let main_merkle_tree = master_main_table.merkle_tree();
@@ -335,7 +345,7 @@ impl Prover {
         profiler!(stop "main tables");
 
         profiler!(start "aux tables");
-        master_aux_table.maybe_low_degree_extend_all_columns(cache_decision);
+        master_aux_table.maybe_low_degree_extend_all_columns_into(aux_lde_memory);
 
         profiler!(start "Merkle tree");
         let aux_merkle_tree = master_aux_table.merkle_tree();
@@ -706,13 +716,13 @@ impl Prover {
     ///
     /// The decision is made once for both tables since caching only one of
     /// them does not help; see [`Self::compute_quotient_segments`].
-    fn lde_trace_cache_decision(main_table: &MasterMainTable) -> Option<CacheDecision> {
+    fn lde_trace_cache_decision(domains: ProverDomains) -> Option<CacheDecision> {
         if let Some(decision) = crate::config::cache_lde_trace() {
             return Some(decision);
         }
 
         // Compute in `u64` as usize may overflow on 32-bit machines.
-        let num_rows = main_table.evaluation_domain().len() as u64;
+        let num_rows = domains.quotient.len().max(domains.fri.len()) as u64;
         let bytes_per_row = (MasterMainTable::NUM_COLUMNS * size_of::<BFieldElement>()
             + MasterAuxTable::NUM_COLUMNS * size_of::<XFieldElement>())
             as u64;
@@ -722,6 +732,11 @@ impl Prover {
         // of 2^21, the peak memory consumption is 1.3 times the size of the
         // cached tables. Leave some margin.
         let required_bytes = cache_bytes.saturating_mul(3) / 2;
+
+        // The decision is made before the main table's trace is allocated.
+        let trace_bytes = (domains.trace.len() as u64)
+            .saturating_mul((MasterMainTable::NUM_COLUMNS * size_of::<BFieldElement>()) as u64);
+        let required_bytes = required_bytes.saturating_add(trace_bytes);
         crate::config::automatic_lde_trace_caching(required_bytes)
     }
 

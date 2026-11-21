@@ -188,6 +188,144 @@ impl BfeSlice for XFieldElement {
     }
 }
 
+/// The memory for a [low-degree-extended table][lde], reserved ahead of its
+/// use.
+///
+/// The operating system hands out freshly allocated memory lazily, page by
+/// page, on first access, and zeroes every page before doing so. For tables
+/// of many gigabytes, this takes a considerable part of the time it takes to
+/// fill them. If the memory is reserved early, a few background threads
+/// trigger this process while the prover is busy with work that leaves many
+/// cores idle; for example, when creating the tables' traces. This only
+/// happens where it has been observed to help: on Linux, and if the thread
+/// pool is big.
+///
+/// [lde]: MasterTable::maybe_low_degree_extend_all_columns
+#[derive(Debug)]
+pub(crate) struct LdeMemory<FF> {
+    memory: Vec<MaybeUninit<FF>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl<FF> LdeMemory<FF> {
+    /// One background thread per this many threads of the thread pool.
+    #[cfg(target_os = "linux")]
+    const POOL_THREADS_PER_BACKGROUND_THREAD: usize = 32;
+
+    /// Very few threads suffice to get the memory in time. More threads get
+    /// it faster, but slow down the prover's concurrent work by competing
+    /// for caches, memory bandwidth, and the operating system's attention.
+    #[cfg(target_os = "linux")]
+    const MAX_NUM_BACKGROUND_THREADS: usize = 2;
+
+    /// The background threads claim the memory in pieces of this many bytes.
+    #[cfg(target_os = "linux")]
+    const BYTES_PER_CLAIM: usize = 1 << 26;
+
+    /// The distance, in bytes, of the memory accesses of the background
+    /// threads. No page is smaller on the supported platforms.
+    #[cfg(target_os = "linux")]
+    const PAGE_SIZE: usize = 1 << 12;
+
+    /// Reserve memory for the given number of elements, unless the decision
+    /// is to not cache the low-degree-extended table. Without a decision,
+    /// the memory is reserved if that is possible.
+    pub fn reserve(num_elements: usize, cache_decision: Option<CacheDecision>) -> Option<Self> {
+        let mut memory = Vec::with_capacity(0);
+        match cache_decision {
+            Some(CacheDecision::NoCache) => return None,
+            Some(CacheDecision::Cache) => memory.reserve_exact(num_elements),
+            None => memory.try_reserve_exact(num_elements).ok()?,
+        }
+        twenty_first::memory::advise_huge_pages(memory.spare_capacity_mut());
+
+        let mut reserved = Self {
+            memory,
+            stop: std::sync::Arc::default(),
+            threads: vec![],
+        };
+        reserved.start_background_threads();
+
+        Some(reserved)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn start_background_threads(&mut self) {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        let num_threads = (rayon::current_num_threads() / Self::POOL_THREADS_PER_BACKGROUND_THREAD)
+            .min(Self::MAX_NUM_BACKGROUND_THREADS);
+        let num_bytes = self.memory.capacity() * size_of::<FF>();
+        if num_threads == 0 || num_bytes < 2 * Self::BYTES_PER_CLAIM {
+            return;
+        }
+
+        let start = self.memory.as_mut_ptr().expose_provenance();
+        let next_claim = std::sync::Arc::new(AtomicUsize::new(0));
+        for _ in 0..num_threads {
+            let stop = self.stop.clone();
+            let next_claim = next_claim.clone();
+            let touch_pages = move || {
+                loop {
+                    let claim = next_claim.fetch_add(Self::BYTES_PER_CLAIM, Ordering::Relaxed);
+                    if claim >= num_bytes {
+                        return;
+                    }
+                    let claim_end = (claim + Self::BYTES_PER_CLAIM).min(num_bytes);
+                    for offset in (claim..claim_end).step_by(Self::PAGE_SIZE) {
+                        if stop.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let byte = std::ptr::with_exposed_provenance_mut::<u8>(start + offset);
+
+                        // SAFETY: The byte is within the allocation, which
+                        // is kept alive, and not accessed in any other way,
+                        // until this thread has been joined; see
+                        // `stop_background_threads`. The claims of the
+                        // threads are disjoint. Any bit pattern is valid for
+                        // the uninitialized memory.
+                        unsafe { byte.write_volatile(0) };
+                    }
+                }
+            };
+            let thread = std::thread::Builder::new()
+                .name("lde-memory".to_string())
+                .spawn(touch_pages);
+
+            // not being able to spawn a thread only costs performance
+            let Ok(thread) = thread else { break };
+            self.threads.push(thread);
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn start_background_threads(&mut self) {}
+
+    fn stop_background_threads(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        for thread in self.threads.drain(..) {
+            // the threads cannot panic
+            drop(thread.join());
+        }
+    }
+
+    /// The reserved memory. Its length is 0, its capacity at least the
+    /// number of elements it was reserved for.
+    fn into_inner(mut self) -> Vec<MaybeUninit<FF>> {
+        self.stop_background_threads();
+        std::mem::take(&mut self.memory)
+    }
+}
+
+impl<FF> Drop for LdeMemory<FF> {
+    fn drop(&mut self) {
+        // The memory must outlive the threads accessing it.
+        self.stop_background_threads();
+    }
+}
+
 pub(crate) trait MasterTable: Sync
 where
     StandardUniform: Distribution<Self::Field>,
@@ -252,21 +390,24 @@ where
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
+    #[cfg(test)]
     fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
+        let num_rows = self.evaluation_domain().len();
+        let memory = LdeMemory::reserve(num_rows * Self::NUM_COLUMNS, cache_decision);
+        self.maybe_low_degree_extend_all_columns_into(memory);
+    }
+
+    /// Like [`Self::maybe_low_degree_extend_all_columns`], with memory that
+    /// was [reserved](LdeMemory::reserve) ahead of time. Does nothing if no
+    /// memory was reserved.
+    fn maybe_low_degree_extend_all_columns_into(&mut self, memory: Option<LdeMemory<Self::Field>>) {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
-
-        let mut extended_trace: Vec<MaybeUninit<Self::Field>> = Vec::with_capacity(0);
-        match cache_decision {
-            Some(CacheDecision::NoCache) => return,
-            Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
-            None => {
-                let Ok(()) = extended_trace.try_reserve_exact(num_elements) else {
-                    return;
-                };
-            }
+        let Some(memory) = memory else {
+            return;
         };
+        let mut extended_trace = memory.into_inner();
 
         profiler!(start "LDE" ("LDE"));
         profiler!(start "polynomial zero-initialization");
@@ -284,7 +425,6 @@ where
         profiler!(stop "interpolation");
 
         assert!(extended_trace.capacity() >= num_elements);
-        twenty_first::memory::advise_huge_pages(extended_trace.spare_capacity_mut());
         unsafe {
             // SAFETY:
             // 1. The capacity is sufficiently large – see above `assert!`.
