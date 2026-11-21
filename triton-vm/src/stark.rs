@@ -557,85 +557,68 @@ impl Prover {
         //
         // Both approaches are sound. The first approach is more efficient, as
         // it requires fewer operations.
-        let short_domain_values = short_domain.values();
-
-        profiler!(start "main&aux curr row");
+        //
+        // The summands are never materialized as codewords of their own: the
+        // combination codeword is computed in a single pass, see
+        // [`Self::deep_codeword`].
+        profiler!(start "out-of-domain values");
         let out_of_domain_curr_row_main_and_aux_value =
             main_and_aux_combination_polynomial.par_evaluate(out_of_domain_point_curr_row);
-        let main_and_aux_curr_row_deep_codeword = Self::deep_codeword(
-            &main_and_aux_codeword,
-            &short_domain_values,
-            out_of_domain_point_curr_row,
-            out_of_domain_curr_row_main_and_aux_value,
-        );
-        profiler!(stop "main&aux curr row");
-
-        profiler!(start "main&aux next row");
         let out_of_domain_next_row_main_and_aux_value =
             main_and_aux_combination_polynomial.par_evaluate(out_of_domain_point_next_row);
-        let main_and_aux_next_row_deep_codeword = Self::deep_codeword(
-            &main_and_aux_codeword,
-            &short_domain_values,
-            out_of_domain_point_next_row,
-            out_of_domain_next_row_main_and_aux_value,
-        );
-        profiler!(stop "main&aux next row");
-
-        profiler!(start "randomized segmented quotient");
         let out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value =
             randomized_quotient_segments_ood_poly_p
                 .par_evaluate(ood_point_curr_row_pow_num_segments);
-        let randomized_quotient_segments_curr_row_deep_codeword = Self::deep_codeword(
-            &randomized_quotient_segments_ood_codeword_p,
-            &short_domain_values,
-            ood_point_curr_row_pow_num_segments,
-            out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value,
-        );
-
         let out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value =
             randomized_quotient_segments_ood_poly_r
                 .par_evaluate(ood_point_curr_row_times_zeta_pow_num_segments);
-        let randomized_quotient_segments_curr_row_times_zeta_deep_codeword = Self::deep_codeword(
-            &randomized_quotient_segments_ood_codeword_r,
-            &short_domain_values,
-            ood_point_curr_row_times_zeta_pow_num_segments,
-            out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value,
-        );
-        profiler!(stop "randomized segmented quotient");
+        profiler!(stop "out-of-domain values");
+
+        profiler!(start "sum" ("CC"));
+        let deep_weights = weights.deep.as_slice().unwrap();
+        let deep_codeword_components: [_; NUM_DEEP_CODEWORD_COMPONENTS] = [
+            DeepCodewordComponent {
+                codeword: &main_and_aux_codeword,
+                out_of_domain_point: out_of_domain_point_curr_row,
+                out_of_domain_value: out_of_domain_curr_row_main_and_aux_value,
+                weight: deep_weights[0],
+            },
+            DeepCodewordComponent {
+                codeword: &main_and_aux_codeword,
+                out_of_domain_point: out_of_domain_point_next_row,
+                out_of_domain_value: out_of_domain_next_row_main_and_aux_value,
+                weight: deep_weights[1],
+            },
+            DeepCodewordComponent {
+                codeword: &randomized_quotient_segments_ood_codeword_p,
+                out_of_domain_point: ood_point_curr_row_pow_num_segments,
+                out_of_domain_value:
+                    out_of_domain_curr_row_pow_num_segments_rand_quot_segments_value,
+                weight: deep_weights[2],
+            },
+            DeepCodewordComponent {
+                codeword: &randomized_quotient_segments_ood_codeword_r,
+                out_of_domain_point: ood_point_curr_row_times_zeta_pow_num_segments,
+                out_of_domain_value:
+                    out_of_domain_curr_row_times_zeta_pow_num_segments_rand_quot_segments_value,
+                weight: deep_weights[3],
+            },
+        ];
+        let deep_codeword = Self::deep_codeword(short_domain, deep_codeword_components);
+        profiler!(stop "sum");
         profiler!(stop "DEEP");
 
-        profiler!(start "combined DEEP polynomial");
-        profiler!(start "sum" ("CC"));
-        let deep_codeword_components: [_; NUM_DEEP_CODEWORD_COMPONENTS] = [
-            main_and_aux_curr_row_deep_codeword,
-            main_and_aux_next_row_deep_codeword,
-            randomized_quotient_segments_curr_row_deep_codeword,
-            randomized_quotient_segments_curr_row_times_zeta_deep_codeword,
-        ];
-        let deep_weights = weights.deep.as_slice().unwrap();
-        let deep_codeword = (0..short_domain.len())
-            .into_par_iter()
-            .map(|i| {
-                deep_codeword_components
-                    .iter()
-                    .zip_eq(deep_weights)
-                    .map(|(codeword, &weight)| codeword[i] * weight)
-                    .sum()
-            })
-            .collect::<Vec<XFieldElement>>();
-        profiler!(stop "sum");
         let fri_combination_codeword = if fri_domain_is_short_domain {
             deep_codeword
         } else {
-            profiler!(start "LDE" ("LDE"));
+            profiler!(start "combined DEEP polynomial LDE" ("LDE"));
             let deep_codeword = domains
                 .fri
                 .par_evaluate(&domains.quotient.par_interpolate(&deep_codeword));
-            profiler!(stop "LDE");
+            profiler!(stop "combined DEEP polynomial LDE");
             deep_codeword
         };
         assert_eq!(domains.fri.len(), fri_combination_codeword.len());
-        profiler!(stop "combined DEEP polynomial");
 
         profiler!(start "FRI");
         let revealed_current_row_indices =
@@ -1355,8 +1338,6 @@ impl Prover {
         (randomized_segment_codewords, randomized_segment_polynomials)
     }
 
-    /// Apply the [DEEP update](Stark::deep_update) to a polynomial in value
-    /// form, _i.e._, to a codeword.
     /// Whether the out-of-domain rows of the randomized quotient table conflict
     /// with the rows revealed at the given in-domain points.
     ///
@@ -1400,27 +1381,62 @@ impl Prover {
             .any(|point| in_domain_indeterminates.contains(&point))
     }
 
-    fn deep_codeword(
-        codeword: &[XFieldElement],
-        domain_values: &[BFieldElement],
-        out_of_domain_point: XFieldElement,
-        out_of_domain_value: XFieldElement,
+    /// The weighted sum of the [DEEP updates](Stark::deep_update) of
+    /// polynomials in value form, _i.e._, of codewords over the given domain.
+    ///
+    /// The DEEP update is `(f(x) - f(α)) / (x - α)`. Field inversion is
+    /// expensive; batch inversion replaces (almost) all of them with
+    /// multiplications. The sum is computed chunk by chunk, where a chunk's
+    /// denominators for all the components fit into the L2 cache. That way,
+    /// the only memory traffic is reading the codewords and writing the sum.
+    fn deep_codeword<const N: usize>(
+        domain: ArithmeticDomain,
+        components: [DeepCodewordComponent; N],
     ) -> Vec<XFieldElement> {
-        // The DEEP update is (f(x) - f(α)) / (x - α). Field inversion is
-        // expensive; batch inversion replaces (almost) all of them with
-        // multiplications.
-        assert_eq!(domain_values.len(), codeword.len());
-        let denominators = domain_values
-            .par_iter()
-            .map(|&x| x - out_of_domain_point)
-            .collect();
-        let denominator_inverses = XFieldElement::par_batch_inversion(denominators);
-        codeword
-            .par_iter()
-            .zip_eq(denominator_inverses)
-            .map(|(&f_x, denominator_inverse)| (f_x - out_of_domain_value) * denominator_inverse)
-            .collect()
+        const CHUNK_LEN: usize = 1 << 8;
+
+        for component in &components {
+            assert_eq!(domain.len(), component.codeword.len());
+        }
+
+        let mut deep_codeword = vec![XFieldElement::ZERO; domain.len()];
+        deep_codeword
+            .par_chunks_mut(CHUNK_LEN)
+            .enumerate()
+            .for_each(|(chunk_index, chunk)| {
+                let first_index = chunk_index * CHUNK_LEN;
+                let mut domain_value = domain.value(u32::try_from(first_index).unwrap());
+                let mut denominators = Vec::with_capacity(N * chunk.len());
+                for _ in 0..chunk.len() {
+                    for component in &components {
+                        denominators.push(domain_value - component.out_of_domain_point);
+                    }
+                    domain_value *= domain.generator();
+                }
+                let denominator_inverses = XFieldElement::batch_inversion(denominators);
+
+                let indexed_sums = (first_index..).zip(chunk.iter_mut());
+                for ((index, sum), inverses) in indexed_sums.zip(denominator_inverses.chunks(N)) {
+                    for (component, &inverse) in components.iter().zip(inverses) {
+                        let numerator = component.codeword[index] - component.out_of_domain_value;
+                        *sum += numerator * component.weight * inverse;
+                    }
+                }
+            });
+
+        deep_codeword
     }
+}
+
+/// A polynomial in value form, together with the information needed to apply
+/// the [DEEP update](Stark::deep_update) to it, and its weight in the
+/// [combination codeword](Prover::deep_codeword).
+#[derive(Debug, Copy, Clone)]
+struct DeepCodewordComponent<'a> {
+    codeword: &'a [XFieldElement],
+    out_of_domain_point: XFieldElement,
+    out_of_domain_value: XFieldElement,
+    weight: XFieldElement,
 }
 
 impl Verifier {
@@ -3654,22 +3670,22 @@ pub(crate) mod tests {
         let out_of_domain_point: XFieldElement = rand::rng().random();
         let out_of_domain_value = low_deg_poly.evaluate(out_of_domain_point);
 
-        let deep_poly = Prover::deep_codeword(
-            &low_deg_codeword,
-            &domain.values(),
+        let component = DeepCodewordComponent {
+            codeword: &low_deg_codeword,
             out_of_domain_point,
             out_of_domain_value,
-        );
+            weight: XFieldElement::ONE,
+        };
+        let deep_poly = Prover::deep_codeword(domain, [component]);
         let poly_of_maybe_low_degree = domain.interpolate(&deep_poly);
         assert!(poly_degree as isize - 2 == poly_of_maybe_low_degree.degree());
 
         let bogus_out_of_domain_value = rand::rng().random();
-        let bogus_deep_poly = Prover::deep_codeword(
-            &low_deg_codeword,
-            &domain.values(),
-            out_of_domain_point,
-            bogus_out_of_domain_value,
-        );
+        let bogus_component = DeepCodewordComponent {
+            out_of_domain_value: bogus_out_of_domain_value,
+            ..component
+        };
+        let bogus_deep_poly = Prover::deep_codeword(domain, [bogus_component]);
         let poly_of_hopefully_high_degree = domain.interpolate(&bogus_deep_poly);
         assert!(domain_length as isize - 1 == poly_of_hopefully_high_degree.degree());
     }
