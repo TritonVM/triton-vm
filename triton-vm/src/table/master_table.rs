@@ -200,7 +200,7 @@ impl BfeSlice for XFieldElement {
 /// happens where it has been observed to help: on Linux, and if the thread
 /// pool is big.
 ///
-/// [lde]: MasterTable::maybe_low_degree_extend_all_columns
+/// [lde]: MasterTable::maybe_low_degree_extend_all_columns_into
 #[derive(Debug)]
 pub(crate) struct LdeMemory<FF> {
     memory: Vec<MaybeUninit<FF>>,
@@ -351,7 +351,7 @@ where
     /// The larger of the [`quotient_domain`](ProverDomains::quotient) and the
     /// [`fri_domain`](ProverDomains::fri).
     ///
-    /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
+    /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns_into
     fn evaluation_domain(&self) -> ArithmeticDomain {
         let domains = self.domains();
         if domains.quotient.len() > domains.fri.len() {
@@ -373,7 +373,7 @@ where
     /// 1. the table has been [low-degree extended][lde], and
     /// 2. the low-degree-extended table [has been cached][cache].
     ///
-    /// [lde]: Self::maybe_low_degree_extend_all_columns
+    /// [lde]: Self::maybe_low_degree_extend_all_columns_into
     /// [cache]: crate::config::overwrite_lde_trace_caching_to
     //
     // This cannot be implemented generically on the trait because it returns a
@@ -382,14 +382,9 @@ where
     // object's fields.
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
-    /// Low-degree extend all columns of the trace table (including randomizers)
-    /// _if_ it is to be [cached]. In that case, the resulting low-degree
-    /// extended columns can be accessed using [`quotient_domain_table`][table]
-    /// and [`fri_domain_table`][Self::fri_domain_table]. Without a decision,
-    /// the table is cached if the required memory can be reserved.
-    ///
-    /// [table]: Self::quotient_domain_table
-    /// [cached]: crate::config::overwrite_lde_trace_caching_to
+    /// Like [`Self::maybe_low_degree_extend_all_columns_into`], reserving the
+    /// memory on the spot. Without a decision, the table is cached if the
+    /// required memory can be reserved.
     #[cfg(test)]
     fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
         let num_rows = self.evaluation_domain().len();
@@ -397,9 +392,16 @@ where
         self.maybe_low_degree_extend_all_columns_into(memory);
     }
 
-    /// Like [`Self::maybe_low_degree_extend_all_columns`], with memory that
-    /// was [reserved](LdeMemory::reserve) ahead of time. Does nothing if no
-    /// memory was reserved.
+    /// Low-degree extend all columns of the trace table (including randomizers)
+    /// _if_ it is to be [cached], which is the case if memory for it was
+    /// [reserved](LdeMemory::reserve) ahead of time. In that case, the
+    /// resulting low-degree extended columns can be accessed using
+    /// [`quotient_domain_table`][table] and
+    /// [`fri_domain_table`][Self::fri_domain_table]. Does nothing if no memory
+    /// was reserved.
+    ///
+    /// [table]: Self::quotient_domain_table
+    /// [cached]: crate::config::overwrite_lde_trace_caching_to
     fn maybe_low_degree_extend_all_columns_into(&mut self, memory: Option<LdeMemory<Self::Field>>) {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
@@ -471,7 +473,7 @@ where
     }
 
     /// Not intended for direct use, but through
-    /// [`Self::maybe_low_degree_extend_all_columns`].
+    /// [`Self::maybe_low_degree_extend_all_columns_into`].
     #[doc(hidden)]
     fn memoize_low_degree_extended_table(
         &mut self,

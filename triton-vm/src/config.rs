@@ -42,7 +42,7 @@ struct Config {
     /// `None` means the decision is made automatically, based on free memory.
     /// Can be accessed via [`cache_lde_trace`].
     ///
-    /// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
+    /// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns_into
     /// [proving]: crate::stark::Stark::prove
     pub cache_lde_trace_overwrite: Option<CacheDecision>,
 }
@@ -86,7 +86,7 @@ pub fn overwrite_lde_trace_caching_to(decision: CacheDecision) {
 /// Should the [low-degree extended trace][lde] be cached? `None` means the
 /// decision is made automatically, based on free memory.
 ///
-/// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
+/// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns_into
 pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
     CONFIG.with_borrow(|config| config.cache_lde_trace_overwrite)
 }
@@ -96,7 +96,7 @@ pub(crate) fn cache_lde_trace() -> Option<CacheDecision> {
 /// `required_bytes` are available. `None` if the available memory cannot be
 /// determined.
 ///
-/// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns
+/// [lde]: crate::table::master_table::MasterTable::maybe_low_degree_extend_all_columns_into
 pub(crate) fn automatic_lde_trace_caching(required_bytes: u64) -> Option<CacheDecision> {
     let decision = if required_bytes <= available_memory()? {
         CacheDecision::Cache
