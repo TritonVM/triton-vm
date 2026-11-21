@@ -390,7 +390,13 @@ impl RustBackend {
         // Multiplying by the constant -1 is how the circuits express negation
         // and subtraction, both of which are a lot cheaper than a
         // multiplication.
-        let is_minus_one = |circuit: &ConstraintCircuit<II>| matches!(circuit.expression, CircuitExpression::BConst(c) if c == BFieldElement::new(BFieldElement::MAX));
+        let minus_one = BFieldElement::new(BFieldElement::MAX);
+        let is_minus_one = |circuit: &ConstraintCircuit<II>| {
+            let CircuitExpression::BConst(constant) = &circuit.expression else {
+                return false;
+            };
+            *constant == minus_one
+        };
         let negated_operand = |circuit: &ConstraintCircuit<II>| {
             if self.scope.contains(&circuit.id) {
                 return None;
