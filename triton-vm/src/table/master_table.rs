@@ -55,6 +55,7 @@ use std::ops::Add;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
+use std::sync::OnceLock;
 
 use air::table::AUX_CASCADE_TABLE_END;
 use air::table::AUX_CASCADE_TABLE_START;
@@ -634,17 +635,14 @@ where
     /// # Panics
     ///
     /// Panics if the `idx` is larger than or equal to [`Self::NUM_COLUMNS`].
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'static, Self::Field> {
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'_, Self::Field> {
         // While possible to produce some randomizer for a too-large index, it
         // does not have any useful application and is almost certainly a logic
         // error.
         assert!(idx < Self::NUM_COLUMNS);
 
-        let mut rng = StdRng::from_seed(offset_rng_seed(self.trace_randomizer_seed(), idx));
-        let coefficients = (0..self.num_trace_randomizers_for_column(idx))
-            .map(|_| rng.random())
-            .collect();
-        Polynomial::new(coefficients)
+        let seed = self.trace_randomizer_seed();
+        trace_randomizer(seed, idx, self.num_trace_randomizers_for_column(idx))
     }
 
     fn trace_randomizer_seed(&self) -> <StdRng as SeedableRng>::Seed;
@@ -703,7 +701,7 @@ where
         profiler!(start "fetch trace randomizers");
         let randomizers = (0..Self::NUM_COLUMNS)
             .into_par_iter()
-            .map(|i| self.trace_randomizer_for_column(i))
+            .map(|i| self.trace_randomizer_for_column(i).into_owned())
             .collect::<Vec<_>>();
         profiler!(stop "fetch trace randomizers");
 
@@ -926,10 +924,11 @@ where
             .map(|&i| domains.trace.evaluate_zerofier(i))
             .collect::<Vec<_>>();
 
-        let trace_randomizers = (0..Self::NUM_COLUMNS)
-            .into_par_iter()
-            .map(|col_idx| self.trace_randomizer_for_column(col_idx))
-            .map(|trace_randomizer| trace_randomizer.batch_evaluate(&indeterminates));
+        let trace_randomizers = (0..Self::NUM_COLUMNS).into_par_iter().map(|col_idx| {
+            self.trace_randomizer_for_column(col_idx)
+                .into_owned()
+                .batch_evaluate(&indeterminates)
+        });
 
         let columns = columns
             .zip_eq(trace_randomizers)
@@ -1038,6 +1037,13 @@ pub struct MasterAuxTable {
 
     trace_table: Array2<XFieldElement>,
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
+
+    /// The [trace randomizers][Self::trace_randomizer_for_column] of the batch
+    /// randomizer columns. Unlike those of any other column, they are long
+    /// (see [`Self::num_trace_randomizers_for_column`]), take a while to
+    /// generate, and are needed in several steps of proving.
+    batch_randomizer_trace_randomizers:
+        [OnceLock<Polynomial<'static, XFieldElement>>; NUM_BATCH_RANDOMIZERS],
 
     low_degree_extended_table: Option<Array2<XFieldElement>>,
 }
@@ -1168,6 +1174,37 @@ impl MasterTable for MasterAuxTable {
             self.num_trace_randomizers
         }
     }
+
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'_, XFieldElement> {
+        assert!(idx < Self::NUM_COLUMNS);
+
+        let seed = self.trace_randomizer_seed;
+        let num_trace_randomizers = self.num_trace_randomizers_for_column(idx);
+        let Some(batch_randomizer_idx) = idx.checked_sub(Self::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS)
+        else {
+            return trace_randomizer(seed, idx, num_trace_randomizers);
+        };
+        let randomizer = self.batch_randomizer_trace_randomizers[batch_randomizer_idx]
+            .get_or_init(|| trace_randomizer(seed, idx, num_trace_randomizers));
+
+        Polynomial::new_borrowed(randomizer.coefficients())
+    }
+}
+
+/// The trace randomizer for the column with the given index. See also
+/// [`MasterTable::trace_randomizer_for_column`].
+fn trace_randomizer<FF>(
+    seed: <StdRng as SeedableRng>::Seed,
+    column_idx: usize,
+    num_trace_randomizers: usize,
+) -> Polynomial<'static, FF>
+where
+    FF: FiniteField,
+    StandardUniform: Distribution<FF>,
+{
+    let mut rng = StdRng::from_seed(offset_rng_seed(seed, column_idx));
+    let coefficients = (0..num_trace_randomizers).map(|_| rng.random()).collect();
+    Polynomial::new(coefficients)
 }
 
 type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
@@ -1349,16 +1386,8 @@ impl MasterMainTable {
         profiler!(start "initialize master table");
         // column majority (“`F`”) for contiguous column slices
         let aux_trace_table_shape = (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f();
-        let mut aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
-
-        // a seed that also won't be used for any aux table trace randomizer
-        let batch_randomizer_seed =
-            offset_rng_seed(aux_table_trace_randomizer_seed, MasterAuxTable::NUM_COLUMNS);
-        let mut rng = StdRng::from_seed(batch_randomizer_seed);
+        let aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
         let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
-        aux_trace_table
-            .slice_mut(s![.., randomizers_start..])
-            .mapv_inplace(|_| rng.random());
         profiler!(stop "initialize master table");
 
         let mut master_aux_table = MasterAuxTable {
@@ -1366,13 +1395,15 @@ impl MasterMainTable {
             domains: self.domains,
             trace_table: aux_trace_table,
             trace_randomizer_seed: aux_table_trace_randomizer_seed,
+            batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
         };
 
         profiler!(start "slice master table");
-        let aux_trace_table = master_aux_table
+        let (aux_trace_table, mut batch_randomizers) = master_aux_table
             .trace_table
-            .slice_mut(s![.., ..randomizers_start]);
+            .view_mut()
+            .split_at(COL_AXIS, randomizers_start);
         let auxiliary_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
             aux_trace_table,
             &partial_sums(&[
@@ -1391,14 +1422,37 @@ impl MasterMainTable {
         .unwrap();
         profiler!(stop "slice master table");
 
+        // Both the batch randomizers and their trace randomizers are long
+        // sequences of random elements, the generation of which is inherently
+        // sequential. Generating them alongside the tables' extension hides
+        // the latency.
         profiler!(start "all tables");
-        Self::all_extend_functions()
-            .into_par_iter()
-            .zip_eq(self.main_tables_for_extending())
-            .zip_eq(auxiliary_tables)
-            .for_each(|((extend, main_table), aux_table)| {
-                extend(main_table, aux_table, challenges)
+        let trace_len = self.domains.trace.len();
+        let batch_randomizer_trace_randomizers =
+            &master_aux_table.batch_randomizer_trace_randomizers;
+        rayon::scope(|scope| {
+            scope.spawn(|_| {
+                // a seed that won't be used for any aux table trace randomizer
+                let batch_randomizer_seed =
+                    offset_rng_seed(aux_table_trace_randomizer_seed, MasterAuxTable::NUM_COLUMNS);
+                let mut rng = StdRng::from_seed(batch_randomizer_seed);
+                batch_randomizers.mapv_inplace(|_| rng.random());
             });
+            for (idx, cell) in (randomizers_start..).zip(batch_randomizer_trace_randomizers) {
+                scope.spawn(move |_| {
+                    let seed = aux_table_trace_randomizer_seed;
+                    cell.get_or_init(|| trace_randomizer(seed, idx, trace_len));
+                });
+            }
+
+            Self::all_extend_functions()
+                .into_par_iter()
+                .zip_eq(self.main_tables_for_extending())
+                .zip_eq(auxiliary_tables)
+                .for_each(|((extend, main_table), aux_table)| {
+                    extend(main_table, aux_table, challenges)
+                });
+        });
         profiler!(stop "all tables");
 
         profiler!(start "fill degree lowering table");
@@ -2902,6 +2956,7 @@ mod tests {
             domains,
             trace_table,
             trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).random(),
+            batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
         }
     }

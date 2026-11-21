@@ -839,11 +839,11 @@ impl Prover {
         profiler!(start "fetch trace randomizers");
         let main_trace_randomizers = (0..MasterMainTable::NUM_COLUMNS)
             .into_par_iter()
-            .map(|i| main_table.trace_randomizer_for_column(i))
+            .map(|i| main_table.trace_randomizer_for_column(i).into_owned())
             .collect::<Vec<_>>();
         let aux_trace_randomizers = (0..MasterAuxTable::NUM_COLUMNS)
             .into_par_iter()
-            .map(|i| aux_table.trace_randomizer_for_column(i))
+            .map(|i| aux_table.trace_randomizer_for_column(i).into_owned())
             .collect::<Vec<_>>();
         let main_trace_randomizers = Array1::from(main_trace_randomizers);
         let aux_trace_randomizers = Array1::from(aux_trace_randomizers);
