@@ -360,14 +360,13 @@ impl Prover {
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
 
-        let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
-            Self::compute_quotient_segments(
-                &mut master_main_table,
-                &mut master_aux_table,
-                domains.quotient,
-                &challenges,
-                &quotient_combination_weights,
-            );
+        let quotient_segment_polynomials = Self::compute_quotient_segments(
+            &mut master_main_table,
+            &mut master_aux_table,
+            domains.quotient,
+            &challenges,
+            &quotient_combination_weights,
+        );
 
         profiler!(start "randomize quotient segments");
         let (
@@ -376,7 +375,6 @@ impl Prover {
         ) = self.randomize_quotient_segments(
             domains.fri,
             self.parameters.num_trace_randomizers,
-            fri_domain_quotient_segment_codewords,
             quotient_segment_polynomials,
         );
         profiler!(stop "randomize quotient segments");
@@ -746,10 +744,7 @@ impl Prover {
         quotient_domain: ArithmeticDomain,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
-    ) -> (
-        Array2<XFieldElement>,
-        [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS],
-    ) {
+    ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
         let (Some(main_quotient_domain_codewords), Some(aux_quotient_domain_codewords)) = (
             main_table.quotient_domain_table(),
             aux_table.quotient_domain_table(),
@@ -775,19 +770,15 @@ impl Prover {
             aux_table.clear_cache();
 
             profiler!(start "quotient calculation (just-in-time)");
-            let (fri_domain_quotient_segment_codewords, quotient_segment_polynomials) =
-                Self::compute_quotient_segments_with_jit_lde(
-                    main_table,
-                    aux_table,
-                    challenges,
-                    quotient_combination_weights,
-                );
+            let quotient_segment_polynomials = Self::compute_quotient_segments_with_jit_lde(
+                main_table,
+                aux_table,
+                challenges,
+                quotient_combination_weights,
+            );
             profiler!(stop "quotient calculation (just-in-time)");
 
-            return (
-                fri_domain_quotient_segment_codewords,
-                quotient_segment_polynomials,
-            );
+            return quotient_segment_polynomials;
         };
 
         profiler!(start "quotient calculation (cached)" ("CC"));
@@ -803,21 +794,12 @@ impl Prover {
         assert_eq!(quotient_domain.len(), quotient_codeword.len());
         profiler!(stop "quotient calculation (cached)");
 
-        profiler!(start "quotient LDE" ("LDE"));
+        profiler!(start "interpolate quotient segments" ("LDE"));
         let quotient_segment_polynomials =
             Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
+        profiler!(stop "interpolate quotient segments");
 
-        let fri_domain = main_table.domains().fri;
-        let fri_domain_quotient_segment_codewords = Self::fri_domain_randomized_segment_polynomials(
-            &quotient_segment_polynomials,
-            fri_domain,
-        );
-        profiler!(stop "quotient LDE");
-
-        (
-            fri_domain_quotient_segment_codewords,
-            quotient_segment_polynomials,
-        )
+        quotient_segment_polynomials
     }
 
     /// Computes the quotient segments in a memory-friendly way, i.e., without
@@ -830,10 +812,7 @@ impl Prover {
         aux_table: &mut MasterAuxTable,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
-    ) -> (
-        Array2<XFieldElement>,
-        [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS],
-    ) {
+    ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
         // This parameter regulates a time-memory tradeoff. Semantically, it is
         // the ratio of the randomized trace length to the length of the domain
         // used for calculating the quotient segments (aka “working domain”).
@@ -1004,12 +983,8 @@ impl Prover {
         drop(aux_columns);
 
         profiler!(start "segmentify");
-        let segmentification = Self::segmentify::<NUM_QUOTIENT_SEGMENTS>(
-            quotient_multicoset_evaluations,
-            psi,
-            iota,
-            domains.fri,
-        );
+        let segmentification =
+            Self::segmentify::<NUM_QUOTIENT_SEGMENTS>(quotient_multicoset_evaluations, psi, iota);
         profiler!(stop "segmentify");
 
         profiler!(start "restore original trace" ("LDE"));
@@ -1052,17 +1027,6 @@ impl Prover {
     /// The `NUM_SEGMENTS` (=:`K`) produced segment polynomials are f_i(X) such
     /// that f(X) = Σ_k x^k · f_k(X^K).
     /// For example, for `K = 2`, this is f(X) = f_E(X²) + X·f_O(X²).
-    ///
-    /// The produced segment codewords are the segment polynomial's evaluations
-    /// on the FRI domain:
-    ///
-    /// ```txt
-    /// ⎛  …            …   …             ⎞  ┬
-    /// ⎜ f_0(FRI_dom)  …  f_K-1(FRI_dom) ⎟ FRI domain length
-    /// ⎝  …            …   …             ⎠  ┴
-    ///
-    /// ├────────── NUM_SEGMENTS ─────────┤
-    /// ```
     //
     // The mechanics of this function are backed by some serious maths
     // originally derived by Alan Szepieniec, and later generalized by him and
@@ -1152,11 +1116,7 @@ impl Prover {
         quotient_multicoset_evaluations: Array2<XFieldElement>,
         psi: BFieldElement,
         iota: BFieldElement,
-        fri_domain: ArithmeticDomain,
-    ) -> (
-        Array2<XFieldElement>,
-        [Polynomial<'static, XFieldElement>; NUM_SEGMENTS],
-    ) {
+    ) -> [Polynomial<'static, XFieldElement>; NUM_SEGMENTS] {
         let num_input_rows = quotient_multicoset_evaluations.nrows();
         let num_cosets = quotient_multicoset_evaluations.ncols();
         let num_output_rows = num_input_rows * num_cosets / NUM_SEGMENTS;
@@ -1220,30 +1180,22 @@ impl Prover {
                 }
             });
 
-        // low-degree extend columns from trace to FRI domain
+        // interpolate the columns
         let segment_domain_offset = psi.mod_pow(NUM_SEGMENTS.try_into().unwrap());
         let segment_domain = ArithmeticDomain::of_length(num_output_rows)
             .unwrap()
             .with_offset(segment_domain_offset);
-
-        // Column-major, like the codewords of the cached path: consumers rely
-        // on contiguous columns.
-        let mut quotient_codewords = Array2::zeros([fri_domain.len(), NUM_SEGMENTS].f());
-        let mut quotient_polynomials = Array1::zeros([NUM_SEGMENTS]);
-        Zip::from(quotient_segments.axis_iter(COL_AXIS))
-            .and(quotient_codewords.axis_iter_mut(COL_AXIS))
-            .and(quotient_polynomials.axis_iter_mut(ROW_AXIS))
-            .par_for_each(|segment, target_codeword, target_polynomial| {
+        let quotient_polynomials = quotient_segments
+            .axis_iter(COL_AXIS)
+            .into_par_iter()
+            .map(|segment| {
                 // Getting a column as a contiguous piece of memory from a
                 // row-majority matrix requires `.to_vec()`.
-                let interpolant = segment_domain.interpolate(&segment.to_vec());
-                let lde_codeword = fri_domain.evaluate(&interpolant);
-                Array1::from(lde_codeword).move_into(target_codeword);
-                Array0::from_elem((), interpolant).move_into(target_polynomial);
-            });
-        let quotient_polynomials = quotient_polynomials.to_vec().try_into().unwrap();
+                segment_domain.interpolate(&segment.to_vec())
+            })
+            .collect::<Vec<_>>();
 
-        (quotient_codewords, quotient_polynomials)
+        quotient_polynomials.try_into().unwrap()
     }
 
     fn interpolate_quotient_segments(
@@ -1295,30 +1247,6 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    /// The segment polynomials evaluated over the low-degree test domain.
-    fn fri_domain_randomized_segment_polynomials(
-        quotient_segment_polynomials: &[Polynomial<XFieldElement>; NUM_QUOTIENT_SEGMENTS],
-        fri_domain: ArithmeticDomain,
-    ) -> Array2<XFieldElement> {
-        // The result is column-major: every segment's codeword is evaluated
-        // directly into its column, without any intermediate copy. The next
-        // step, quotient randomization, also only performs well on a
-        // column-major array.
-        let mut codewords =
-            Self::uninitialized_column_major_table(fri_domain.len(), NUM_QUOTIENT_SEGMENTS);
-        for (segment, mut column) in quotient_segment_polynomials
-            .iter()
-            .zip(codewords.columns_mut())
-        {
-            let column = column.as_slice_mut().expect("columns are contiguous");
-            fri_domain.par_evaluate_into(segment, column);
-        }
-        // SAFETY: Every column was written to by `par_evaluate_into`, which
-        // initializes every element of the column. The columns partition the
-        // table.
-        unsafe { codewords.assume_init() }
-    }
-
     /// A column-major table with uninitialized entries.
     fn uninitialized_column_major_table<FF>(
         num_rows: usize,
@@ -1338,29 +1266,28 @@ impl Prover {
     /// For an extended explanation of what's happening, see the specification's
     /// chapter on Zero Knowledge, section “Quotient Table Randomization”.
     ///
-    /// A very brief summary of the relevant formula:
+    /// A very brief summary of the relevant formula, where `q_i` is a
+    /// quotient segment, `s_i` is a randomized quotient segment, `k` is the
+    /// number of quotient segments, and `s_k` is the randomizer:
     ///
     /// ```text
-    ///         s_i(x) = q_i(x) - ζ^(-i)·s_(i+1)(ζ^(-k)·x)
-    ///                  ╰─┬──╯   ╰───────────┬──────────╯
-    ///            can use as is   only need to compute this
+    /// s_i(x) = q_i(x) - ζ^i·s_(i+1)(ζ^k·x)
     /// ```
     ///
-    /// The various s_i are present in both value and coefficient form in order
-    /// to apply the necessary scaling by ζ^(-k).
-    /// They are also part of the result computed by this function.
+    /// The randomized segments are computed in coefficient form, which is
+    /// cheap. Only then are they evaluated on the low-degree test domain,
+    /// which is one evaluation per column of the resulting table.
     fn randomize_quotient_segments(
         &self,
         ldt_domain: ArithmeticDomain,
         num_trace_randomizers: usize,
-        segment_codewords: Array2<XFieldElement>,
         segment_polynomials: [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS],
     ) -> (
         Array2<XFieldElement>,
         [Polynomial<'static, XFieldElement>; NUM_RANDOMIZED_QUOTIENT_SEGMENTS],
     ) {
-        debug_assert_eq!(ldt_domain.len(), segment_codewords.nrows());
-        debug_assert_eq!(NUM_QUOTIENT_SEGMENTS, segment_codewords.ncols());
+        /// The number of coefficients one task works on.
+        const CHUNK_LEN: usize = 1 << 12;
 
         // use an offset for the RNG seed that is not used for any other purpose
         let rng_seed_offset = MasterMainTable::NUM_COLUMNS + MasterAuxTable::NUM_COLUMNS + 1;
@@ -1372,65 +1299,58 @@ impl Prover {
         let quotient_segment_randomizer = Polynomial::new(random_coefficients);
 
         // Set up the randomized quotient polynomials “from the right”, that
-        // is, highest index first. Working on the polynomials alone is cheap;
-        // the expensive part, evaluating on the low-degree test domain, is
-        // deferred until all polynomials are known so that it can happen in
-        // parallel.
+        // is, highest index first: coefficient `j` of `s_i` is coefficient `j`
+        // of `q_i` minus `ζ^i·ζ^(k·j)` times coefficient `j` of `s_(i+1)`.
         let mut randomized_segment_polynomials = segment_polynomials.to_vec();
         randomized_segment_polynomials.push(quotient_segment_randomizer);
-        let mut randomized_segment_polynomials: [_; NUM_RANDOMIZED_QUOTIENT_SEGMENTS] =
+
+        let zeta_to_the_k = Stark::ZETA.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        for i in (0..NUM_QUOTIENT_SEGMENTS).rev() {
+            let (segments, randomized_segments) =
+                randomized_segment_polynomials.split_at_mut(i + 1);
+            let s_i_plus_1 = randomized_segments[0].coefficients();
+            let s_i = std::mem::replace(&mut segments[i], Polynomial::new(vec![]));
+            let mut s_i = s_i.into_coefficients();
+            if s_i.len() < s_i_plus_1.len() {
+                s_i.resize(s_i_plus_1.len(), XFieldElement::ZERO);
+            }
+
+            let minus_zeta_to_the_i = -Stark::ZETA.mod_pow_u32(i as u32);
+            s_i.par_chunks_mut(CHUNK_LEN)
+                .zip(s_i_plus_1.par_chunks(CHUNK_LEN))
+                .enumerate()
+                .for_each(|(chunk_index, (s_i, s_i_plus_1))| {
+                    let first_index =
+                        u64::try_from(chunk_index * CHUNK_LEN).expect(USIZE_TO_U64_ERR);
+                    let mut factor = minus_zeta_to_the_i * zeta_to_the_k.mod_pow(first_index);
+                    for (s_i, &s_i_plus_1) in s_i.iter_mut().zip(s_i_plus_1) {
+                        *s_i += s_i_plus_1 * factor;
+                        factor *= zeta_to_the_k;
+                    }
+                });
+            segments[i] = Polynomial::new(s_i);
+        }
+        let randomized_segment_polynomials: [_; NUM_RANDOMIZED_QUOTIENT_SEGMENTS] =
             randomized_segment_polynomials.try_into().unwrap();
 
-        let zeta_to_the_k =
-            Stark::ZETA.mod_pow(u64::try_from(NUM_QUOTIENT_SEGMENTS).expect(USIZE_TO_U64_ERR));
-        let mut s_i_addend_polys = Vec::with_capacity(NUM_QUOTIENT_SEGMENTS);
-        for i in (0..NUM_QUOTIENT_SEGMENTS).rev() {
-            let zeta_to_the_i = Stark::ZETA.mod_pow(u64::try_from(i).expect(USIZE_TO_U64_ERR));
-            let s_i_plus_1_poly = &randomized_segment_polynomials[i + 1];
-            let s_i_addend_poly = -zeta_to_the_i * s_i_plus_1_poly.scale(zeta_to_the_k);
-            randomized_segment_polynomials[i] += s_i_addend_poly.clone();
-            s_i_addend_polys.push(s_i_addend_poly);
-        }
-        s_i_addend_polys.reverse();
-
-        // The randomizer's codeword is the last column; the addend codewords
-        // are added to the existing segment codewords.
-        let randomizer_poly = &randomized_segment_polynomials[NUM_QUOTIENT_SEGMENTS];
-        let polys_to_evaluate = s_i_addend_polys
-            .iter()
-            .chain(std::iter::once(randomizer_poly))
-            .collect_vec();
         // Every polynomial is evaluated directly into its column of the
-        // randomized table; the segments' codewords are then added in
-        // parallel. This avoids copying the (large) table to add a column.
+        // column-major table, without any intermediate copy.
         let mut randomized_segment_codewords = Self::uninitialized_column_major_table(
             ldt_domain.len(),
             NUM_RANDOMIZED_QUOTIENT_SEGMENTS,
         );
-        for (poly, mut column) in polys_to_evaluate
-            .into_iter()
-            .zip(randomized_segment_codewords.columns_mut())
-        {
-            let column = column.as_slice_mut().expect("columns are contiguous");
-            ldt_domain.par_evaluate_into(poly, column);
-        }
+        randomized_segment_codewords
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .zip(&randomized_segment_polynomials)
+            .for_each(|(mut column, polynomial)| {
+                let column = column.as_slice_mut().expect("columns are contiguous");
+                ldt_domain.par_evaluate_into(polynomial, column);
+            });
         // SAFETY: Every column was written to by `par_evaluate_into`, which
         // initializes every element of the column. The columns partition the
         // table.
-        let mut randomized_segment_codewords =
-            unsafe { randomized_segment_codewords.assume_init() };
-        for (mut s_i_codeword, segment_codeword) in randomized_segment_codewords
-            .columns_mut()
-            .into_iter()
-            .zip(segment_codewords.columns())
-        {
-            let s_i_codeword = s_i_codeword.as_slice_mut().expect("columns are contiguous");
-            let segment_codeword = segment_codeword.as_slice().expect("columns are contiguous");
-            s_i_codeword
-                .par_iter_mut()
-                .zip(segment_codeword)
-                .for_each(|(s_i, &segment)| *s_i += segment);
-        }
+        let randomized_segment_codewords = unsafe { randomized_segment_codewords.assume_init() };
 
         (randomized_segment_codewords, randomized_segment_polynomials)
     }
@@ -2484,17 +2404,20 @@ pub(crate) mod tests {
         };
         let num_trace_randomizers = stark.num_trace_randomizers;
         let ldt_domain = fri.domain;
-        let mut segment_codewords = Array2::zeros([ldt_domain.len(), 0]);
-        for poly in &segment_polys {
-            segment_codewords.push_column(Array1::from(ldt_domain.evaluate(poly)).view())?;
-        }
-
         let (codewords, polys) = prover.randomize_quotient_segments(
             ldt_domain,
             num_trace_randomizers,
-            segment_codewords,
-            segment_polys,
+            segment_polys.clone(),
         );
+
+        // s_i(x) = q_i(x) - ζ^i·s_(i+1)(ζ^k·x)
+        let zeta_to_the_k = Stark::ZETA.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        for (i, q_i) in segment_polys.into_iter().enumerate() {
+            let zeta_to_the_i = Stark::ZETA.mod_pow_u32(i as u32);
+            let s_i = q_i - polys[i + 1].scale(zeta_to_the_k).scalar_mul(zeta_to_the_i);
+            prop_assert_eq!(&s_i, &polys[i]);
+        }
+
         for (codeword, poly) in codewords.axis_iter(COL_AXIS).zip_eq(polys) {
             let poly_again = ldt_domain.interpolate(codeword.as_slice().unwrap());
             prop_assert_eq!(poly, poly_again);
@@ -3830,9 +3753,6 @@ pub(crate) mod tests {
         #[strategy(1_usize..=#log_trace_length.min(4))]
         log_num_cosets: usize,
 
-        #[strategy(1_usize..6)]
-        log_expansion_factor: usize,
-
         #[strategy(vec(arb(), (1 << #log_num_cosets) * (1 << #log_trace_length)))]
         #[map(Polynomial::new)]
         polynomial: Polynomial<'static, XFieldElement>,
@@ -3851,14 +3771,10 @@ pub(crate) mod tests {
         ) -> TestCaseResult {
             let num_cosets = 1 << test_data.log_num_cosets;
             let trace_length = 1 << test_data.log_trace_length;
-            let expansion_factor = 1 << test_data.log_expansion_factor;
 
             let iota =
                 BFieldElement::primitive_root_of_unity((trace_length * num_cosets) as u64).unwrap();
             let trace_domain = ArithmeticDomain::of_length(trace_length)?;
-            let fri_domain = ArithmeticDomain::of_length(trace_length * expansion_factor)?
-                .with_offset(test_data.psi);
-
             let coset_evaluations = (0..u32::try_from(num_cosets)?)
                 .flat_map(|i| {
                     let coset = trace_domain.with_offset(iota.mod_pow_u32(i) * test_data.psi);
@@ -3868,11 +3784,8 @@ pub(crate) mod tests {
             let coset_evaluations =
                 Array2::from_shape_vec((trace_length, num_cosets).f(), coset_evaluations)?;
 
-            let (actual_segment_codewords, segment_polynomials) =
-                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota, fri_domain);
-
-            prop_assert_eq!(N, actual_segment_codewords.ncols());
-            prop_assert_eq!(N, segment_polynomials.len());
+            let segment_polynomials =
+                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota);
 
             let segments_evaluated = (0..)
                 .zip(&segment_polynomials)
@@ -3888,14 +3801,6 @@ pub(crate) mod tests {
                 .polynomial
                 .evaluate_in_same_field(test_data.random_point);
             prop_assert_eq!(segments_evaluated, evaluation_in_random_point);
-
-            let segments_codewords = segment_polynomials
-                .iter()
-                .flat_map(|polynomial| Array1::from(fri_domain.evaluate(polynomial)))
-                .collect_vec();
-            let segments_codewords =
-                Array2::from_shape_vec((fri_domain.len(), N).f(), segments_codewords)?;
-            prop_assert_eq!(segments_codewords, actual_segment_codewords);
 
             Ok(())
         }
