@@ -8,7 +8,6 @@ use air::table::TableId;
 use air::table::program::ProgramTable;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
-use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -20,6 +19,7 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
+use crate::ndarray_helper::par_fill_column_with;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -74,32 +74,38 @@ impl TraceTable for ProgramTable {
     }
 
     fn pad(mut program_table: ArrayViewMut2<BFieldElement>, program_len: usize) {
-        let addresses =
-            (program_len..program_table.nrows()).map(|a| bfe!(u64::try_from(a).unwrap()));
-        let addresses = Array1::from_iter(addresses);
-        let address_column =
-            program_table.slice_mut(s![program_len.., MainColumn::Address.main_index()]);
-        addresses.move_into(address_column);
+        let padding_rows = program_len..program_table.nrows();
+        let address_column = MainColumn::Address.main_index();
+        par_fill_column_with(
+            &mut program_table,
+            address_column,
+            padding_rows.clone(),
+            |a| bfe!(u64::try_from(a).unwrap()),
+        );
 
-        let indices_in_chunks = (program_len..program_table.nrows())
-            .map(|idx| idx % Tip5::RATE)
-            .map(|ac| bfe!(u64::try_from(ac).unwrap()));
-        let indices_in_chunks = Array1::from_iter(indices_in_chunks);
-        let index_in_chunk_column =
-            program_table.slice_mut(s![program_len.., MainColumn::IndexInChunk.main_index()]);
-        indices_in_chunks.move_into(index_in_chunk_column);
+        // The remaining columns only depend on the index in the chunk, which
+        // takes few different values. In particular, few inverses suffice.
+        let indices_in_chunk: [_; Tip5::RATE] =
+            std::array::from_fn(|index| bfe!(u64::try_from(index).unwrap()));
+        let index_in_chunk_column = MainColumn::IndexInChunk.main_index();
+        par_fill_column_with(
+            &mut program_table,
+            index_in_chunk_column,
+            padding_rows.clone(),
+            |idx| indices_in_chunk[idx % Tip5::RATE],
+        );
 
-        let max_minus_indices_in_chunks_inverses = (program_len..program_table.nrows())
-            .map(|idx| Tip5::RATE - 1 - (idx % Tip5::RATE))
-            .map(|ac| BFieldElement::new(ac.try_into().unwrap()))
-            .map(|bfe| bfe.inverse_or_zero());
-        let max_minus_indices_in_chunks_inverses =
-            Array1::from_iter(max_minus_indices_in_chunks_inverses);
-        let max_minus_index_in_chunk_inv_column = program_table.slice_mut(s![
-            program_len..,
-            MainColumn::MaxMinusIndexInChunkInv.main_index()
-        ]);
-        max_minus_indices_in_chunks_inverses.move_into(max_minus_index_in_chunk_inv_column);
+        let max_minus_indices_in_chunk_inverses: [_; Tip5::RATE] = std::array::from_fn(|index| {
+            let max_minus_index = u64::try_from(Tip5::RATE - 1 - index).unwrap();
+            BFieldElement::new(max_minus_index).inverse_or_zero()
+        });
+        let max_minus_index_in_chunk_inv_column = MainColumn::MaxMinusIndexInChunkInv.main_index();
+        par_fill_column_with(
+            &mut program_table,
+            max_minus_index_in_chunk_inv_column,
+            padding_rows,
+            |idx| max_minus_indices_in_chunk_inverses[idx % Tip5::RATE],
+        );
 
         program_table
             .slice_mut(s![

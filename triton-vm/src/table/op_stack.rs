@@ -26,9 +26,9 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
-use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::par_fill_rows;
 use crate::ndarray_helper::par_sort_rows_into;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
@@ -211,11 +211,12 @@ impl TraceTable for OpStackTable {
             padding_row[MainColumn::StackPointer.main_index()] = first_stack_pointer;
         }
 
-        let mut padding_section = op_stack_table.slice_mut(s![op_stack_table_len.., ..]);
-        padding_section
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .for_each(|mut row| row.assign(&padding_row));
+        let padding_rows = op_stack_table_len..op_stack_table.nrows();
+        par_fill_rows(
+            &mut op_stack_table,
+            padding_rows,
+            padding_row.as_slice().unwrap(),
+        );
     }
 
     fn extend(
@@ -285,6 +286,7 @@ pub(crate) mod tests {
     use proptest_arbitrary_adapter::arb;
 
     use super::*;
+    use crate::ndarray_helper::ROW_AXIS;
     use crate::tests::proptest;
     use crate::tests::test;
 

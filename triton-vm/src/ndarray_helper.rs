@@ -175,6 +175,57 @@ pub fn par_fill_column<FF: Copy + Send + Sync>(
     }
 }
 
+/// Overwrite the given rows of `table` with copies of `row`.
+///
+/// The table is written column by column, with the columns in parallel:
+/// tables are column-major, so this writes memory contiguously, which is much
+/// faster than assigning row after row.
+///
+/// # Panics
+///
+/// Panics if the length of `row` differs from the table's number of columns,
+/// or if the rows are out of bounds.
+pub fn par_fill_rows<FF: Copy + Send + Sync>(
+    table: &mut ArrayViewMut2<FF>,
+    rows: std::ops::Range<usize>,
+    row: &[FF],
+) {
+    assert_eq!(table.ncols(), row.len());
+    table
+        .slice_mut(s![rows, ..])
+        .axis_iter_mut(COL_AXIS)
+        .into_par_iter()
+        .zip(row)
+        .for_each(|(mut column, &value)| column.fill(value));
+}
+
+/// Overwrite the given rows of the given column of `table`: the row with
+/// index `i` gets the value `value(i)`. In parallel where the column is
+/// contiguous in memory.
+///
+/// # Panics
+///
+/// Panics if the column or the rows are out of bounds.
+pub fn par_fill_column_with<FF: Send>(
+    table: &mut ArrayViewMut2<FF>,
+    column_index: usize,
+    rows: std::ops::Range<usize>,
+    value: impl Fn(usize) -> FF + Sync,
+) {
+    let first_row = rows.start;
+    let mut column = table.slice_mut(s![rows, column_index]);
+    if let Some(column) = column.as_slice_mut() {
+        column
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, cell)| *cell = value(first_row + i));
+    } else {
+        for (i, cell) in column.iter_mut().enumerate() {
+            *cell = value(first_row + i);
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {

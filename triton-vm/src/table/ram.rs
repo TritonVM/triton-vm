@@ -26,10 +26,10 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
-use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
 use crate::ndarray_helper::par_fill_column;
+use crate::ndarray_helper::par_fill_rows;
 use crate::ndarray_helper::par_sort_rows_into;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
@@ -127,11 +127,12 @@ impl TraceTable for RamTable {
                 BFieldElement::ONE;
         }
 
-        let mut padding_section = main_table.slice_mut(s![table_len.., ..]);
-        padding_section
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .for_each(|mut row| row.assign(&padding_row));
+        let padding_rows = table_len..main_table.nrows();
+        par_fill_rows(
+            &mut main_table,
+            padding_rows,
+            padding_row.as_slice().unwrap(),
+        );
     }
 
     fn extend(

@@ -25,6 +25,8 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::par_fill_column_with;
+use crate::ndarray_helper::par_fill_rows;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 use crate::table::running_arguments::par_fractions;
@@ -81,15 +83,14 @@ impl TraceTable for ProcessorTable {
         let mut padding_template = main_table.row(table_len - 1).to_owned();
         padding_template[MainColumn::IsPadding.main_index()] = bfe!(1);
         padding_template[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()] = bfe!(0);
-        main_table
-            .slice_mut(s![table_len.., ..])
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .for_each(|mut row| row.assign(&padding_template));
+        let padding_rows = table_len..main_table.nrows();
+        let padding_template = padding_template.as_slice().unwrap();
+        par_fill_rows(&mut main_table, padding_rows.clone(), padding_template);
 
-        let clk_range = table_len..main_table.nrows();
-        let clk_col = Array1::from_iter(clk_range.map(|a| bfe!(a as u64)));
-        clk_col.move_into(main_table.slice_mut(s![table_len.., MainColumn::CLK.main_index()]));
+        let clk_column = MainColumn::CLK.main_index();
+        par_fill_column_with(&mut main_table, clk_column, padding_rows, |clk| {
+            bfe!(clk as u64)
+        });
 
         // The Jump Stack Table does not have a padding indicator. Hence, clock
         // jump differences are being looked up in its padding sections. The

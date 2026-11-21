@@ -20,9 +20,10 @@ use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
 use crate::challenges::Challenges;
-use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::contiguous_column_slices;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
+use crate::ndarray_helper::par_fill_column_with;
+use crate::ndarray_helper::par_fill_rows;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
 
@@ -191,17 +192,19 @@ impl TraceTable for JumpStackTable {
         let padding_row_template = jump_stack_table
             .row(max_clk_before_padding_row_idx)
             .to_owned();
-        let mut padding_section =
-            jump_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
-        padding_section
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
+        let padding_rows = padding_section_start..padding_section_end;
+        let padding_row_template = padding_row_template.as_slice().unwrap();
+        par_fill_rows(
+            &mut jump_stack_table,
+            padding_rows.clone(),
+            padding_row_template,
+        );
 
         // CLK keeps increasing by 1 also in the padding section.
-        let new_clk_values =
-            Array1::from_iter((table_len..padded_height).map(|clk| bfe!(clk as u64)));
-        new_clk_values.move_into(padding_section.slice_mut(s![.., MainColumn::CLK.main_index()]));
+        let clk_column = MainColumn::CLK.main_index();
+        par_fill_column_with(&mut jump_stack_table, clk_column, padding_rows, |row| {
+            bfe!((row - padding_section_start + table_len) as u64)
+        });
     }
 
     fn extend(
