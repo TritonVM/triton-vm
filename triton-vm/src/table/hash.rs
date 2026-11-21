@@ -48,7 +48,14 @@ type AuxColumn = <HashTable as air::AIR>::AuxColumn;
 /// Note: this is distinct from the seemingly similar
 /// [`raw_u16s`](BFieldElement::raw_u16s).
 pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4] {
-    let r_times_x = (MONTGOMERY_MODULUS * x).value();
+    // The internal representation of `x` is congruent to `R·x`; no
+    // multiplication is needed.
+    let raw = x.raw_u64();
+    let r_times_x = if raw >= BFieldElement::P {
+        raw - BFieldElement::P
+    } else {
+        raw
+    };
     [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
 }
 
@@ -680,6 +687,25 @@ pub(crate) mod tests {
     use crate::vm::VM;
 
     use super::*;
+
+    #[macro_rules_attr::apply(test)]
+    fn limbs_are_those_of_the_element_times_the_montgomery_modulus() {
+        // includes non-canonical internal representations
+        let edge_cases = [0, 1, BFieldElement::P - 1, BFieldElement::P, u64::MAX];
+        let mut raw = 0x9e37_79b9_7f4a_7c15_u64;
+        let pseudorandom = std::iter::repeat_with(|| {
+            raw = raw
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            raw
+        });
+        for raw in edge_cases.into_iter().chain(pseudorandom.take(10_000)) {
+            let x = BFieldElement::from_raw_u64(raw);
+            let r_times_x = (MONTGOMERY_MODULUS * x).value();
+            let expected = [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16);
+            assert_eq!(expected, base_field_element_into_16_bit_limbs(x));
+        }
+    }
 
     #[macro_rules_attr::apply(test)]
     fn hash_table_mode_discriminant_is_unique() {

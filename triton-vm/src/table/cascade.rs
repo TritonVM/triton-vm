@@ -30,11 +30,12 @@ fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
 }
 
 pub(crate) fn lookup_16_bit_limb(to_look_up: u16) -> BFieldElement {
-    let to_look_up_lo = (to_look_up & 0xff) as u8;
-    let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
-    let looked_up_lo = lookup_8_bit_limb(to_look_up_lo);
-    let looked_up_hi = lookup_8_bit_limb(to_look_up_hi);
-    bfe!(1 << 8) * looked_up_hi + looked_up_lo
+    // Combining the looked-up bytes as integers needs only one conversion to
+    // a field element.
+    let [to_look_up_lo, to_look_up_hi] = to_look_up.to_le_bytes();
+    let looked_up_lo = tip5::LOOKUP_TABLE[usize::from(to_look_up_lo)];
+    let looked_up_hi = tip5::LOOKUP_TABLE[usize::from(to_look_up_hi)];
+    BFieldElement::new(u64::from(u16::from_le_bytes([looked_up_lo, looked_up_hi])))
 }
 
 impl TraceTable for CascadeTable {
@@ -137,5 +138,21 @@ impl TraceTable for CascadeTable {
             par_log_derivative_into(column, initial, lookup_table_fractions)
         });
         profiler!(stop "cascade table");
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+    use crate::tests::test;
+
+    #[macro_rules_attr::apply(test)]
+    fn looking_up_16_bit_limb_is_looking_up_both_of_its_bytes() {
+        for limb in 0..=u16::MAX {
+            let [lo, hi] = limb.to_le_bytes();
+            let expected = bfe!(1 << 8) * lookup_8_bit_limb(hi) + lookup_8_bit_limb(lo);
+            assert_eq!(expected, lookup_16_bit_limb(limb));
+        }
     }
 }
