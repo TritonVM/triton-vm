@@ -4,7 +4,6 @@ use air::cross_table_argument::LookupArg;
 use air::table::cascade::CascadeTable;
 use air::table_column::MasterAuxColumn;
 use air::table_column::MasterMainColumn;
-use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -20,9 +19,8 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
-use crate::table::running_arguments::par_fractions;
-use crate::table::running_arguments::par_log_derivative;
-use crate::table::running_arguments::par_running_sum;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <CascadeTable as air::AIR>::MainColumn;
 type AuxColumn = <CascadeTable as air::AIR>::AuxColumn;
@@ -90,62 +88,54 @@ impl TraceTable for CascadeTable {
         let lookup_input_weight = challenges[ChallengeId::LookupTableInputWeight];
         let lookup_output_weight = challenges[ChallengeId::LookupTableOutputWeight];
 
-        let rows = || {
-            (0..main_table.nrows())
-                .into_par_iter()
-                .map(|row_idx| main_table.row(row_idx))
-        };
         let is_padding =
             |row: ArrayView1<BFieldElement>| row[MainColumn::IsPadding.main_index()].is_one();
 
-        // one fraction per (non-padding) row; inversions are batched
-        let hash_table_fractions = rows()
-            .map(|row| {
-                (!is_padding(row)).then(|| {
-                    let look_in = two_pow_8 * row[MainColumn::LookInHi.main_index()]
-                        + row[MainColumn::LookInLo.main_index()];
-                    let look_out = two_pow_8 * row[MainColumn::LookOutHi.main_index()]
-                        + row[MainColumn::LookOutLo.main_index()];
-                    let compressed_row =
-                        hash_input_weight * look_in + hash_output_weight * look_out;
-                    let lookup_multiplicity = row[MainColumn::LookupMultiplicity.main_index()];
-                    (
-                        hash_indeterminate - compressed_row,
-                        lookup_multiplicity.lift(),
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-        let hash_table_log_derivative =
-            par_log_derivative(&hash_table_fractions, LookupArg::default_initial());
+        // one fraction per (non-padding) row
+        let hash_table_fraction = |row_idx: usize| {
+            let row = main_table.row(row_idx);
+            let fraction = (!is_padding(row)).then(|| {
+                let look_in = two_pow_8 * row[MainColumn::LookInHi.main_index()]
+                    + row[MainColumn::LookInLo.main_index()];
+                let look_out = two_pow_8 * row[MainColumn::LookOutHi.main_index()]
+                    + row[MainColumn::LookOutLo.main_index()];
+                let compressed_row = hash_input_weight * look_in + hash_output_weight * look_out;
+                let lookup_multiplicity = row[MainColumn::LookupMultiplicity.main_index()];
+                (
+                    hash_indeterminate - compressed_row,
+                    lookup_multiplicity.lift(),
+                )
+            });
+            [fraction]
+        };
 
         // two fractions per (non-padding) row
-        let lookup_table_fraction = |row: ArrayView1<BFieldElement>, lo_or_hi: [MainColumn; 2]| {
-            (!is_padding(row)).then(|| {
-                let [in_col, out_col] = lo_or_hi;
-                let compressed_row = lookup_input_weight * row[in_col.main_index()]
-                    + lookup_output_weight * row[out_col.main_index()];
-                (lookup_indeterminate - compressed_row, XFieldElement::ONE)
-            })
+        let lookup_table_fractions = |row_idx: usize| {
+            let row = main_table.row(row_idx);
+            let fraction = |[in_col, out_col]: [MainColumn; 2]| {
+                (!is_padding(row)).then(|| {
+                    let compressed_row = lookup_input_weight * row[in_col.main_index()]
+                        + lookup_output_weight * row[out_col.main_index()];
+                    (lookup_indeterminate - compressed_row, XFieldElement::ONE)
+                })
+            };
+            [
+                fraction([MainColumn::LookInLo, MainColumn::LookOutLo]),
+                fraction([MainColumn::LookInHi, MainColumn::LookOutHi]),
+            ]
         };
-        let lookup_table_fractions_lo = rows()
-            .map(|row| lookup_table_fraction(row, [MainColumn::LookInLo, MainColumn::LookOutLo]))
-            .collect::<Vec<_>>();
-        let lookup_table_fractions_hi = rows()
-            .map(|row| lookup_table_fraction(row, [MainColumn::LookInHi, MainColumn::LookOutHi]))
-            .collect::<Vec<_>>();
-        let lookup_table_summands = par_fractions(&lookup_table_fractions_lo)
-            .into_par_iter()
-            .zip(par_fractions(&lookup_table_fractions_hi))
-            .map(|(lo, hi)| lo + hi)
-            .collect();
-        let lookup_table_log_derivative =
-            par_running_sum(lookup_table_summands, LookupArg::default_initial());
 
-        Array1::from(hash_table_log_derivative)
-            .move_into(aux_table.column_mut(AuxColumn::HashTableServerLogDerivative.aux_index()));
-        Array1::from(lookup_table_log_derivative)
-            .move_into(aux_table.column_mut(AuxColumn::LookupTableClientLogDerivative.aux_index()));
+        let initial = LookupArg::default_initial();
+        let hash_table_log_derivative =
+            aux_table.column_mut(AuxColumn::HashTableServerLogDerivative.aux_index());
+        with_contiguous_column(hash_table_log_derivative, |column| {
+            par_log_derivative_into(column, initial, hash_table_fraction)
+        });
+        let lookup_table_log_derivative =
+            aux_table.column_mut(AuxColumn::LookupTableClientLogDerivative.aux_index());
+        with_contiguous_column(lookup_table_log_derivative, |column| {
+            par_log_derivative_into(column, initial, lookup_table_fractions)
+        });
         profiler!(stop "cascade table");
     }
 }

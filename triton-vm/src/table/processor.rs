@@ -29,12 +29,11 @@ use crate::ndarray_helper::par_fill_column_with;
 use crate::ndarray_helper::par_fill_rows;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
-use crate::table::running_arguments::par_fractions;
-use crate::table::running_arguments::par_log_derivative;
-use crate::table::running_arguments::par_running_affine_maps;
-use crate::table::running_arguments::par_running_evaluation;
-use crate::table::running_arguments::par_running_product;
-use crate::table::running_arguments::par_running_sum;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::par_running_affine_maps_into;
+use crate::table::running_arguments::par_running_evaluation_into;
+use crate::table::running_arguments::par_running_product_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <ProcessorTable as air::AIR>::MainColumn;
 type AuxColumn = <ProcessorTable as air::AIR>::AuxColumn;
@@ -138,33 +137,24 @@ impl TraceTable for ProcessorTable {
         all_column_generators
             .into_par_iter()
             .zip_eq(all_column_slices)
-            .for_each(|(generator, slice)| {
-                generator(main_table, challenges).move_into(slice);
+            .for_each(|(generator, mut slice)| {
+                with_contiguous_column(slice.column_mut(0), |column| {
+                    generator(main_table, challenges, column)
+                });
             });
 
         profiler!(stop "processor table");
     }
 }
 
-/// The rows of the table, in parallel.
-fn par_rows<'a>(
-    main_table: ArrayView2<'a, BFieldElement>,
-) -> impl IndexedParallelIterator<Item = ArrayView1<'a, BFieldElement>> + 'a {
-    (0..main_table.nrows())
-        .into_par_iter()
-        .map(move |row_idx| main_table.index_axis_move(ROW_AXIS, row_idx))
-}
+/// The row with the given index and its predecessor, or `None` for the first
+/// row, which has no predecessor.
+fn row_window(main_table: ArrayView2<'_, BFieldElement>, row_idx: usize) -> Option<RowPair<'_>> {
+    let previous_row_idx = row_idx.checked_sub(1)?;
+    let previous_row = main_table.index_axis_move(ROW_AXIS, previous_row_idx);
+    let current_row = main_table.index_axis_move(ROW_AXIS, row_idx);
 
-/// The pairs of consecutive rows of the table, in parallel.
-fn par_row_windows<'a>(
-    main_table: ArrayView2<'a, BFieldElement>,
-) -> impl IndexedParallelIterator<Item = RowPair<'a>> + 'a {
-    (1..main_table.nrows()).into_par_iter().map(move |row_idx| {
-        (
-            main_table.index_axis_move(ROW_AXIS, row_idx - 1),
-            main_table.index_axis_move(ROW_AXIS, row_idx),
-        )
-    })
+    Some((previous_row, current_row))
 }
 
 /// The affine map that corresponds to absorbing the given symbols, in order,
@@ -179,126 +169,100 @@ fn affine_map_for_absorbing(
     )
 }
 
-/// The first row of a window-based column does not have a previous row, and
-/// hence leaves the running value at its initial value.
-fn identity_map() -> (XFieldElement, XFieldElement) {
-    (XFieldElement::ONE, XFieldElement::ZERO)
-}
-
-fn into_column(column: Vec<XFieldElement>) -> Array2<XFieldElement> {
-    let num_rows = column.len();
-    Array2::from_shape_vec((num_rows, 1), column).unwrap()
-}
-
 fn auxiliary_column_input_table_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::StandardInputIndeterminate];
-    let maps = std::iter::once(identity_map())
-        .chain(
-            par_row_windows(main_table)
-                .map(|(previous_row, current_row)| {
-                    let Some(Instruction::ReadIo(st)) = instruction_from_row(previous_row) else {
-                        return identity_map();
-                    };
-                    let input_symbols = (0..st.num_words()).rev().map(|i| {
-                        let input_symbol_column = ProcessorTable::op_stack_column_by_index(i);
-                        current_row[input_symbol_column.main_index()]
-                    });
-                    affine_map_for_absorbing(input_symbols, indeterminate)
-                })
-                .collect::<Vec<_>>(),
-        )
-        .collect();
-    into_column(par_running_affine_maps(maps, EvalArg::default_initial()))
+    par_running_affine_maps_into(column, EvalArg::default_initial(), |row_idx| {
+        let (previous_row, current_row) = row_window(main_table, row_idx)?;
+        let Some(Instruction::ReadIo(st)) = instruction_from_row(previous_row) else {
+            return None;
+        };
+        let input_symbols = (0..st.num_words()).rev().map(|i| {
+            let input_symbol_column = ProcessorTable::op_stack_column_by_index(i);
+            current_row[input_symbol_column.main_index()]
+        });
+        Some(affine_map_for_absorbing(input_symbols, indeterminate))
+    });
 }
 
 fn auxiliary_column_output_table_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::StandardOutputIndeterminate];
-    let maps = std::iter::once(identity_map())
-        .chain(
-            par_row_windows(main_table)
-                .map(|(previous_row, _)| {
-                    let Some(Instruction::WriteIo(st)) = instruction_from_row(previous_row) else {
-                        return identity_map();
-                    };
-                    let output_symbols = (0..st.num_words()).map(|i| {
-                        let output_symbol_column = ProcessorTable::op_stack_column_by_index(i);
-                        previous_row[output_symbol_column.main_index()]
-                    });
-                    affine_map_for_absorbing(output_symbols, indeterminate)
-                })
-                .collect::<Vec<_>>(),
-        )
-        .collect();
-    into_column(par_running_affine_maps(maps, EvalArg::default_initial()))
+    par_running_affine_maps_into(column, EvalArg::default_initial(), |row_idx| {
+        let (previous_row, _) = row_window(main_table, row_idx)?;
+        let Some(Instruction::WriteIo(st)) = instruction_from_row(previous_row) else {
+            return None;
+        };
+        let output_symbols = (0..st.num_words()).map(|i| {
+            let output_symbol_column = ProcessorTable::op_stack_column_by_index(i);
+            previous_row[output_symbol_column.main_index()]
+        });
+        Some(affine_map_for_absorbing(output_symbols, indeterminate))
+    });
 }
 
 fn auxiliary_column_instruction_lookup_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::InstructionLookupIndeterminate];
-    let fractions = par_rows(main_table)
-        .map(|row| {
-            // padding marks the end of the trace
-            let is_padding = row[MainColumn::IsPadding.main_index()].is_one();
-            (!is_padding).then(|| {
-                let compressed_row = row[MainColumn::IP.main_index()]
-                    * challenges[ChallengeId::ProgramAddressWeight]
-                    + row[MainColumn::CI.main_index()]
-                        * challenges[ChallengeId::ProgramInstructionWeight]
-                    + row[MainColumn::NIA.main_index()]
-                        * challenges[ChallengeId::ProgramNextInstructionWeight];
-                (indeterminate - compressed_row, XFieldElement::ONE)
-            })
-        })
-        .collect::<Vec<_>>();
-    into_column(par_log_derivative(&fractions, LookupArg::default_initial()))
+    par_log_derivative_into(column, LookupArg::default_initial(), |row_idx| {
+        let row = main_table.row(row_idx);
+
+        // padding marks the end of the trace
+        let is_padding = row[MainColumn::IsPadding.main_index()].is_one();
+        let fraction = (!is_padding).then(|| {
+            let compressed_row = row[MainColumn::IP.main_index()]
+                * challenges[ChallengeId::ProgramAddressWeight]
+                + row[MainColumn::CI.main_index()]
+                    * challenges[ChallengeId::ProgramInstructionWeight]
+                + row[MainColumn::NIA.main_index()]
+                    * challenges[ChallengeId::ProgramNextInstructionWeight];
+            (indeterminate - compressed_row, XFieldElement::ONE)
+        });
+        [fraction]
+    });
 }
 
 fn auxiliary_column_op_stack_table_perm_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    let factors = std::iter::once(None)
-        .chain(
-            par_row_windows(main_table)
-                .map(|(prev, curr)| {
-                    Some(factor_for_op_stack_table_running_product(
-                        prev, curr, challenges,
-                    ))
-                })
-                .collect::<Vec<_>>(),
-        )
-        .collect::<Vec<_>>();
-    into_column(par_running_product(&factors, EvalArg::default_initial()))
+    column: &mut [XFieldElement],
+) {
+    par_running_product_into(column, EvalArg::default_initial(), |row_idx| {
+        let (prev, curr) = row_window(main_table, row_idx)?;
+        Some(factor_for_op_stack_table_running_product(
+            prev, curr, challenges,
+        ))
+    });
 }
 
 fn auxiliary_column_ram_table_perm_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    let factors = std::iter::once(None)
-        .chain(
-            par_row_windows(main_table)
-                .map(|(prev, curr)| factor_for_ram_table_running_product(prev, curr, challenges))
-                .collect::<Vec<_>>(),
-        )
-        .collect::<Vec<_>>();
-    into_column(par_running_product(&factors, PermArg::default_initial()))
+    column: &mut [XFieldElement],
+) {
+    par_running_product_into(column, PermArg::default_initial(), |row_idx| {
+        let (prev, curr) = row_window(main_table, row_idx)?;
+        factor_for_ram_table_running_product(prev, curr, challenges)
+    });
 }
 
 fn auxiliary_column_jump_stack_table_perm_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    let factors = par_rows(main_table)
-        .map(|row| {
+    column: &mut [XFieldElement],
+) {
+    par_running_product_into(column, PermArg::default_initial(), |row_idx| {
+        let row = main_table.row(row_idx);
+        {
             let compressed_row = row[MainColumn::CLK.main_index()]
                 * challenges[ChallengeId::JumpStackClkWeight]
                 + row[MainColumn::CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
@@ -306,9 +270,8 @@ fn auxiliary_column_jump_stack_table_perm_argument(
                 + row[MainColumn::JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
                 + row[MainColumn::JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
             Some(challenges[ChallengeId::JumpStackIndeterminate] - compressed_row)
-        })
-        .collect::<Vec<_>>();
-    into_column(par_running_product(&factors, PermArg::default_initial()))
+        }
+    });
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
@@ -316,7 +279,8 @@ fn auxiliary_column_jump_stack_table_perm_argument(
 fn auxiliary_column_hash_input_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let st0_through_st9 = [
         MainColumn::ST0,
         MainColumn::ST1,
@@ -356,14 +320,15 @@ fn auxiliary_column_hash_input_eval_argument(
         MainColumn::ST4,
     ];
 
-    let addends = par_rows(main_table)
-        .map(|row| {
+    let addend = |row_idx: usize| {
+        let row = main_table.row(row_idx);
+        {
             let current_instruction = row[MainColumn::CI.main_index()];
             let is_hashing = current_instruction == Instruction::Hash.opcode_b()
                 || current_instruction == Instruction::MerkleStep.opcode_b()
                 || current_instruction == Instruction::MerkleStepMem.opcode_b();
             is_hashing.then(|| {
-                let is_left_sibling = row[MainColumn::ST5.main_index()].value() % 2 == 0;
+                let is_left_sibling = row[MainColumn::ST5.main_index()].value().is_multiple_of(2);
                 let hash_input = match instruction_from_row(row) {
                     Some(Instruction::MerkleStep | Instruction::MerkleStepMem)
                         if is_left_sibling =>
@@ -383,24 +348,27 @@ fn auxiliary_column_hash_input_eval_argument(
                     .map(|(st, &weight)| weight * st)
                     .sum::<XFieldElement>()
             })
-        })
-        .collect::<Vec<_>>();
-    into_column(par_running_evaluation(
-        &addends,
+        }
+    };
+    par_running_evaluation_into(
+        column,
         challenges[ChallengeId::HashInputIndeterminate],
         EvalArg::default_initial(),
-    ))
+        addend,
+    );
 }
 
 /// Hash Table – `hash`'s output from Hash Coprocessor to Processor
 fn auxiliary_column_hash_digest_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    let addends = std::iter::once(None)
-        .chain(
-            par_row_windows(main_table)
-                .map(|(previous_row, current_row)| {
+    column: &mut [XFieldElement],
+) {
+    let addend = |row_idx: usize| {
+        let (previous_row, current_row) = row_window(main_table, row_idx)?;
+        {
+            {
+                {
                     let previous_ci = previous_row[MainColumn::CI.main_index()];
                     let was_hashing = previous_ci == Instruction::Hash.opcode_b()
                         || previous_ci == Instruction::MerkleStep.opcode_b()
@@ -419,15 +387,16 @@ fn auxiliary_column_hash_digest_eval_argument(
                         .map(|(st, &weight)| weight * st)
                         .sum::<XFieldElement>()
                     })
-                })
-                .collect::<Vec<_>>(),
-        )
-        .collect::<Vec<_>>();
-    into_column(par_running_evaluation(
-        &addends,
+                }
+            }
+        }
+    };
+    par_running_evaluation_into(
+        column,
         challenges[ChallengeId::HashDigestIndeterminate],
         EvalArg::default_initial(),
-    ))
+        addend,
+    );
 }
 
 /// Hash Table – `hash`'s or `merkle_step`'s input from Processor to Hash
@@ -435,7 +404,8 @@ fn auxiliary_column_hash_digest_eval_argument(
 fn auxiliary_column_sponge_eval_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let st0_through_st9 = [
         MainColumn::ST0,
         MainColumn::ST1,
@@ -451,10 +421,11 @@ fn auxiliary_column_sponge_eval_argument(
     let hash_state_weights = &challenges[ChallengeId::StackWeight0..ChallengeId::StackWeight10];
     let ci_weight = challenges[ChallengeId::HashCIWeight];
 
-    let addends = std::iter::once(None)
-        .chain(
-            par_row_windows(main_table)
-                .map(|(previous_row, current_row)| {
+    let addend = |row_idx: usize| {
+        let (previous_row, current_row) = row_window(main_table, row_idx)?;
+        {
+            {
+                {
                     let previous_ci = previous_row[MainColumn::CI.main_index()];
                     if previous_ci == Instruction::SpongeInit.opcode_b() {
                         Some(ci_weight * Instruction::SpongeInit.opcode_b())
@@ -500,21 +471,23 @@ fn auxiliary_column_sponge_eval_argument(
                     } else {
                         None
                     }
-                })
-                .collect::<Vec<_>>(),
-        )
-        .collect::<Vec<_>>();
-    into_column(par_running_evaluation(
-        &addends,
+                }
+            }
+        }
+    };
+    par_running_evaluation_into(
+        column,
         challenges[ChallengeId::SpongeIndeterminate],
         EvalArg::default_initial(),
-    ))
+        addend,
+    );
 }
 
 fn auxiliary_column_for_u32_lookup_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::U32Indeterminate];
     let lhs_weight = challenges[ChallengeId::U32LhsWeight];
     let rhs_weight = challenges[ChallengeId::U32RhsWeight];
@@ -523,8 +496,11 @@ fn auxiliary_column_for_u32_lookup_argument(
     let fraction = |compressed_row| Some((indeterminate - compressed_row, XFieldElement::ONE));
 
     // Instruction `div_mod` requires two lookups; all others at most one.
-    let fractions_per_window = par_row_windows(main_table)
-        .map(|(previous_row, current_row)| {
+    par_log_derivative_into(column, LookupArg::default_initial(), |row_idx| {
+        let Some((previous_row, current_row)) = row_window(main_table, row_idx) else {
+            return [None, None];
+        };
+        {
             let previous_ci = previous_row[MainColumn::CI.main_index()];
             let st0_prev = previous_row[MainColumn::ST0.main_index()];
             let st1_prev = previous_row[MainColumn::ST1.main_index()];
@@ -532,7 +508,7 @@ fn auxiliary_column_for_u32_lookup_argument(
             let st1 = current_row[MainColumn::ST1.main_index()];
             if previous_ci == Instruction::Split.opcode_b() {
                 let compressed_row = st0 * lhs_weight + st1 * rhs_weight + previous_ci * ci_weight;
-                (fraction(compressed_row), None)
+                [fraction(compressed_row), None]
             } else if previous_ci == Instruction::Lt.opcode_b()
                 || previous_ci == Instruction::And.opcode_b()
                 || previous_ci == Instruction::Pow.opcode_b()
@@ -541,7 +517,7 @@ fn auxiliary_column_for_u32_lookup_argument(
                     + st1_prev * rhs_weight
                     + previous_ci * ci_weight
                     + st0 * result_weight;
-                (fraction(compressed_row), None)
+                [fraction(compressed_row), None]
             } else if previous_ci == Instruction::Xor.opcode_b() {
                 // Triton VM uses the following equality to compute the results
                 // of both the `and` and `xor` instruction using the u32
@@ -554,13 +530,13 @@ fn auxiliary_column_for_u32_lookup_argument(
                     + st1_prev * rhs_weight
                     + Instruction::And.opcode_b() * ci_weight
                     + from_xor_in_processor_to_and_in_u32_coprocessor * result_weight;
-                (fraction(compressed_row), None)
+                [fraction(compressed_row), None]
             } else if previous_ci == Instruction::Log2Floor.opcode_b()
                 || previous_ci == Instruction::PopCount.opcode_b()
             {
                 let compressed_row =
                     st0_prev * lhs_weight + previous_ci * ci_weight + st0 * result_weight;
-                (fraction(compressed_row), None)
+                [fraction(compressed_row), None]
             } else if previous_ci == Instruction::DivMod.opcode_b() {
                 let compressed_row_for_lt_check = st0 * lhs_weight
                     + st1_prev * rhs_weight
@@ -569,10 +545,10 @@ fn auxiliary_column_for_u32_lookup_argument(
                 let compressed_row_for_range_check = st0_prev * lhs_weight
                     + st1 * rhs_weight
                     + Instruction::Split.opcode_b() * ci_weight;
-                (
+                [
                     fraction(compressed_row_for_lt_check),
                     fraction(compressed_row_for_range_check),
-                )
+                ]
             } else if previous_ci == Instruction::MerkleStep.opcode_b()
                 || previous_ci == Instruction::MerkleStepMem.opcode_b()
             {
@@ -581,43 +557,30 @@ fn auxiliary_column_for_u32_lookup_argument(
                 let compressed_row = st5_prev * lhs_weight
                     + st5 * rhs_weight
                     + Instruction::Split.opcode_b() * ci_weight;
-                (fraction(compressed_row), None)
+                [fraction(compressed_row), None]
             } else {
-                (None, None)
+                [None, None]
             }
-        })
-        .collect::<Vec<_>>();
-
-    let first_fractions = std::iter::once(None)
-        .chain(fractions_per_window.iter().map(|&(first, _)| first))
-        .collect::<Vec<_>>();
-    let second_fractions = std::iter::once(None)
-        .chain(fractions_per_window.iter().map(|&(_, second)| second))
-        .collect::<Vec<_>>();
-    let summands = par_fractions(&first_fractions)
-        .into_par_iter()
-        .zip(par_fractions(&second_fractions))
-        .map(|(first, second)| first + second)
-        .collect();
-    into_column(par_running_sum(summands, LookupArg::default_initial()))
+        }
+    });
 }
 
 fn auxiliary_column_for_clock_jump_difference_lookup_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate];
-    let fractions = par_rows(main_table)
-        .map(|row| {
-            let lookup_multiplicity =
-                row[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()];
-            (!lookup_multiplicity.is_zero()).then(|| {
-                let clk = row[MainColumn::CLK.main_index()];
-                (indeterminate - clk, lookup_multiplicity.lift())
-            })
-        })
-        .collect::<Vec<_>>();
-    into_column(par_log_derivative(&fractions, LookupArg::default_initial()))
+    par_log_derivative_into(column, LookupArg::default_initial(), |row_idx| {
+        let row = main_table.row(row_idx);
+        let lookup_multiplicity =
+            row[MainColumn::ClockJumpDifferenceLookupMultiplicity.main_index()];
+        let fraction = (!lookup_multiplicity.is_zero()).then(|| {
+            let clk = row[MainColumn::CLK.main_index()];
+            (indeterminate - clk, lookup_multiplicity.lift())
+        });
+        [fraction]
+    });
 }
 
 fn factor_for_op_stack_table_running_product(

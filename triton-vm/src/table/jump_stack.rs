@@ -1,6 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::ops::Range;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
@@ -13,9 +11,9 @@ use air::table_column::ProcessorMainColumn;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
+use num_traits::ConstOne;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
-use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -26,6 +24,9 @@ use crate::ndarray_helper::par_fill_column_with;
 use crate::ndarray_helper::par_fill_rows;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::par_running_product_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <JumpStackTable as air::AIR>::MainColumn;
 type AuxColumn = <JumpStackTable as air::AIR>::AuxColumn;
@@ -33,55 +34,42 @@ type AuxColumn = <JumpStackTable as air::AIR>::AuxColumn;
 fn auxiliary_column_running_product_permutation_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    let mut running_product = PermArg::default_initial();
-    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
-    for row in main_table.rows() {
+    column: &mut [XFieldElement],
+) {
+    par_running_product_into(column, PermArg::default_initial(), |row_idx| {
+        let row = main_table.row(row_idx);
         let compressed_row = row[MainColumn::CLK.main_index()]
             * challenges[ChallengeId::JumpStackClkWeight]
             + row[MainColumn::CI.main_index()] * challenges[ChallengeId::JumpStackCiWeight]
             + row[MainColumn::JSP.main_index()] * challenges[ChallengeId::JumpStackJspWeight]
             + row[MainColumn::JSO.main_index()] * challenges[ChallengeId::JumpStackJsoWeight]
             + row[MainColumn::JSD.main_index()] * challenges[ChallengeId::JumpStackJsdWeight];
-        running_product *= challenges[ChallengeId::JumpStackIndeterminate] - compressed_row;
-        auxiliary_column.push(running_product);
-    }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+        Some(challenges[ChallengeId::JumpStackIndeterminate] - compressed_row)
+    });
 }
 
 fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    // - use memoization to avoid recomputing inverses
-    // - precompute common values through batch inversion
-    const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
+    column: &mut [XFieldElement],
+) {
     let indeterminate = challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate];
-    let to_invert = PRECOMPUTE_INVERSES_OF
-        .map(|i| indeterminate - bfe!(i))
-        .collect();
-    let mut inverses_dictionary = PRECOMPUTE_INVERSES_OF
-        .zip_eq(XFieldElement::batch_inversion(to_invert))
-        .map(|(i, inv)| (bfe!(i), inv))
-        .collect::<HashMap<_, _>>();
-
-    // populate auxiliary column using memoization
-    let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
-    auxiliary_column.push(cjd_lookup_log_derivative);
-    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
-        if previous_row[MainColumn::JSP.main_index()] == current_row[MainColumn::JSP.main_index()] {
+    let fraction = |row_idx: usize| {
+        let previous_row_idx = row_idx.checked_sub(1)?;
+        let previous_row = main_table.row(previous_row_idx);
+        let current_row = main_table.row(row_idx);
+        let jsp_is_unchanged =
+            previous_row[MainColumn::JSP.main_index()] == current_row[MainColumn::JSP.main_index()];
+        jsp_is_unchanged.then(|| {
             let previous_clock = previous_row[MainColumn::CLK.main_index()];
             let current_clock = current_row[MainColumn::CLK.main_index()];
             let clock_jump_difference = current_clock - previous_clock;
-            let &mut inverse = inverses_dictionary
-                .entry(clock_jump_difference)
-                .or_insert_with(|| (indeterminate - clock_jump_difference).inverse());
-            cjd_lookup_log_derivative += inverse;
-        }
-        auxiliary_column.push(cjd_lookup_log_derivative);
-    }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+            (indeterminate - clock_jump_difference, XFieldElement::ONE)
+        })
+    };
+    par_log_derivative_into(column, LookupArg::default_initial(), |row_idx| {
+        [fraction(row_idx)]
+    });
 }
 
 impl TraceTable for JumpStackTable {
@@ -233,8 +221,10 @@ impl TraceTable for JumpStackTable {
         extension_functions
             .into_par_iter()
             .zip_eq(auxiliary_column_slices)
-            .for_each(|(generator, slice)| {
-                generator(main_table, challenges).move_into(slice);
+            .for_each(|(generator, mut slice)| {
+                with_contiguous_column(slice.column_mut(0), |column| {
+                    generator(main_table, challenges, column)
+                });
             });
 
         profiler!(stop "jump stack table");

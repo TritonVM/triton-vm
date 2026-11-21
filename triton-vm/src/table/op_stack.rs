@@ -1,6 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::ops::Range;
 
 use air::challenge_id::ChallengeId;
 use air::cross_table_argument::CrossTableArg;
@@ -18,10 +16,10 @@ use isa::op_stack::UnderflowIO;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
+use num_traits::ConstOne;
 use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
-use twenty_first::math::traits::FiniteField;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -32,6 +30,9 @@ use crate::ndarray_helper::par_fill_rows;
 use crate::ndarray_helper::par_sort_rows_into;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::par_running_product_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <OpStackTable as air::AIR>::MainColumn;
 type AuxColumn = <OpStackTable as air::AIR>::AuxColumn;
@@ -107,13 +108,13 @@ impl OpStackTableEntry {
 fn auxiliary_column_running_product_permutation_argument(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
+    column: &mut [XFieldElement],
+) {
     let perm_arg_indeterminate = challenges[ChallengeId::OpStackIndeterminate];
 
-    let mut running_product = PermArg::default_initial();
-    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
-    for row in main_table.rows() {
-        if row[MainColumn::IB1ShrinkStack.main_index()] != PADDING_VALUE {
+    par_running_product_into(column, PermArg::default_initial(), |row_idx| {
+        let row = main_table.row(row_idx);
+        (row[MainColumn::IB1ShrinkStack.main_index()] != PADDING_VALUE).then(|| {
             let compressed_row = row[MainColumn::CLK.main_index()]
                 * challenges[ChallengeId::OpStackClkWeight]
                 + row[MainColumn::IB1ShrinkStack.main_index()]
@@ -122,56 +123,41 @@ fn auxiliary_column_running_product_permutation_argument(
                     * challenges[ChallengeId::OpStackPointerWeight]
                 + row[MainColumn::FirstUnderflowElement.main_index()]
                     * challenges[ChallengeId::OpStackFirstUnderflowElementWeight];
-            running_product *= perm_arg_indeterminate - compressed_row;
-        }
-        auxiliary_column.push(running_product);
-    }
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+            perm_arg_indeterminate - compressed_row
+        })
+    });
 }
 
 fn auxiliary_column_clock_jump_diff_lookup_log_derivative(
     main_table: ArrayView2<BFieldElement>,
     challenges: &Challenges,
-) -> Array2<XFieldElement> {
-    // - use memoization to avoid recomputing inverses
-    // - precompute common values through batch inversion
-    const PRECOMPUTE_INVERSES_OF: Range<u64> = 0..100;
+    column: &mut [XFieldElement],
+) {
     let cjd_lookup_indeterminate = challenges[ChallengeId::ClockJumpDifferenceLookupIndeterminate];
-    let to_invert = PRECOMPUTE_INVERSES_OF
-        .map(|i| cjd_lookup_indeterminate - bfe!(i))
-        .collect_vec();
-    let inverses = XFieldElement::batch_inversion(to_invert);
-    let mut inverses_dictionary = PRECOMPUTE_INVERSES_OF
-        .zip_eq(inverses)
-        .map(|(i, inv)| (bfe!(i), inv))
-        .collect::<HashMap<_, _>>();
+    let fraction = |row_idx: usize| {
+        let previous_row_idx = row_idx.checked_sub(1)?;
+        let previous_row = main_table.row(previous_row_idx);
+        let current_row = main_table.row(row_idx);
 
-    // populate auxiliary column using memoization
-    let mut cjd_lookup_log_derivative = LookupArg::default_initial();
-    let mut auxiliary_column = Vec::with_capacity(main_table.nrows());
-    auxiliary_column.push(cjd_lookup_log_derivative);
-    for (previous_row, current_row) in main_table.rows().into_iter().tuple_windows() {
+        // The padding section, which is at the end of the table, does not
+        // contribute.
         if current_row[MainColumn::IB1ShrinkStack.main_index()] == PADDING_VALUE {
-            break;
-        };
+            return None;
+        }
 
         let previous_stack_pointer = previous_row[MainColumn::StackPointer.main_index()];
         let current_stack_pointer = current_row[MainColumn::StackPointer.main_index()];
-        if previous_stack_pointer == current_stack_pointer {
+        (previous_stack_pointer == current_stack_pointer).then(|| {
             let previous_clock = previous_row[MainColumn::CLK.main_index()];
             let current_clock = current_row[MainColumn::CLK.main_index()];
             let clock_jump_difference = current_clock - previous_clock;
-            let &mut inverse = inverses_dictionary
-                .entry(clock_jump_difference)
-                .or_insert_with(|| (cjd_lookup_indeterminate - clock_jump_difference).inverse());
-            cjd_lookup_log_derivative += inverse;
-        }
-        auxiliary_column.push(cjd_lookup_log_derivative);
-    }
-
-    // fill padding section
-    auxiliary_column.resize(main_table.nrows(), cjd_lookup_log_derivative);
-    Array2::from_shape_vec((main_table.nrows(), 1), auxiliary_column).unwrap()
+            let denominator = cjd_lookup_indeterminate - clock_jump_difference;
+            (denominator, XFieldElement::ONE)
+        })
+    };
+    par_log_derivative_into(column, LookupArg::default_initial(), |row_idx| {
+        [fraction(row_idx)]
+    });
 }
 
 impl TraceTable for OpStackTable {
@@ -244,8 +230,10 @@ impl TraceTable for OpStackTable {
         extension_functions
             .into_par_iter()
             .zip_eq(auxiliary_column_slices)
-            .for_each(|(generator, slice)| {
-                generator(main_table, challenges).move_into(slice);
+            .for_each(|(generator, mut slice)| {
+                with_contiguous_column(slice.column_mut(0), |column| {
+                    generator(main_table, challenges, column)
+                });
             });
 
         profiler!(stop "op stack table");

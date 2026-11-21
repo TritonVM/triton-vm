@@ -27,8 +27,9 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::COL_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
-use crate::table::running_arguments::par_log_derivative;
-use crate::table::running_arguments::par_running_evaluation;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::par_running_evaluation_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <HashTable as air::AIR>::MainColumn;
 type AuxColumn = <HashTable as air::AIR>::AuxColumn;
@@ -520,16 +521,13 @@ impl TraceTable for HashTable {
             (in_hash_mode(row) && in_last_round(row)).then(|| compressed_digest(row))
         };
 
-        let rows = || {
-            (0..main_table.nrows())
-                .into_par_iter()
-                .map(|row_idx| main_table.row(row_idx))
-        };
         let running_evaluation =
-            |addend: &(dyn Fn(ArrayView1<BFieldElement>) -> Option<XFieldElement> + Sync),
+            |column: &mut [XFieldElement],
+             addend: &(dyn Fn(ArrayView1<BFieldElement>) -> Option<XFieldElement> + Sync),
              indeterminate| {
-                let addends = rows().map(addend).collect::<Vec<_>>();
-                par_running_evaluation(&addends, indeterminate, EvalArg::default_initial())
+                let addend = |row_idx: usize| addend(main_table.row(row_idx));
+                let initial = EvalArg::default_initial();
+                par_running_evaluation_into(column, indeterminate, initial, addend);
             };
 
         // The contribution of each row to the cascade table lookups' log
@@ -537,19 +535,22 @@ impl TraceTable for HashTable {
         let contributes_to_cascade_lookup = |row: ArrayView1<BFieldElement>| {
             !in_pad_mode(row) && !in_last_round(row) && !current_instruction_is_sponge_init(row)
         };
-        let cascade_log_derivative = |lk_in_col: Self::MainColumn, lk_out_col: Self::MainColumn| {
-            let fractions = rows()
-                .map(|row| {
-                    contributes_to_cascade_lookup(row).then(|| {
+        let cascade_log_derivative =
+            |column: &mut [XFieldElement],
+             lk_in_col: Self::MainColumn,
+             lk_out_col: Self::MainColumn| {
+                let fraction = |row_idx: usize| {
+                    let row = main_table.row(row_idx);
+                    let fraction = contributes_to_cascade_lookup(row).then(|| {
                         let denominator = cascade_indeterminate
                             - cascade_look_in_weight * row[lk_in_col.main_index()]
                             - cascade_look_out_weight * row[lk_out_col.main_index()];
                         (denominator, XFieldElement::ONE)
-                    })
-                })
-                .collect::<Vec<_>>();
-            par_log_derivative(&fractions, LookupArg::default_initial())
-        };
+                    });
+                    [fraction]
+                };
+                par_log_derivative_into(column, LookupArg::default_initial(), fraction);
+            };
 
         let all_aux_columns = AuxColumn::iter().collect_vec();
         aux_table
@@ -559,85 +560,104 @@ impl TraceTable for HashTable {
             .enumerate()
             .for_each(|(column_idx, (target_column, aux_column))| {
                 debug_assert_eq!(column_idx, aux_column.aux_index());
-                let column = match aux_column {
+                with_contiguous_column(target_column, |column| match aux_column {
                     AuxColumn::ReceiveChunkRunningEvaluation => {
-                        running_evaluation(&receive_chunk_addend, send_chunk_indeterminate)
+                        running_evaluation(column, &receive_chunk_addend, send_chunk_indeterminate)
                     }
-                    AuxColumn::HashInputRunningEvaluation => {
-                        running_evaluation(&hash_input_addend, hash_input_eval_indeterminate)
-                    }
-                    AuxColumn::HashDigestRunningEvaluation => {
-                        running_evaluation(&hash_digest_addend, hash_digest_eval_indeterminate)
-                    }
+                    AuxColumn::HashInputRunningEvaluation => running_evaluation(
+                        column,
+                        &hash_input_addend,
+                        hash_input_eval_indeterminate,
+                    ),
+                    AuxColumn::HashDigestRunningEvaluation => running_evaluation(
+                        column,
+                        &hash_digest_addend,
+                        hash_digest_eval_indeterminate,
+                    ),
                     AuxColumn::SpongeRunningEvaluation => {
-                        running_evaluation(&sponge_addend, sponge_eval_indeterminate)
+                        running_evaluation(column, &sponge_addend, sponge_eval_indeterminate)
                     }
                     AuxColumn::CascadeState0HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0HighestLkIn,
                         MainColumn::State0HighestLkOut,
                     ),
                     AuxColumn::CascadeState0MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0MidHighLkIn,
                         MainColumn::State0MidHighLkOut,
                     ),
                     AuxColumn::CascadeState0MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0MidLowLkIn,
                         MainColumn::State0MidLowLkOut,
                     ),
                     AuxColumn::CascadeState0LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0LowestLkIn,
                         MainColumn::State0LowestLkOut,
                     ),
                     AuxColumn::CascadeState1HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1HighestLkIn,
                         MainColumn::State1HighestLkOut,
                     ),
                     AuxColumn::CascadeState1MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1MidHighLkIn,
                         MainColumn::State1MidHighLkOut,
                     ),
                     AuxColumn::CascadeState1MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1MidLowLkIn,
                         MainColumn::State1MidLowLkOut,
                     ),
                     AuxColumn::CascadeState1LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1LowestLkIn,
                         MainColumn::State1LowestLkOut,
                     ),
                     AuxColumn::CascadeState2HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2HighestLkIn,
                         MainColumn::State2HighestLkOut,
                     ),
                     AuxColumn::CascadeState2MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2MidHighLkIn,
                         MainColumn::State2MidHighLkOut,
                     ),
                     AuxColumn::CascadeState2MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2MidLowLkIn,
                         MainColumn::State2MidLowLkOut,
                     ),
                     AuxColumn::CascadeState2LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2LowestLkIn,
                         MainColumn::State2LowestLkOut,
                     ),
                     AuxColumn::CascadeState3HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3HighestLkIn,
                         MainColumn::State3HighestLkOut,
                     ),
                     AuxColumn::CascadeState3MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3MidHighLkIn,
                         MainColumn::State3MidHighLkOut,
                     ),
                     AuxColumn::CascadeState3MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3MidLowLkIn,
                         MainColumn::State3MidLowLkOut,
                     ),
                     AuxColumn::CascadeState3LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3LowestLkIn,
                         MainColumn::State3LowestLkOut,
                     ),
-                };
-                Array1::from(column).move_into(target_column);
+                });
             });
         profiler!(stop "hash table");
     }
