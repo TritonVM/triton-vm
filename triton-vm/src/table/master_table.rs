@@ -141,6 +141,7 @@ use strum::EnumCount;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::math::traits::ModPowU64;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::tip5::ColumnElement;
@@ -371,6 +372,50 @@ where
     /// batch randomizers.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, Self::Field>;
 
+    /// Whether the columns of the [trace table](Self::trace_table) currently
+    /// hold the coefficients of the trace interpolants instead of the trace.
+    /// See [`Self::interpolate_trace`].
+    fn trace_is_interpolated(&self) -> bool;
+
+    /// Only for [`Self::interpolate_trace`] and [`Self::restore_trace`].
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool);
+
+    /// Replace every column of the trace table by the coefficients of its
+    /// interpolant over the trace domain, in place. Does nothing if this has
+    /// happened already.
+    ///
+    /// The memory-frugal code paths work with the interpolants. Any of them
+    /// leaves the trace table in the form it has found it in: computations
+    /// that need the trace are unaffected by default. If the trace itself is
+    /// not needed anymore, interpolating it explicitly spares those code
+    /// paths from transforming the table back and forth.
+    ///
+    /// All methods that are needed after the trace table has been committed
+    /// to can deal with either form.
+    fn interpolate_trace(&mut self) {
+        if self.trace_is_interpolated() {
+            return;
+        }
+        assert_eq!(BFieldElement::ONE, self.domains().trace.offset());
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        self.set_trace_is_interpolated(true);
+    }
+
+    /// The inverse of [`Self::interpolate_trace`].
+    fn restore_trace(&mut self) {
+        if !self.trace_is_interpolated() {
+            return;
+        }
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        self.set_trace_is_interpolated(false);
+    }
+
     /// The quotient-domain view of the cached low-degree-extended table, if
     /// 1. the table has been [low-degree extended][lde], and
     /// 2. the low-degree-extended table [has been cached][cache].
@@ -524,9 +569,10 @@ where
     /// The evaluations of all column polynomials, including their trace
     /// randomizers, in each of the given indeterminates.
     ///
-    /// Uses barycentric Lagrangian evaluation, batched in two ways. First,
-    /// the barycentric weights of an indeterminate are shared across all
-    /// columns. Second, the table is streamed only once, in blocks of rows,
+    /// Uses barycentric Lagrangian evaluation – or, should the trace table
+    /// [be interpolated](Self::interpolate_trace), plain evaluation –,
+    /// batched in two ways. First, the weights of an indeterminate are shared
+    /// across all columns. Second, the table is streamed only once, in blocks of rows,
     /// for all indeterminates and columns at once: for a table with hundreds
     /// of long columns, the memory traffic of reading the table, not the
     /// arithmetic, dominates the runtime. A block's rows of all columns and
@@ -538,24 +584,51 @@ where
         let domain = trace_domain.values();
         let num_rows = domain.len();
 
-        // barycentric weights `d / (z - d)` for every point `d` of the
-        // domain, per indeterminate `z`, and the inverses of their sums
-        let weights = indeterminates
-            .iter()
-            .map(|&indeterminate| {
-                let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
-                let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
-                domain
-                    .par_iter()
-                    .zip_eq(domain_shift_inverses)
-                    .map(|(&d, inv)| d * inv)
-                    .collect::<Vec<_>>()
-            })
-            .collect_vec();
-        let weight_sum_inverses = weights
-            .iter()
-            .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
-            .collect_vec();
+        // The value of a column's interpolant in indeterminate `z` is a
+        // weighted sum of the column's elements, up to a factor.
+        // - For a column of values, the weights are the barycentric weights
+        //   `d / (z - d)` for every point `d` of the domain, and the factor is
+        //   the inverse of their sum.
+        // - For a column of coefficients, the weights are the powers of `z`.
+        let (weights, weight_sum_inverses) = if self.trace_is_interpolated() {
+            let weights = indeterminates
+                .iter()
+                .map(|&indeterminate| {
+                    let mut powers = vec![XFieldElement::ONE; num_rows];
+                    powers.par_chunks_mut(ROWS_PER_BLOCK).enumerate().for_each(
+                        |(block_index, powers)| {
+                            let first_exponent = u64::try_from(block_index * ROWS_PER_BLOCK)
+                                .expect(USIZE_TO_U64_ERR);
+                            let mut power = indeterminate.mod_pow_u64(first_exponent);
+                            for cell in powers {
+                                *cell = power;
+                                power *= indeterminate;
+                            }
+                        },
+                    );
+                    powers
+                })
+                .collect_vec();
+            (weights, vec![XFieldElement::ONE; indeterminates.len()])
+        } else {
+            let weights = indeterminates
+                .iter()
+                .map(|&indeterminate| {
+                    let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
+                    let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
+                    domain
+                        .par_iter()
+                        .zip_eq(domain_shift_inverses)
+                        .map(|(&d, inv)| d * inv)
+                        .collect::<Vec<_>>()
+                })
+                .collect_vec();
+            let weight_sum_inverses = weights
+                .iter()
+                .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
+                .collect_vec();
+            (weights, weight_sum_inverses)
+        };
         let zerofier_evaluations = indeterminates
             .iter()
             .map(|&indeterminate| trace_domain.evaluate_zerofier(indeterminate))
@@ -633,6 +706,10 @@ where
     }
 
     fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
+        assert!(
+            !self.trace_is_interpolated(),
+            "trace must not be interpolated"
+        );
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
         let trace_domain = self.domains().trace;
@@ -730,12 +807,11 @@ where
         profiler!(stop "fetch trace randomizers");
 
         // The trace table's columns are replaced by their interpolants'
-        // coefficients here and restored below.
+        // coefficients here, unless they have been already, and restored
+        // below.
         profiler!(start "interpolate" ("LDE"));
-        self.trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        let trace_was_interpolated = self.trace_is_interpolated();
+        self.interpolate_trace();
         profiler!(stop "interpolate");
 
         // The interpolants are polynomials in the trace domain's values.
@@ -789,10 +865,9 @@ where
         }
 
         profiler!(start "restore trace" ("LDE"));
-        self.trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        if !trace_was_interpolated {
+            self.restore_trace();
+        }
         profiler!(stop "restore trace");
 
         // computing the quotient needs a table like this, too
@@ -879,8 +954,14 @@ where
                     *sum = unreduced_sum.reduce();
                 }
             });
+        // Interpolation is linear: the weighted sum of the interpolants'
+        // coefficients is the interpolant of the weighted sum.
         let trace_domain = self.domains().trace;
-        let interpolant = trace_domain.par_interpolate(&weighted_sum_of_trace_columns);
+        let interpolant = if self.trace_is_interpolated() {
+            Polynomial::new(weighted_sum_of_trace_columns)
+        } else {
+            trace_domain.par_interpolate(&weighted_sum_of_trace_columns)
+        };
 
         // the weighted sum of the trace randomizers, coefficient by coefficient
         let randomizers = (0..Self::NUM_COLUMNS)
@@ -940,11 +1021,19 @@ where
             .map(Self::Field::from)
             .collect::<Vec<_>>();
 
-        // fast multi-point extrapolate every column
+        // fast multi-point evaluate or extrapolate every column, depending on
+        // whether it holds its interpolant's coefficients or its values
         let offset = domains.trace.offset();
         let trace_table = self.trace_table();
+        let trace_is_interpolated = self.trace_is_interpolated();
         let columns = trace_table.axis_iter(COL_AXIS).into_par_iter().map(|col| {
-            Polynomial::coset_extrapolate(offset, col.as_slice().unwrap(), &indeterminates)
+            let col = col.as_slice().unwrap();
+            if trace_is_interpolated {
+                // the copy is negligible compared to the evaluation
+                Polynomial::new(col.to_vec()).batch_evaluate(&indeterminates)
+            } else {
+                Polynomial::coset_extrapolate(offset, col, &indeterminates)
+            }
         });
 
         // add trace randomizers to their columns
@@ -1060,6 +1149,9 @@ pub struct MasterMainTable {
 
     /// See [`MasterTable::take_working_table`].
     working_table: Option<Array2<MaybeUninit<BFieldElement>>>,
+
+    /// See [`MasterTable::trace_is_interpolated`].
+    trace_is_interpolated: bool,
 }
 
 /// The Master Auxiliary Table, as described in the
@@ -1083,6 +1175,9 @@ pub struct MasterAuxTable {
 
     /// See [`MasterTable::take_working_table`].
     working_table: Option<Array2<MaybeUninit<XFieldElement>>>,
+
+    /// See [`MasterTable::trace_is_interpolated`].
+    trace_is_interpolated: bool,
 }
 
 impl MasterTable for MasterMainTable {
@@ -1100,6 +1195,14 @@ impl MasterTable for MasterMainTable {
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, BFieldElement> {
         self.trace_table.view_mut()
+    }
+
+    fn trace_is_interpolated(&self) -> bool {
+        self.trace_is_interpolated
+    }
+
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool) {
+        self.trace_is_interpolated = trace_is_interpolated;
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
@@ -1169,6 +1272,14 @@ impl MasterTable for MasterAuxTable {
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, XFieldElement> {
         self.trace_table.slice_mut(s![.., ..Self::NUM_COLUMNS])
+    }
+
+    fn trace_is_interpolated(&self) -> bool {
+        self.trace_is_interpolated
+    }
+
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool) {
+        self.trace_is_interpolated = trace_is_interpolated;
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
@@ -1292,6 +1403,7 @@ impl MasterMainTable {
             trace_randomizer_seed,
             low_degree_extended_table: None,
             working_table: None,
+            trace_is_interpolated: false,
         };
 
         let [
@@ -1436,6 +1548,11 @@ impl MasterMainTable {
     /// specific to that table, but always involves adding some number of
     /// columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
+        assert!(
+            !self.trace_is_interpolated,
+            "trace must not be interpolated"
+        );
+
         // a seed that hasn't been used for any main table trace randomizer
         let aux_table_trace_randomizer_seed =
             offset_rng_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
@@ -1455,6 +1572,7 @@ impl MasterMainTable {
             batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
             working_table: None,
+            trace_is_interpolated: false,
         };
 
         profiler!(start "slice master table");
@@ -2498,6 +2616,62 @@ mod tests {
         revealed_rows_are_identical(aux_table, &row_indices);
     }
 
+    #[macro_rules_attr::apply(proptest(cases = 10))]
+    fn interpolating_the_trace_changes_no_result(
+        #[strategy(prop::collection::vec(0_usize..1 << 10, 1..20))] row_indices: Vec<usize>,
+        #[strategy(arb())] indeterminates: [XFieldElement; 2],
+        #[strategy(arb())] weight_seed: u64,
+    ) {
+        fn assert_same_results<FF>(
+            mut table: impl MasterTable<Field = FF> + Clone,
+            row_indices: &[usize],
+            indeterminates: &[XFieldElement],
+            weight_seed: u64,
+        ) where
+            FF: Debug + PartialEq + Clone,
+            StandardUniform: Distribution<FF>,
+            XFieldElement: Add<FF, Output = XFieldElement>,
+        {
+            let num_columns = table.trace_table().ncols();
+            let weights = || -> Array1<XFieldElement> {
+                let mut rng = StdRng::seed_from_u64(weight_seed);
+                (0..num_columns)
+                    .map(|_| rng.random::<XFieldElement>())
+                    .collect()
+            };
+            let trace = table.trace_table().to_owned();
+
+            assert!(!table.trace_is_interpolated());
+            let digests = table.hash_all_fri_domain_rows();
+            let out_of_domain_rows = table.out_of_domain_rows(indeterminates);
+            let weighted_sum = table.weighted_sum_of_columns(weights()).into_owned();
+            let revealed_rows = table.reveal_rows(row_indices);
+            assert!(!table.trace_is_interpolated());
+            assert_eq!(trace, table.trace_table());
+
+            table.interpolate_trace();
+            let interpolants = table.trace_table().to_owned();
+            assert!(table.trace_is_interpolated());
+            assert_eq!(digests, table.hash_all_fri_domain_rows());
+            assert_eq!(out_of_domain_rows, table.out_of_domain_rows(indeterminates));
+            assert_eq!(weighted_sum, table.weighted_sum_of_columns(weights()));
+            assert_eq!(revealed_rows, table.reveal_rows(row_indices));
+            assert!(table.trace_is_interpolated());
+            assert_eq!(interpolants, table.trace_table());
+
+            table.restore_trace();
+            assert!(!table.trace_is_interpolated());
+            assert_eq!(trace, table.trace_table());
+        }
+
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::NoCache);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let main_table = artifacts.master_main_table;
+        let aux_table = artifacts.master_aux_table;
+        assert_same_results(main_table, &row_indices, &indeterminates, weight_seed);
+        assert_same_results(aux_table, &row_indices, &indeterminates, weight_seed);
+    }
+
     #[macro_rules_attr::apply(test)]
     fn zerofiers_are_correct() {
         let big_order = 16;
@@ -3182,6 +3356,7 @@ mod tests {
             batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
             working_table: None,
+            trace_is_interpolated: false,
         }
     }
 

@@ -16,8 +16,6 @@ use rand::random;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
-use twenty_first::math::ntt::intt;
-use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::ModPowU64;
 use twenty_first::prelude::*;
@@ -173,7 +171,7 @@ pub struct Verifier {
 /// different lengths. Also for performance reasons, the lengths of all
 /// arithmetic domains are powers of two. If _n + 1_ is not a power of two, the
 /// next power of two is used. This allows efficient interpolation (and
-/// evaluation) using the (inverse) [Number Theoretic Transform (NTT)](ntt).
+/// evaluation) using the (inverse) [Number Theoretic Transform (NTT)][ntt].
 ///
 /// The most important of these domains are contained in this struct. In some
 /// cases, a domain _could_ be replaced by another existing, longer domain to
@@ -181,6 +179,7 @@ pub struct Verifier {
 /// out in the fields' documentation below.
 ///
 /// [lemma]: https://dl.acm.org/doi/pdf/10.1145/322217.322225
+/// [ntt]: twenty_first::math::ntt::ntt
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) struct ProverDomains {
     /// One of the most central domains.
@@ -441,6 +440,17 @@ impl Prover {
         profiler!(start "aux tables");
         master_aux_table.maybe_low_degree_extend_all_columns_into(aux_lde_memory);
 
+        // Without cached low-degree extensions, everything from here on works
+        // with the trace interpolants; the auxiliary trace itself is not
+        // needed anymore.
+        let lde_is_cached = master_main_table.fri_domain_table().is_some()
+            && master_aux_table.fri_domain_table().is_some();
+        if !lde_is_cached {
+            profiler!(start "interpolate" ("LDE"));
+            master_aux_table.interpolate_trace();
+            profiler!(stop "interpolate");
+        }
+
         profiler!(start "Merkle tree");
         let aux_merkle_tree = master_aux_table.merkle_tree();
         profiler!(stop "Merkle tree");
@@ -453,6 +463,13 @@ impl Prover {
             proof_stream.sample_scalars(MasterAuxTable::NUM_CONSTRAINTS);
         profiler!(stop "Fiat-Shamir");
         profiler!(stop "aux tables");
+
+        // Neither is the main trace, now that the auxiliary table exists.
+        if !lde_is_cached {
+            profiler!(start "interpolate" ("LDE"));
+            master_main_table.interpolate_trace();
+            profiler!(stop "interpolate");
+        }
 
         let quotient_segment_polynomials = Self::compute_quotient_segments(
             &mut master_main_table,
@@ -1028,17 +1045,12 @@ impl Prover {
         let aux_trace_randomizers = Array1::from(aux_trace_randomizers);
         profiler!(stop "fetch trace randomizers");
 
+        // The trace tables are left in the form they are found in.
         profiler!(start "poly interpolate" ("LDE"));
-        main_table
-            .trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
-        aux_table
-            .trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        let main_trace_was_interpolated = main_table.trace_is_interpolated();
+        let aux_trace_was_interpolated = aux_table.trace_is_interpolated();
+        main_table.interpolate_trace();
+        aux_table.interpolate_trace();
         profiler!(stop "poly interpolate");
 
         profiler!(start "calculate quotients");
@@ -1194,16 +1206,12 @@ impl Prover {
         profiler!(stop "interpolate quotient segments");
 
         profiler!(start "restore original trace" ("LDE"));
-        main_table
-            .trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
-        aux_table
-            .trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        if !main_trace_was_interpolated {
+            main_table.restore_trace();
+        }
+        if !aux_trace_was_interpolated {
+            aux_table.restore_trace();
+        }
         profiler!(stop "restore original trace");
 
         quotient_segment_polynomials
@@ -2515,6 +2523,23 @@ pub(crate) mod tests {
         let cache_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         assert_eq!(jit_segments, cache_segments);
+
+        // the just-in-time path must cope with interpolated traces
+        main.clear_cache();
+        aux.clear_cache();
+        aux.interpolate_trace();
+        let half_interpolated_segments =
+            Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+        assert!(!main.trace_is_interpolated());
+        assert!(aux.trace_is_interpolated());
+        assert_eq!(jit_segments, half_interpolated_segments);
+
+        main.interpolate_trace();
+        let interpolated_segments =
+            Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+        assert!(main.trace_is_interpolated());
+        assert!(aux.trace_is_interpolated());
+        assert_eq!(jit_segments, interpolated_segments);
     }
 
     /// [`Stark::compute_quotient_segments`] takes mutable references to both,
