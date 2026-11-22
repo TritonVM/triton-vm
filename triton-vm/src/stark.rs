@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::mem::MaybeUninit;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::RangeInclusive;
@@ -997,11 +996,23 @@ impl Prover {
         // Row majority (“`C`”) puts the quotient's values in the order of the
         // quotient domain's points.
         let mut quotient_multicoset_evaluations = ndarray_helper::par_zeros((num_rows, num_cosets));
-        // column majority (“`F`”) for contiguous column slices
-        let mut main_columns =
-            ndarray_helper::par_zeros((num_rows, MasterMainTable::NUM_COLUMNS).f());
-        let mut aux_columns =
-            ndarray_helper::par_zeros((num_rows, MasterAuxTable::NUM_COLUMNS).f());
+        // Column majority for contiguous column slices. Every coset overwrites
+        // both tables entirely.
+        let (mut main_columns, mut aux_columns) = if num_rows == domains.trace.len() {
+            // reuse the memory that hashing the rows needed
+            (main_table.working_table(), aux_table.working_table())
+        } else {
+            (
+                ndarray_helper::uninitialized_column_major_table(
+                    num_rows,
+                    MasterMainTable::NUM_COLUMNS,
+                ),
+                ndarray_helper::uninitialized_column_major_table(
+                    num_rows,
+                    MasterAuxTable::NUM_COLUMNS,
+                ),
+            )
+        };
         profiler!(stop "zero-initialization");
 
         profiler!(start "fetch trace randomizers");
@@ -1115,9 +1126,18 @@ impl Prover {
             profiler!(stop "poly evaluate");
 
             profiler!(start "AIR evaluation" ("AIR"));
+            // SAFETY: `evaluate_randomized_interpolant_into` initializes the
+            // column it is given, and it was just given every column of both
+            // tables.
+            let (main_columns, aux_columns) = unsafe {
+                (
+                    main_columns.view().assume_init(),
+                    aux_columns.view().assume_init(),
+                )
+            };
             let all_quotients = all_quotients_combined(
-                main_columns.view(),
-                aux_columns.view(),
+                main_columns,
+                aux_columns,
                 domains.trace,
                 working_domain,
                 challenges,
@@ -1393,19 +1413,6 @@ impl Prover {
         segments.try_into().unwrap()
     }
 
-    /// A column-major table with uninitialized entries.
-    fn uninitialized_column_major_table<FF>(
-        num_rows: usize,
-        num_columns: usize,
-    ) -> Array2<MaybeUninit<FF>> {
-        let num_elements = num_rows * num_columns;
-        let mut elements = twenty_first::memory::vec_with_capacity(num_elements);
-        // SAFETY: `MaybeUninit<FF>` has no validity requirements, and the
-        // capacity suffices.
-        unsafe { elements.set_len(num_elements) };
-        Array2::from_shape_vec([num_rows, num_columns].f(), elements).unwrap()
-    }
-
     /// Construct the randomized segmented quotient table, as well as the
     /// polynomials corresponding to each of its columns.
     ///
@@ -1481,7 +1488,7 @@ impl Prover {
 
         // Every polynomial is evaluated directly into its column of the
         // column-major table, without any intermediate copy.
-        let mut randomized_segment_codewords = Self::uninitialized_column_major_table(
+        let mut randomized_segment_codewords = ndarray_helper::uninitialized_column_major_table(
             ldt_domain.len(),
             NUM_RANDOMIZED_QUOTIENT_SEGMENTS,
         );

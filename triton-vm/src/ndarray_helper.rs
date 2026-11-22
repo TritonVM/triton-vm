@@ -78,6 +78,24 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
     .concat()
 }
 
+/// A column-major table with uninitialized entries.
+///
+/// Unlike [zero-initialized memory][par_zeros], which the allocator prefers to
+/// request from the operating system, the table can be carved out of memory
+/// that was freed earlier. This lowers the peak memory consumption if
+/// similarly-sized tables are used one after the other.
+pub fn uninitialized_column_major_table<FF>(
+    num_rows: usize,
+    num_columns: usize,
+) -> Array2<MaybeUninit<FF>> {
+    let num_elements = num_rows * num_columns;
+    let mut elements = twenty_first::memory::vec_with_capacity(num_elements);
+    // SAFETY: `MaybeUninit<FF>` has no validity requirements, and the
+    // capacity suffices.
+    unsafe { elements.set_len(num_elements) };
+    Array2::from_shape_vec([num_rows, num_columns].f(), elements).unwrap()
+}
+
 /// Like [`Array2::zeros`], but faster because it uses parallelism.
 pub fn par_zeros<FF>(shape: impl ShapeBuilder<Dim = ndarray::Dim<[Ix; 2]>>) -> Array2<FF>
 where

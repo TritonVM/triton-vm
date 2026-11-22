@@ -484,6 +484,29 @@ where
 
     fn clear_cache(&mut self);
 
+    /// The working memory of the memory-frugal code paths, if it was
+    /// [kept](Self::keep_working_table) earlier: a column-major table of the
+    /// trace table's dimensions, with arbitrary content.
+    ///
+    /// Without caching the low-degree extended trace, both hashing its rows
+    /// and computing the quotient need such a table. Handing it from one to
+    /// the other, instead of freeing and allocating anew, guarantees that the
+    /// memory is reused, whatever the allocator.
+    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<Self::Field>>>;
+
+    /// See [`Self::take_working_table`].
+    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<Self::Field>>);
+
+    /// The [kept](Self::keep_working_table) working table, or a new one.
+    fn working_table(&mut self) -> Array2<MaybeUninit<Self::Field>> {
+        let num_rows = self.trace_table().nrows();
+        self.take_working_table()
+            .filter(|table| table.dim() == (num_rows, Self::NUM_COLUMNS))
+            .unwrap_or_else(|| {
+                ndarray_helper::uninitialized_column_major_table(num_rows, Self::NUM_COLUMNS)
+            })
+    }
+
     /// Return the FRI domain view of the cached low-degree-extended table, if
     /// any.
     ///
@@ -718,7 +741,8 @@ where
         // The interpolants are polynomials in the trace domain's values.
         assert_eq!(BFieldElement::ONE, trace_domain.offset());
         let num_rows_u64 = u64::try_from(num_rows).unwrap();
-        let mut coset_table = ndarray_helper::par_zeros((num_rows, Self::NUM_COLUMNS).f());
+        // Every coset overwrites the entire table.
+        let mut coset_table = self.working_table();
         let mut all_digests = vec![Digest::default(); fri_domain.len()];
         for coset_index in 0..num_cosets {
             // The coset's points are `coset_offset · trace_generator^i`.
@@ -751,7 +775,10 @@ where
             profiler!(stop "LDE");
 
             profiler!(start "hash rows" ("hash"));
-            let coset_digests = Self::hash_rows_of_column_major_table(coset_table.view());
+            // SAFETY: `evaluate_randomized_interpolant_into` initializes the
+            // column it is given, and it was just given every column.
+            let coset_table = unsafe { coset_table.view().assume_init() };
+            let coset_digests = Self::hash_rows_of_column_major_table(coset_table);
             all_digests
                 .par_iter_mut()
                 .skip(coset_index)
@@ -767,6 +794,9 @@ where
             .into_par_iter()
             .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
         profiler!(stop "restore trace");
+
+        // computing the quotient needs a table like this, too
+        self.keep_working_table(coset_table);
 
         all_digests
     }
@@ -1027,6 +1057,9 @@ pub struct MasterMainTable {
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
 
     low_degree_extended_table: Option<Array2<BFieldElement>>,
+
+    /// See [`MasterTable::take_working_table`].
+    working_table: Option<Array2<MaybeUninit<BFieldElement>>>,
 }
 
 /// The Master Auxiliary Table, as described in the
@@ -1047,6 +1080,9 @@ pub struct MasterAuxTable {
         [OnceLock<Polynomial<'static, XFieldElement>>; NUM_BATCH_RANDOMIZERS],
 
     low_degree_extended_table: Option<Array2<XFieldElement>>,
+
+    /// See [`MasterTable::take_working_table`].
+    working_table: Option<Array2<MaybeUninit<XFieldElement>>>,
 }
 
 impl MasterTable for MasterMainTable {
@@ -1087,6 +1123,14 @@ impl MasterTable for MasterMainTable {
 
     fn clear_cache(&mut self) {
         drop(self.low_degree_extended_table.take());
+    }
+
+    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<BFieldElement>>> {
+        self.working_table.take()
+    }
+
+    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<BFieldElement>>) {
+        self.working_table = Some(working_table);
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
@@ -1147,6 +1191,14 @@ impl MasterTable for MasterAuxTable {
 
     fn clear_cache(&mut self) {
         drop(self.low_degree_extended_table.take());
+    }
+
+    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<XFieldElement>>> {
+        self.working_table.take()
+    }
+
+    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<XFieldElement>>) {
+        self.working_table = Some(working_table);
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
@@ -1239,6 +1291,7 @@ impl MasterMainTable {
             trace_table,
             trace_randomizer_seed,
             low_degree_extended_table: None,
+            working_table: None,
         };
 
         let [
@@ -1401,6 +1454,7 @@ impl MasterMainTable {
             trace_randomizer_seed: aux_table_trace_randomizer_seed,
             batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
+            working_table: None,
         };
 
         profiler!(start "slice master table");
@@ -1953,18 +2007,22 @@ where
 /// scaled coefficients before the (single, in-place) NTT, which avoids
 /// evaluating it separately.
 ///
+/// Every element of `codeword` is written to; whatever it contained before is
+/// irrelevant. The initialized codeword is returned.
+///
 /// # Panics
 ///
 /// Panics if the codeword's length differs from the domain's, or if the
 /// interpolant or the randomizer has more coefficients than the codeword is
 /// long.
-pub(crate) fn evaluate_randomized_interpolant_into<FF>(
+pub(crate) fn evaluate_randomized_interpolant_into<'c, FF>(
     interpolant: &[FF],
     randomizer: &Polynomial<FF>,
     zerofier: BFieldElement,
     domain: ArithmeticDomain,
-    codeword: &mut [FF],
-) where
+    codeword: &'c mut [MaybeUninit<FF>],
+) -> &'c mut [FF]
+where
     FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
 {
     let randomizer = randomizer.coefficients();
@@ -1978,10 +2036,17 @@ pub(crate) fn evaluate_randomized_interpolant_into<FF>(
     let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
     let mut power = BFieldElement::ONE;
     for (cell, &coefficient) in scaled_interpolant.iter_mut().zip(interpolant) {
-        *cell = coefficient * power;
+        cell.write(coefficient * power);
         power *= offset;
     }
-    zero_padding.fill(FF::ZERO);
+    for cell in zero_padding {
+        cell.write(FF::ZERO);
+    }
+
+    // SAFETY: Every element was just written to: the two parts above
+    // partition the codeword, and the interpolant has as many coefficients
+    // as the first part is long.
+    let codeword = unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) };
 
     let mut power = zerofier;
     for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
@@ -1990,6 +2055,7 @@ pub(crate) fn evaluate_randomized_interpolant_into<FF>(
     }
 
     ntt(codeword);
+    codeword
 }
 
 /// The inner product `Σ values[i] · weights[i]`, where the first
@@ -3115,6 +3181,7 @@ mod tests {
             trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).random(),
             batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
+            working_table: None,
         }
     }
 
