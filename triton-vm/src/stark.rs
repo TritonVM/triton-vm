@@ -2497,49 +2497,64 @@ pub(crate) mod tests {
 
     #[macro_rules_attr::apply(test)]
     fn quotient_segments_are_independent_of_table_caching() {
+        fn assert_independence(test_program: TestableProgram, expect_quotient_overflow: bool) {
+            let artifacts = test_program.generate_proof_artifacts();
+            let mut main = artifacts.master_main_table;
+            let mut aux = artifacts.master_aux_table;
+            let ch = artifacts.challenges;
+            let has_quotient_overflow = main.domains().quotient_overflow.is_some();
+            assert_eq!(expect_quotient_overflow, has_quotient_overflow);
+
+            let weights = StdRng::seed_from_u64(1632525295622789151)
+                .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
+
+            debug_assert!(main.fri_domain_table().is_none());
+            debug_assert!(aux.fri_domain_table().is_none());
+            let jit_segments =
+                Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+
+            debug_assert!(main.fri_domain_table().is_none());
+            main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            debug_assert!(main.fri_domain_table().is_some());
+
+            debug_assert!(aux.fri_domain_table().is_none());
+            aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            debug_assert!(aux.fri_domain_table().is_some());
+
+            let cache_segments =
+                Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+
+            assert_eq!(jit_segments, cache_segments);
+
+            // the just-in-time path must cope with interpolated traces
+            main.clear_cache();
+            aux.clear_cache();
+            aux.interpolate_trace();
+            let half_interpolated_segments =
+                Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+            assert!(!main.trace_is_interpolated());
+            assert!(aux.trace_is_interpolated());
+            assert_eq!(jit_segments, half_interpolated_segments);
+
+            main.interpolate_trace();
+            let interpolated_segments =
+                Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
+            assert!(main.trace_is_interpolated());
+            assert!(aux.trace_is_interpolated());
+            assert_eq!(jit_segments, interpolated_segments);
+        }
+
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
-        let test_program = TestableProgram::new(triton_program!(halt));
-        let artifacts = test_program.generate_proof_artifacts();
-        let mut main = artifacts.master_main_table;
-        let mut aux = artifacts.master_aux_table;
-        let ch = artifacts.challenges;
-        let weights = StdRng::seed_from_u64(1632525295622789151)
-            .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
-
-        debug_assert!(main.fri_domain_table().is_none());
-        debug_assert!(aux.fri_domain_table().is_none());
-        let jit_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
-
-        debug_assert!(main.fri_domain_table().is_none());
-        main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
-        debug_assert!(main.fri_domain_table().is_some());
-
-        debug_assert!(aux.fri_domain_table().is_none());
-        aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
-        debug_assert!(aux.fri_domain_table().is_some());
-
-        let cache_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
-
-        assert_eq!(jit_segments, cache_segments);
-
-        // the just-in-time path must cope with interpolated traces
-        main.clear_cache();
-        aux.clear_cache();
-        aux.interpolate_trace();
-        let half_interpolated_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
-        assert!(!main.trace_is_interpolated());
-        assert!(aux.trace_is_interpolated());
-        assert_eq!(jit_segments, half_interpolated_segments);
-
-        main.interpolate_trace();
-        let interpolated_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
-        assert!(main.trace_is_interpolated());
-        assert!(aux.trace_is_interpolated());
-        assert_eq!(jit_segments, interpolated_segments);
+        let short_program = TestableProgram::new(triton_program!(halt));
+        let long_program =
+            TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
+                .with_input(bfe_array![300]);
+        // Only for the longer trace, the quotient domain is short enough for
+        // the quotient to not fit.
+        assert_independence(short_program, false);
+        assert_independence(long_program, true);
     }
 
     /// [`Stark::compute_quotient_segments`] takes mutable references to both,
@@ -3335,7 +3350,7 @@ pub(crate) mod tests {
     #[macro_rules_attr::apply(test)]
     fn constraints_evaluate_to_zero_on_fibonacci() -> ConstraintResult {
         let program = TestableProgram::new(crate::example_programs::FIBONACCI_SEQUENCE.clone())
-            .with_input(bfe_array![100]);
+            .with_input(bfe_array![300]);
         triton_constraints_evaluate_to_zero(program)
     }
 
