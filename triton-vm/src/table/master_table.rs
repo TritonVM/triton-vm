@@ -150,6 +150,7 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
+use crate::error::USIZE_TO_U64_ERR;
 use crate::ndarray_helper;
 use crate::ndarray_helper::COL_AXIS;
 use crate::ndarray_helper::ROW_AXIS;
@@ -1684,10 +1685,6 @@ pub fn all_quotients_combined(
     );
     assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
 
-    let init_section_end = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
-    let cons_section_end = init_section_end + MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
-    let tran_section_end = cons_section_end + MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
-
     profiler!(start "zerofier inverse");
     let initial_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
     let consistency_zerofier_inverse =
@@ -1730,63 +1727,219 @@ pub fn all_quotients_combined(
                 let next_row_main = rows_main.row(i + unit_distance);
                 let next_row_aux = rows_aux.row(i + unit_distance);
 
-                let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
-                    current_row_main,
-                    current_row_aux,
+                *quotient_value = combined_quotient_value(
+                    [current_row_main, next_row_main],
+                    [current_row_aux, next_row_aux],
                     challenges,
+                    quotient_weights,
+                    [
+                        initial_zerofier_inverse[row_index],
+                        consistency_zerofier_inverse[row_index],
+                        transition_zerofier_inverse[row_index],
+                        terminal_zerofier_inverse[row_index],
+                    ],
                 );
-                let initial_inner_product = inner_product(
-                    &initial_constraint_values,
-                    &quotient_weights[..init_section_end],
-                    MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
-                );
-                let mut value = initial_inner_product * initial_zerofier_inverse[row_index];
-
-                let consistency_constraint_values =
-                    MasterAuxTable::evaluate_consistency_constraints(
-                        current_row_main,
-                        current_row_aux,
-                        challenges,
-                    );
-                let consistency_inner_product = inner_product(
-                    &consistency_constraint_values,
-                    &quotient_weights[init_section_end..cons_section_end],
-                    MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
-                );
-                value += consistency_inner_product * consistency_zerofier_inverse[row_index];
-
-                let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
-                    current_row_main,
-                    current_row_aux,
-                    next_row_main,
-                    next_row_aux,
-                    challenges,
-                );
-                let transition_inner_product = inner_product(
-                    &transition_constraint_values,
-                    &quotient_weights[cons_section_end..tran_section_end],
-                    MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
-                );
-                value += transition_inner_product * transition_zerofier_inverse[row_index];
-
-                let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
-                    current_row_main,
-                    current_row_aux,
-                    challenges,
-                );
-                let terminal_inner_product = inner_product(
-                    &terminal_constraint_values,
-                    &quotient_weights[tran_section_end..],
-                    MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
-                );
-                value += terminal_inner_product * terminal_zerofier_inverse[row_index];
-
-                *quotient_value = value;
             }
         });
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// The value of the quotient codeword – the randomized linear combination of
+/// all individual quotients – in one point, given the main and auxiliary rows
+/// in that point (“current”) and in the point's successor (“next”).
+///
+/// The inverses of the zerofiers in that point are expected in the order
+/// initial, consistency, transition, terminal.
+#[inline(always)]
+fn combined_quotient_value(
+    [current_row_main, next_row_main]: [ArrayView1<BFieldElement>; 2],
+    [current_row_aux, next_row_aux]: [ArrayView1<XFieldElement>; 2],
+    challenges: &Challenges,
+    quotient_weights: &[XFieldElement],
+    [
+        initial_zerofier_inverse,
+        consistency_zerofier_inverse,
+        transition_zerofier_inverse,
+        terminal_zerofier_inverse,
+    ]: [BFieldElement; 4],
+) -> XFieldElement {
+    let init_section_end = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
+    let cons_section_end = init_section_end + MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
+    let tran_section_end = cons_section_end + MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
+
+    let initial_constraint_values =
+        MasterAuxTable::evaluate_initial_constraints(current_row_main, current_row_aux, challenges);
+    let initial_inner_product = inner_product(
+        &initial_constraint_values,
+        &quotient_weights[..init_section_end],
+        MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
+    );
+    let mut value = initial_inner_product * initial_zerofier_inverse;
+
+    let consistency_constraint_values = MasterAuxTable::evaluate_consistency_constraints(
+        current_row_main,
+        current_row_aux,
+        challenges,
+    );
+    let consistency_inner_product = inner_product(
+        &consistency_constraint_values,
+        &quotient_weights[init_section_end..cons_section_end],
+        MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
+    );
+    value += consistency_inner_product * consistency_zerofier_inverse;
+
+    let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
+        current_row_main,
+        current_row_aux,
+        next_row_main,
+        next_row_aux,
+        challenges,
+    );
+    let transition_inner_product = inner_product(
+        &transition_constraint_values,
+        &quotient_weights[cons_section_end..tran_section_end],
+        MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
+    );
+    value += transition_inner_product * transition_zerofier_inverse;
+
+    let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
+        current_row_main,
+        current_row_aux,
+        challenges,
+    );
+    let terminal_inner_product = inner_product(
+        &terminal_constraint_values,
+        &quotient_weights[tran_section_end..],
+        MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
+    );
+    value += terminal_inner_product * terminal_zerofier_inverse;
+
+    value
+}
+
+/// The values of the [quotient codeword](all_quotients_combined) in the given
+/// points, which can be arbitrary as long as none of them is in the trace
+/// domain.
+///
+/// Row `i` of the “current” tables holds the values of the main and
+/// auxiliary columns in point `i`, and row `i` of the “next” tables their
+/// values in the successor of point `i`, that is, in point `i` times the trace
+/// domain's generator. For contiguous rows, the tables should be row-major.
+pub(crate) fn all_quotients_combined_in_points(
+    points: &[BFieldElement],
+    [current_rows_main, next_rows_main]: [ArrayView2<BFieldElement>; 2],
+    [current_rows_aux, next_rows_aux]: [ArrayView2<XFieldElement>; 2],
+    trace_domain: ArithmeticDomain,
+    challenges: &Challenges,
+    quotient_weights: &[XFieldElement],
+) -> Vec<XFieldElement> {
+    assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
+    for num_rows in [
+        current_rows_main.nrows(),
+        next_rows_main.nrows(),
+        current_rows_aux.nrows(),
+        next_rows_aux.nrows(),
+    ] {
+        assert_eq!(points.len(), num_rows);
+    }
+
+    // The zerofiers are, in this order: `x - 1` for the first row, `x^n - 1`
+    // for all rows, and `x - ω^(-1)` for the last row. The zerofier for all
+    // rows but the last is the quotient of the latter two.
+    let trace_domain_len = u64::try_from(trace_domain.len()).expect(USIZE_TO_U64_ERR);
+    let last_trace_domain_value = trace_domain.generator().inverse();
+    let zerofiers = points
+        .iter()
+        .flat_map(|&x| {
+            let first_row = x - BFieldElement::ONE;
+            let all_rows = x.mod_pow(trace_domain_len) - BFieldElement::ONE;
+            let last_row = x - last_trace_domain_value;
+            [first_row, all_rows, last_row]
+        })
+        .collect();
+    let zerofier_inverses = BFieldElement::batch_inversion(zerofiers);
+
+    // few points: don't spread them too thin
+    points
+        .par_iter()
+        .enumerate()
+        .with_min_len(4)
+        .map(|(i, &x)| {
+            let [first_row_inverse, all_rows_inverse, last_row_inverse] = zerofier_inverses
+                [3 * i..3 * i + 3]
+                .try_into()
+                .expect("three zerofiers per point");
+            let transition_zerofier_inverse = (x - last_trace_domain_value) * all_rows_inverse;
+            combined_quotient_value(
+                [current_rows_main.row(i), next_rows_main.row(i)],
+                [current_rows_aux.row(i), next_rows_aux.row(i)],
+                challenges,
+                quotient_weights,
+                [
+                    first_row_inverse,
+                    all_rows_inverse,
+                    transition_zerofier_inverse,
+                    last_row_inverse,
+                ],
+            )
+        })
+        .collect()
+}
+
+/// The values of the randomized interpolant `interpolant + zerofier ·
+/// randomizer` on the given domain, which is (much) shorter than the
+/// interpolant has coefficients.
+///
+/// Since `x^len` is the same for all `len`-many points `x` of the domain, the
+/// polynomial is first reduced modulo `x^len - offset^len`, which takes one
+/// multiplication per coefficient. The remainder is then evaluated as usual.
+///
+/// The trace zerofier must be constant on the domain, and `zerofier` must be
+/// that constant; compare [`evaluate_randomized_interpolant_into`].
+pub(crate) fn evaluate_randomized_interpolant_on_short_domain<FF>(
+    interpolant: &[FF],
+    randomizer: &Polynomial<FF>,
+    zerofier: BFieldElement,
+    domain: ArithmeticDomain,
+) -> Vec<FF>
+where
+    FF: FiniteField
+        + MulAssign<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + From<BFieldElement>
+        + 'static,
+{
+    let len = domain.len();
+    let offset_to_the_len = domain
+        .offset()
+        .mod_pow(u64::try_from(len).expect(USIZE_TO_U64_ERR));
+
+    // Horner's rule, for all `len`-many coefficients of the remainder at once
+    let reduce = |coefficients: &[FF], remainder: &mut [FF]| {
+        for chunk in coefficients.chunks(len).rev() {
+            for cell in remainder.iter_mut() {
+                *cell *= offset_to_the_len;
+            }
+            for (cell, &coefficient) in remainder.iter_mut().zip(chunk) {
+                *cell += coefficient;
+            }
+        }
+    };
+
+    let mut remainder = vec![FF::ZERO; len];
+    reduce(randomizer.coefficients(), &mut remainder);
+    for cell in &mut remainder {
+        *cell *= zerofier;
+    }
+    let mut interpolant_remainder = vec![FF::ZERO; len];
+    reduce(interpolant, &mut interpolant_remainder);
+    for (cell, interpolant_cell) in remainder.iter_mut().zip(interpolant_remainder) {
+        *cell += interpolant_cell;
+    }
+
+    domain.evaluate(&Polynomial::new(remainder))
 }
 
 /// Evaluate the randomized interpolant `interpolant + zerofier · randomizer` on
@@ -2950,6 +3103,7 @@ mod tests {
             trace: ArithmeticDomain::of_length(1 << 8).unwrap(),
             randomized_trace: ArithmeticDomain::of_length(1 << 9).unwrap(),
             quotient: ArithmeticDomain::of_length(1 << 10).unwrap(),
+            quotient_overflow: None,
             fri: ArithmeticDomain::of_length(1 << 11).unwrap(),
         };
         let trace_table = Array2::zeros((domains.trace.len(), MasterAuxTable::NUM_COLUMNS));

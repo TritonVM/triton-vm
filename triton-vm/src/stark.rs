@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::mem::MaybeUninit;
 use std::ops::Mul;
+use std::ops::MulAssign;
 use std::ops::RangeInclusive;
 
 use arbitrary::Arbitrary;
@@ -20,7 +21,6 @@ use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::ModPowU64;
-use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
 
 use crate::aet::AlgebraicExecutionTrace;
@@ -49,7 +49,9 @@ use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
 use crate::table::master_table::all_quotients_combined;
+use crate::table::master_table::all_quotients_combined_in_points;
 use crate::table::master_table::evaluate_randomized_interpolant_into;
+use crate::table::master_table::evaluate_randomized_interpolant_on_short_domain;
 use crate::table::master_table::max_degree_with_origin;
 use crate::table::master_table::offset_rng_seed;
 
@@ -208,6 +210,16 @@ pub(crate) struct ProverDomains {
     /// is usually longer.
     pub quotient: ArithmeticDomain,
 
+    /// If the quotient has (slightly) more coefficients than the
+    /// [quotient domain](ProverDomains::quotient) has points, the quotient's
+    /// values on the quotient domain do not determine it. The missing
+    /// information is the quotient's values on this (short) domain, which is
+    /// disjoint from the quotient domain and has at least as many points as
+    /// the quotient has excess coefficients.
+    ///
+    /// See [`Prover::quotient_segments_from_codeword`] for the details.
+    pub quotient_overflow: Option<ArithmeticDomain>,
+
     /// See also [Stark::fri].
     pub fri: ArithmeticDomain,
 }
@@ -230,12 +242,95 @@ impl ProverDomains {
             .unwrap()
             .with_offset(fri_domain.offset());
 
+        let (quotient_domain, quotient_overflow_domain) = Self::short_quotient_domains(
+            padded_height,
+            num_trace_randomizers,
+            trace_domain,
+            quotient_domain,
+            fri_domain,
+        )
+        .unwrap_or((quotient_domain, None));
+
         Self {
             trace: trace_domain,
             randomized_trace: randomized_trace_domain,
             quotient: quotient_domain,
+            quotient_overflow: quotient_overflow_domain,
             fri: fri_domain,
         }
+    }
+
+    /// A quotient domain that is shorter than the given one, if there is any,
+    /// together with the corresponding
+    /// [overflow domain](ProverDomains::quotient_overflow).
+    ///
+    /// The given quotient domain is long enough for constraints over
+    /// polynomials whose degree is one less than the length of the randomized
+    /// trace domain. The actual degree of the trace polynomials is lower: one
+    /// less than the sum of the lengths of the trace and the trace
+    /// randomizers.[^batch] For traces of non-trivial length, this means
+    /// that the quotient has only slightly more than half as many coefficients
+    /// as the given quotient domain has points.
+    ///
+    /// [^batch]: The columns with more trace randomizers are not constrained.
+    fn short_quotient_domains(
+        padded_height: usize,
+        num_trace_randomizers: usize,
+        trace_domain: ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
+        fri_domain: ArithmeticDomain,
+    ) -> Option<(ArithmeticDomain, Option<ArithmeticDomain>)> {
+        /// The overflow domain is at least this many times shorter than the
+        /// quotient domain; otherwise, shortening the latter does not pay
+        /// off: handling the overflow has a fixed cost, which matters for the
+        /// shortest traces, in particular with many threads.
+        const MIN_LEN_RATIO: usize = 32;
+
+        if trace_domain.len() != padded_height {
+            return None;
+        }
+
+        let interpolant_degree = isize::try_from(padded_height + num_trace_randomizers - 1).ok()?;
+        let max_degree = max_degree_with_origin(interpolant_degree, padded_height).degree;
+        let num_coefficients = usize::try_from(max_degree).ok()? + 1;
+
+        // the largest power of two that is not greater
+        let short_len = (num_coefficients / 2 + 1).next_power_of_two();
+        let overflow_len = (num_coefficients - short_len).next_power_of_two();
+        let has_overflow = num_coefficients > short_len;
+        let short_len = if has_overflow && overflow_len * MIN_LEN_RATIO > short_len {
+            num_coefficients.next_power_of_two()
+        } else {
+            short_len
+        };
+        if short_len >= quotient_domain.len() {
+            return None;
+        }
+        let short_domain = ArithmeticDomain::of_length(short_len)
+            .ok()?
+            .with_offset(quotient_domain.offset());
+        if num_coefficients <= short_len {
+            return Some((short_domain, None));
+        }
+
+        // The overflow domain's points are points of the FRI domain, which
+        // allows looking up the trace polynomials' values there. They are
+        // also evaluated from the trace polynomials' coefficients, which
+        // requires the trace zerofier to be constant on the overflow domain.
+        let double_len = 2 * short_len;
+        if fri_domain.offset() != quotient_domain.offset()
+            || !fri_domain.len().is_multiple_of(double_len)
+            || !trace_domain.len().is_multiple_of(overflow_len)
+        {
+            return None;
+        }
+        let exponent = u64::try_from(fri_domain.len() / double_len).expect(USIZE_TO_U64_ERR);
+        let overflow_domain_offset = fri_domain.offset() * fri_domain.generator().mod_pow(exponent);
+        let overflow_domain = ArithmeticDomain::of_length(overflow_len)
+            .ok()?
+            .with_offset(overflow_domain_offset);
+
+        Some((short_domain, Some(overflow_domain)))
     }
 }
 
@@ -363,7 +458,6 @@ impl Prover {
         let quotient_segment_polynomials = Self::compute_quotient_segments(
             &mut master_main_table,
             &mut master_aux_table,
-            domains.quotient,
             &challenges,
             &quotient_combination_weights,
         );
@@ -469,7 +563,11 @@ impl Prover {
         let weights = LinearCombinationWeights::sample(&mut proof_stream);
         profiler!(stop "Fiat-Shamir");
 
-        let fri_domain_is_short_domain = domains.fri.len() <= domains.quotient.len();
+        // Computing the combination codeword on the quotient domain and
+        // low-degree extending it afterwards only pays off if the quotient
+        // domain is considerably shorter than the FRI domain: the extension
+        // costs about as much as it saves if the FRI domain is twice as long.
+        let fri_domain_is_short_domain = domains.fri.len() <= 2 * domains.quotient.len();
         let short_domain = if fri_domain_is_short_domain {
             domains.fri
         } else {
@@ -740,7 +838,6 @@ impl Prover {
     fn compute_quotient_segments(
         main_table: &mut MasterMainTable,
         aux_table: &mut MasterAuxTable,
-        quotient_domain: ArithmeticDomain,
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
     ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
@@ -781,21 +878,71 @@ impl Prover {
         };
 
         profiler!(start "quotient calculation (cached)" ("CC"));
+        let domains = main_table.domains();
         let quotient_codeword = all_quotients_combined(
             main_quotient_domain_codewords,
             aux_quotient_domain_codewords,
-            main_table.domains().trace,
-            quotient_domain,
+            domains.trace,
+            domains.quotient,
             challenges,
             quotient_combination_weights,
         );
-        let quotient_codeword = Array1::from(quotient_codeword);
-        assert_eq!(quotient_domain.len(), quotient_codeword.len());
+        assert_eq!(domains.quotient.len(), quotient_codeword.len());
+
+        // The overflow domain's points are points of the FRI domain: the rows
+        // in those points are cached, too.
+        let overflow = domains.quotient_overflow.map(|overflow_domain| {
+            let cache_is_available = "cache must be available if quotient domain table is";
+            let main_fri_table = main_table.fri_domain_table().expect(cache_is_available);
+            let aux_fri_table = aux_table.fri_domain_table().expect(cache_is_available);
+
+            let fri_domain_len = domains.fri.len();
+            let first_row = fri_domain_len / (2 * domains.quotient.len());
+            let step = fri_domain_len / overflow_domain.len();
+            let unit_distance = fri_domain_len / domains.trace.len();
+            let current_rows = (0..overflow_domain.len()).map(|i| first_row + i * step);
+            let next_rows = current_rows
+                .clone()
+                .map(|row| (row + unit_distance) % fri_domain_len);
+
+            let points = overflow_domain.values();
+            debug_assert!(
+                current_rows
+                    .clone()
+                    .zip(&points)
+                    .all(|(row, &point)| domains.fri.value(row as u32) == point)
+            );
+            // The four gatherings are too little work to keep all threads of
+            // a large machine busy one after the other.
+            let (rows_main, rows_aux) = rayon::join(
+                || {
+                    rayon::join(
+                        || Self::select_rows(main_fri_table, current_rows.clone()),
+                        || Self::select_rows(main_fri_table, next_rows.clone()),
+                    )
+                },
+                || {
+                    rayon::join(
+                        || Self::select_rows(aux_fri_table, current_rows.clone()),
+                        || Self::select_rows(aux_fri_table, next_rows.clone()),
+                    )
+                },
+            );
+            let quotient_values = all_quotients_combined_in_points(
+                &points,
+                [rows_main.0.view(), rows_main.1.view()],
+                [rows_aux.0.view(), rows_aux.1.view()],
+                domains.trace,
+                challenges,
+                quotient_combination_weights,
+            );
+            (overflow_domain, quotient_values)
+        });
         profiler!(stop "quotient calculation (cached)");
 
         profiler!(start "interpolate quotient segments" ("LDE"));
         let quotient_segment_polynomials =
-            Self::interpolate_quotient_segments(quotient_codeword, quotient_domain);
+            Self::quotient_segments_from_codeword(quotient_codeword, domains.quotient, overflow);
         profiler!(stop "interpolate quotient segments");
 
         quotient_segment_polynomials
@@ -804,8 +951,8 @@ impl Prover {
     /// Computes the quotient segments in a memory-friendly way, i.e., without
     /// ever representing the entire low-degree extended trace. Instead, the
     /// trace is extrapolated over cosets of the trace domain, and the
-    /// quotients are computed there. The resulting coset-quotients are
-    /// linearly recombined to produce the quotient segment codewords.
+    /// quotients are computed there. Together, the cosets make up the quotient
+    /// domain.
     fn compute_quotient_segments_with_jit_lde(
         main_table: &mut MasterMainTable,
         aux_table: &mut MasterAuxTable,
@@ -823,29 +970,34 @@ impl Prover {
         // trace domain, i.e., at most half the size of the randomized trace
         // domain, is explained below.
         const RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO: usize = 2;
-        const NUM_COSETS: usize =
-            NUM_QUOTIENT_SEGMENTS * RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO;
 
         debug_assert!(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO.is_power_of_two());
 
         let domains = main_table.domains();
+        let quotient_domain = domains.quotient;
         let working_domain = domains
             .randomized_trace
             .pow(RANDOMIZED_TRACE_LEN_TO_WORKING_DOMAIN_LEN_RATIO)
             .unwrap();
 
         let num_rows = working_domain.len();
-        let coset_root_order = (num_rows * NUM_COSETS).try_into().unwrap();
+        assert!(quotient_domain.len().is_multiple_of(num_rows));
+        let num_cosets = quotient_domain.len() / num_rows;
 
-        // the powers of ι define `NUM_COSETS`-many cosets of the working domain
-        let iota = BFieldElement::primitive_root_of_unity(coset_root_order).unwrap();
-        let psi = domains.fri.offset();
+        // The powers of ι define `num_cosets`-many cosets of the working
+        // domain. Offset by ψ, they partition the quotient domain: its `i`th
+        // point is `ψ·ι^i`, which is point `i / num_cosets` of coset number
+        // `i % num_cosets`.
+        let iota = quotient_domain.generator();
+        let psi = quotient_domain.offset();
+        debug_assert_eq!(working_domain.generator(), iota.mod_pow(num_cosets as u64));
 
         // for every coset, evaluate constraints
         profiler!(start "zero-initialization");
+        // Row majority (“`C`”) puts the quotient's values in the order of the
+        // quotient domain's points.
+        let mut quotient_multicoset_evaluations = ndarray_helper::par_zeros((num_rows, num_cosets));
         // column majority (“`F`”) for contiguous column slices
-        let mut quotient_multicoset_evaluations =
-            ndarray_helper::par_zeros((num_rows, NUM_COSETS).f());
         let mut main_columns =
             ndarray_helper::par_zeros((num_rows, MasterMainTable::NUM_COLUMNS).f());
         let mut aux_columns =
@@ -977,14 +1129,49 @@ impl Prover {
         profiler!(stop "calculate quotients");
 
         // The working tables are as large as the trace. Freeing them before
-        // segmentification lowers the peak memory consumption.
+        // interpolating the quotient lowers the peak memory consumption.
         drop(main_columns);
         drop(aux_columns);
 
-        profiler!(start "segmentify");
-        let segmentification =
-            Self::segmentify::<NUM_QUOTIENT_SEGMENTS>(quotient_multicoset_evaluations, psi, iota);
-        profiler!(stop "segmentify");
+        // While the trace polynomials are in coefficient form, evaluating them
+        // in the few points of the overflow domain is cheap.
+        profiler!(start "overflow domain");
+        let overflow = domains.quotient_overflow.map(|overflow_domain| {
+            let next_row_domain =
+                overflow_domain.with_offset(overflow_domain.offset() * domains.trace.generator());
+            let rows_main = [overflow_domain, next_row_domain].map(|domain| {
+                Self::randomized_interpolants_on_short_domain(
+                    main_table.trace_table(),
+                    main_trace_randomizers.as_slice().unwrap(),
+                    domains.trace,
+                    domain,
+                )
+            });
+            let rows_aux = [overflow_domain, next_row_domain].map(|domain| {
+                Self::randomized_interpolants_on_short_domain(
+                    aux_table.trace_table(),
+                    aux_trace_randomizers.as_slice().unwrap(),
+                    domains.trace,
+                    domain,
+                )
+            });
+            let quotient_values = all_quotients_combined_in_points(
+                &overflow_domain.values(),
+                [rows_main[0].view(), rows_main[1].view()],
+                [rows_aux[0].view(), rows_aux[1].view()],
+                domains.trace,
+                challenges,
+                quotient_combination_weights,
+            );
+            (overflow_domain, quotient_values)
+        });
+        profiler!(stop "overflow domain");
+
+        profiler!(start "interpolate quotient segments" ("LDE"));
+        let (quotient_codeword, _) = quotient_multicoset_evaluations.into_raw_vec_and_offset();
+        let quotient_segment_polynomials =
+            Self::quotient_segments_from_codeword(quotient_codeword, quotient_domain, overflow);
+        profiler!(stop "interpolate quotient segments");
 
         profiler!(start "restore original trace" ("LDE"));
         main_table
@@ -999,214 +1186,174 @@ impl Prover {
             .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
         profiler!(stop "restore original trace");
 
-        segmentification
+        quotient_segment_polynomials
     }
 
-    /// Map a matrix whose columns represent the evaluation of a high-degree
-    /// polynomial f on all constituents of a partition of some large domain
-    /// into smaller cosets, to
-    /// 1. a matrix of segment codewords (on the FRI domain), and
-    /// 2. an array of matching segment polynomials,
+    /// The values of all randomized trace polynomials on the given domain,
+    /// which must be a coset of a subgroup of the trace domain and is expected
+    /// to be much shorter than the trace domain. The trace polynomials are
+    /// given through the coefficients of the trace interpolants and the trace
+    /// randomizers.
     ///
-    /// such that the segment polynomials correspond to the interleaving split
-    /// of the original high-degree polynomial.
-    ///
-    /// For example, let f(X) have degree M·N where N is the chosen domain's
-    /// length. Then the input is an N×M matrix representing the values of
-    /// f(X) on the chosen domain and its cosets:
-    ///
-    /// ```txt
-    /// ⎛  …          …   …           ⎞  ┬
-    /// ⎜ f(coset_0)  …  f(coset_M-1) ⎟ domain length
-    /// ⎝  …          …   …           ⎠  ┴
-    ///
-    /// ├───────── NUM_COSETS ────────┤
-    /// ```
-    ///
-    /// The `NUM_SEGMENTS` (=:`K`) produced segment polynomials are f_i(X) such
-    /// that f(X) = Σ_k x^k · f_k(X^K).
-    /// For example, for `K = 2`, this is f(X) = f_E(X²) + X·f_O(X²).
-    //
-    // The mechanics of this function are backed by some serious maths
-    // originally derived by Alan Szepieniec, and later generalized by him and
-    // Jan Ferdinand Sauer.
-    //
-    // The main idea is based on the segmentation formula. For K segments, this
-    // is
-    //
-    // f(X) = Σ_{k=0}^{K-1} X^k · f_k(X^K)
-    //
-    // where each f_k is one segment. When substituting X for X·ξ^l, where ξ is
-    // a Kth root of unity (i.e., ξ^K = 1), this gives rise to K equations,
-    // where l ∈ { 0, …, K-1 }:
-    //
-    // f(X·ξ^0)     = Σ_{k=0}^{K-1} (X·ξ^0)^k     · f_k(X^K)
-    //              ⋮
-    // f(X·ξ^(K-1)) = Σ_{k=0}^{K-1} (X·ξ^(K-1))^k · f_k(X^K)
-    //
-    // Note how the indeterminates of the f_k are identical for all rows. That
-    // is, the mapping between f's evaluations on (the “right”) cosets and f's
-    // segments is a linear one.
-    //
-    // ⎛  …       ⎞       ⎛     …               ⎞   ⎛  …       ⎞
-    // ⎜ f(X·ξ^l) ⎟   =   ⎜ …  X^k · ξ^(k·l)  … ⎟ · ⎜ f_k(X^K) ⎟             (1)
-    // ⎝  …       ⎠       ⎝     …               ⎠   ⎝  …       ⎠
-    //
-    // This function works by applying the inverse of the coefficient matrix to
-    // the function's input, i.e., to the left hand side of above equation. To
-    // compute this map efficiently, it is decomposed as follows. Operator “∘”
-    // denotes the Hadamard, i.e., element-wise product.
-    //
-    //                    ⎛     …         ⎞   ⎛ ⎛  …  ⎞   ⎛  …       ⎞ ⎞
-    //                =   ⎜ …  ξ^(k·l)  … ⎟ · ⎜ ⎜ X^k ⎟ ∘ ⎜ f_k(X^K) ⎟ ⎟
-    //                    ⎝     …         ⎠   ⎝ ⎝  …  ⎠   ⎝  …       ⎠ ⎠
-    //
-    // The coefficient matrix has dimensions K×K. Since ξ is a Kth root of
-    // unity, above matrix is an NTT matrix. That means its application can be
-    // efficiently reverted by performing iNTTs.
-    // The final step is elementwise multiplication with the vector (X^(-k)) to
-    // get the segment polynomials.
-    //
-    // For reasons of efficiency, this function does not operate on polynomials
-    // in monomial coefficient form, but on polynomial evaluations on some
-    // domain, i.e., codewords.
-    // Also for reasons of efficiency, the domain length N is a power of two,
-    // and the evaluation points are multiples of an Nth root of unity, ω. In
-    // order to avoid divisions by zero, the domain is offset by Ψ. Furthermore,
-    // the offset of a coset is some power of ι, which itself is a root of unity
-    // of order N·M, where M is the number of cosets. That is, ι^M = ω,
-    // and ω^N = 1. Summarizing, this function's input is a matrix of the
-    // following form:
-    //
-    // ⎛     …                  ⎞╷ ┬       ⎛     …                   ⎞
-    // ⎜ …  f(Ψ · ι^j · ω^i)  … ⎟i N   =   ⎜ …  f(Ψ · ι^(j + iM))  … ⎟
-    // ⎝     …                  ⎠↓ ┴       ⎝     …                   ⎠
-    // ╶─────────── j ─────────→
-    // ├─────────── M ──────────┤
-    //
-    // In order to kick off the series of steps derived & outlined above, this
-    // matrix needs to be rearranged. The desired shape can be derived by taking
-    // the left-hand side of the system of equations (1) and substituting the
-    // indeterminate X for the points at which f is evaluated, Ψ · ι^j · ω^i.
-    // Let L such that N·M = L·K. Observe that ξ being a Kth root of unity
-    // implies ξ = ω^(N/K) = ι^(N·M/K) = ι^L.
-    //
-    // ⎛  …       ⎞       ⎛     …                          ⎞ ┬
-    // ⎜ f(X·ξ^l) ⎟   ↦   ⎜ …  f(ψ · ι^(j + i·M + l·L))  … ⎟ L
-    // ⎝  …       ⎠       ⎝     …                          ⎠ ┴
-    //
-    //                    ├────────────── K ──────────────┤
-    //
-    // Helpful insights to understand the matrix re-arrangement are:
-    // - the various powers of ι, i.e., { ι^(j + i·M) | 0 ⩽ i < N, 0 ⩽ j < M },
-    //   sweep the entire input matrix (which has dimensions N×M)
-    // - ι is a (primitive) (N·M)th root of unity and thus, _all_ powers of ι
-    //   are required to index the entirety of the input matrix
-    // - the re-arranged matrix (which has dimensions L×K) has all the same
-    //   entries as the input matrix
-    //
-    // The map that satisfies all of these re-arrangement constraints is
-    // (i, j) ↦ ((j + i·M) % L, (j + i·M) // L)
-    // which has the inverse
-    // (a, b) ↦ ((a + b·L) // M, (a + b·L) % M).
-    //
-    // With all those pieces in place, it's finally time for some code.
-    fn segmentify<const NUM_SEGMENTS: usize>(
-        quotient_multicoset_evaluations: Array2<XFieldElement>,
-        psi: BFieldElement,
-        iota: BFieldElement,
-    ) -> [Polynomial<'static, XFieldElement>; NUM_SEGMENTS] {
-        let num_input_rows = quotient_multicoset_evaluations.nrows();
-        let num_cosets = quotient_multicoset_evaluations.ncols();
-        let num_output_rows = num_input_rows * num_cosets / NUM_SEGMENTS;
+    /// The result is row-major: row `i` holds all polynomials' values in the
+    /// domain's `i`th point.
+    fn randomized_interpolants_on_short_domain<FF>(
+        interpolants: ArrayView2<FF>,
+        randomizers: &[Polynomial<FF>],
+        trace_domain: ArithmeticDomain,
+        domain: ArithmeticDomain,
+    ) -> Array2<FF>
+    where
+        FF: FiniteField
+            + MulAssign<BFieldElement>
+            + Mul<BFieldElement, Output = FF>
+            + From<BFieldElement>
+            + 'static,
+    {
+        // The trace zerofier, `X^n - 1`, is constant on the domain.
+        assert!(trace_domain.len().is_multiple_of(domain.len()));
+        let trace_domain_len = u64::try_from(trace_domain.len()).expect(USIZE_TO_U64_ERR);
+        let zerofier = domain.offset().mod_pow(trace_domain_len) - BFieldElement::ONE;
 
-        assert!(num_input_rows.is_power_of_two());
-        assert!(num_cosets.is_power_of_two());
-        assert!(num_output_rows.is_power_of_two());
-        assert!(NUM_SEGMENTS.is_power_of_two());
-        assert!(
-            num_input_rows >= num_cosets,
-            "working domain length: {num_input_rows} versus num cosets: {num_cosets}",
-        );
-        assert!(
-            num_cosets >= NUM_SEGMENTS,
-            "num cosets: {num_cosets} versus num segments: {NUM_SEGMENTS}",
-        );
-
-        // Re-arrange data in preparation for iNTT:
-        // Move appropriate powers of ξ^(k·l) with the same k into the same row.
-        // Change the matrix's dimensions from N×M to L×K, with row majority
-        // (“`C`”) to get contiguous row slices for iNTT.
-        let mut quotient_segments = ndarray_helper::par_zeros((num_output_rows, NUM_SEGMENTS));
-        quotient_segments
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(output_row_idx, mut output_row)| {
-                for (output_col_idx, cell) in output_row.iter_mut().enumerate() {
-                    let exponent_of_iota = output_row_idx + output_col_idx * num_output_rows;
-                    let input_row_idx = exponent_of_iota / num_cosets;
-                    let input_col_idx = exponent_of_iota % num_cosets;
-                    *cell = quotient_multicoset_evaluations[[input_row_idx, input_col_idx]];
-                }
-            });
-
-        // apply inverse of Vandermonde matrix for ξ = ι^L to every row
-        quotient_segments
-            .axis_iter_mut(ROW_AXIS)
-            .into_par_iter()
-            .for_each(|mut row| intt(row.as_slice_mut().unwrap()));
-
-        // scale every row by Ψ^-k · ι^(-k(j+i·M))
-        let num_threads = rayon::current_num_threads().max(1);
-        let chunk_size = (num_output_rows / num_threads).max(1);
-        let iota_inverse = iota.inverse();
-        let psi_inverse = psi.inverse();
-        quotient_segments
-            .axis_chunks_iter_mut(ROW_AXIS, chunk_size)
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(chunk_idx, mut chunk_of_rows)| {
-                let chunk_start = (chunk_idx * chunk_size).try_into().unwrap();
-                let mut psi_iotajim_inv = psi_inverse * iota_inverse.mod_pow(chunk_start);
-                for mut row in chunk_of_rows.rows_mut() {
-                    let mut psi_iotajim_invk = XFieldElement::ONE;
-                    for cell in &mut row {
-                        *cell *= psi_iotajim_invk;
-                        psi_iotajim_invk *= psi_iotajim_inv;
-                    }
-                    psi_iotajim_inv *= iota_inverse;
-                }
-            });
-
-        // interpolate the columns
-        let segment_domain_offset = psi.mod_pow(NUM_SEGMENTS.try_into().unwrap());
-        let segment_domain = ArithmeticDomain::of_length(num_output_rows)
-            .unwrap()
-            .with_offset(segment_domain_offset);
-        let quotient_polynomials = quotient_segments
+        let columns = interpolants
             .axis_iter(COL_AXIS)
             .into_par_iter()
-            .map(|segment| {
-                // Getting a column as a contiguous piece of memory from a
-                // row-majority matrix requires `.to_vec()`.
-                segment_domain.interpolate(&segment.to_vec())
+            .zip(randomizers)
+            .map(|(interpolant, randomizer)| {
+                evaluate_randomized_interpolant_on_short_domain(
+                    interpolant.as_slice().expect("columns are contiguous"),
+                    randomizer,
+                    zerofier,
+                    domain,
+                )
             })
             .collect::<Vec<_>>();
 
-        quotient_polynomials.try_into().unwrap()
+        Array2::from_shape_fn([domain.len(), columns.len()], |(row, column)| {
+            columns[column][row]
+        })
     }
 
-    fn interpolate_quotient_segments(
-        quotient_codeword: Array1<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
-    ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
-        let quotient_codeword = quotient_codeword
-            .as_slice()
-            .expect("codeword is contiguous");
-        let quotient_interpolation_poly = quotient_domain.par_interpolate(quotient_codeword);
+    /// Copy the indicated rows of the table into a new, row-major table.
+    ///
+    /// The table is expected to be column-major. Its columns are read in
+    /// parallel, each one front to back: reading row by row would incur a
+    /// cache miss for about every element. No task allocates: with many
+    /// threads, that costs more than copying the few rows.
+    fn select_rows<FF: FiniteField>(
+        table: ArrayView2<FF>,
+        rows: impl Iterator<Item = usize>,
+    ) -> Array2<FF> {
+        const MIN_COLUMNS_PER_TASK: usize = 8;
 
-        Self::split_polynomial_into_segments(quotient_interpolation_poly)
+        let rows = rows.collect_vec();
+        let mut selected_rows = Array2::zeros([rows.len(), table.ncols()].f());
+        selected_rows
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .zip(table.axis_iter(COL_AXIS))
+            .with_min_len(MIN_COLUMNS_PER_TASK)
+            .for_each(|(mut selected_column, column)| {
+                for (cell, &row) in selected_column.iter_mut().zip(&rows) {
+                    *cell = column[row];
+                }
+            });
+
+        selected_rows.as_standard_layout().into_owned()
+    }
+
+    /// Interpolate the quotient from its values on the quotient domain, and
+    /// [split](Self::split_polynomial_into_segments) it into its segments.
+    ///
+    /// The quotient may have more coefficients than the quotient domain has
+    /// points; see [`ProverDomains::quotient_overflow`]. Then, the quotient's
+    /// values on the overflow domain are required, too.
+    ///
+    /// Let `N` be the length of the quotient domain and `ψ` its offset. On the
+    /// quotient domain, `X^N` equals `c = ψ^N`. Therefore, splitting the
+    /// quotient as `q(X) = q_lo(X) + X^N·q_hi(X)` with `deg(q_lo) < N`,
+    /// interpolating the values on the quotient domain gives the “wrapped”
+    /// polynomial
+    ///
+    /// ```text
+    /// w(X) = q_lo(X) + c·q_hi(X).
+    /// ```
+    ///
+    /// The overflow domain is a coset of a subgroup of order `E > deg(q_hi)`
+    /// that divides `N`, with an offset `γ` such that `γ^N = -c`. On it, `X^N`
+    /// equals `-c`, and thus
+    ///
+    /// ```text
+    /// q(X) - w(X) = (X^N - c)·q_hi(X) = -2c·q_hi(X).
+    /// ```
+    ///
+    /// This gives `E` values of `q_hi`, which determine it. With `q_hi` known,
+    /// `q_lo` follows from `w`. The values of `w` on the overflow domain are
+    /// those of its remainder modulo `X^E - γ^E`, which is cheap to compute.
+    fn quotient_segments_from_codeword(
+        quotient_codeword: Vec<XFieldElement>,
+        quotient_domain: ArithmeticDomain,
+        overflow: Option<(ArithmeticDomain, Vec<XFieldElement>)>,
+    ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
+        const MIN_COEFFICIENTS_PER_TASK: usize = 16;
+
+        let quotient_domain_len = quotient_domain.len();
+        assert_eq!(quotient_domain_len, quotient_codeword.len());
+
+        let wrapped_quotient = quotient_domain.par_interpolate(&quotient_codeword);
+        drop(quotient_codeword);
+        let Some((overflow_domain, quotient_values)) = overflow else {
+            return Self::split_polynomial_into_segments(wrapped_quotient);
+        };
+
+        let overflow_domain_len = overflow_domain.len();
+        assert_eq!(overflow_domain_len, quotient_values.len());
+        assert!(quotient_domain_len.is_multiple_of(overflow_domain_len));
+
+        let to_the = |base: BFieldElement, exponent: usize| {
+            base.mod_pow(u64::try_from(exponent).expect(USIZE_TO_U64_ERR))
+        };
+        let c = to_the(quotient_domain.offset(), quotient_domain_len);
+        assert_eq!(-c, to_the(overflow_domain.offset(), quotient_domain_len));
+
+        let mut coefficients = wrapped_quotient.into_coefficients();
+        coefficients.resize(quotient_domain_len, XFieldElement::ZERO);
+
+        // w(X) mod (X^E - γ^E), using Horner's rule for every coefficient
+        let gamma_to_the_e = to_the(overflow_domain.offset(), overflow_domain_len);
+        let wrapped_remainder = (0..overflow_domain_len)
+            .into_par_iter()
+            .with_min_len(MIN_COEFFICIENTS_PER_TASK)
+            .map(|i| {
+                coefficients[i..]
+                    .iter()
+                    .step_by(overflow_domain_len)
+                    .rev()
+                    .fold(XFieldElement::ZERO, |acc, &coefficient| {
+                        acc * gamma_to_the_e + coefficient
+                    })
+            })
+            .collect();
+        let wrapped_values = overflow_domain.evaluate(&Polynomial::new(wrapped_remainder));
+
+        let scale = (-c - c).inverse();
+        let high_values = quotient_values
+            .into_iter()
+            .zip(wrapped_values)
+            .map(|(quotient_value, wrapped_value)| (quotient_value - wrapped_value) * scale)
+            .collect_vec();
+        let mut high_coefficients = overflow_domain
+            .interpolate(&high_values)
+            .into_coefficients();
+        high_coefficients.resize(overflow_domain_len, XFieldElement::ZERO);
+
+        for (low_coefficient, &high_coefficient) in coefficients.iter_mut().zip(&high_coefficients)
+        {
+            *low_coefficient -= high_coefficient * c;
+        }
+        coefficients.extend(high_coefficients);
+
+        Self::split_polynomial_into_segments(Polynomial::new(coefficients))
     }
 
     /// Losslessly split the given polynomial `f` into `N` segments of (roughly)
@@ -2178,7 +2325,6 @@ pub(crate) mod tests {
     use num_traits::One;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use proptest::test_runner::TestCaseResult;
     use proptest_arbitrary_adapter::arb;
     use rand::RngExt;
     use rand::prelude::*;
@@ -2340,24 +2486,16 @@ pub(crate) mod tests {
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
 
         let test_program = TestableProgram::new(triton_program!(halt));
-        let stark = test_program.stark;
         let artifacts = test_program.generate_proof_artifacts();
         let mut main = artifacts.master_main_table;
         let mut aux = artifacts.master_aux_table;
         let ch = artifacts.challenges;
-        let padded_height = main.trace_table().nrows();
-        let fri_dom = stark.fri(padded_height).unwrap().domain;
-        let max_degree = stark.max_degree(padded_height);
-        let num_trace_randos = stark.num_trace_randomizers;
-        let domains = ProverDomains::derive(padded_height, num_trace_randos, fri_dom, max_degree);
-        let quot_dom = domains.quotient;
         let weights = StdRng::seed_from_u64(1632525295622789151)
             .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
 
         debug_assert!(main.fri_domain_table().is_none());
         debug_assert!(aux.fri_domain_table().is_none());
-        let jit_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+        let jit_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         debug_assert!(main.fri_domain_table().is_none());
         main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
@@ -2367,8 +2505,7 @@ pub(crate) mod tests {
         aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
         debug_assert!(aux.fri_domain_table().is_some());
 
-        let cache_segments =
-            Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+        let cache_segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
         assert_eq!(jit_segments, cache_segments);
     }
@@ -2382,7 +2519,6 @@ pub(crate) mod tests {
             crate::config::overwrite_lde_trace_caching_to(cache_decision);
 
             let test_program = TestableProgram::new(triton_program!(halt));
-            let stark = test_program.stark;
             let artifacts = test_program.generate_proof_artifacts();
             let mut main = artifacts.master_main_table;
             let mut aux = artifacts.master_aux_table;
@@ -2390,14 +2526,6 @@ pub(crate) mod tests {
 
             let original_main_trace = main.trace_table().to_owned();
             let original_aux_trace = aux.trace_table().to_owned();
-
-            let padded_height = main.trace_table().nrows();
-            let fri_dom = stark.fri(padded_height).unwrap().domain;
-            let max_degree = stark.max_degree(padded_height);
-            let num_trace_randos = stark.num_trace_randomizers;
-            let domains =
-                ProverDomains::derive(padded_height, num_trace_randos, fri_dom, max_degree);
-            let quot_dom = domains.quotient;
 
             if cache_decision == CacheDecision::Cache {
                 main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
@@ -2409,8 +2537,7 @@ pub(crate) mod tests {
 
             let weights = StdRng::seed_from_u64(15157673430940347283)
                 .random::<[XFieldElement; MasterAuxTable::NUM_CONSTRAINTS]>();
-            let _segments =
-                Prover::compute_quotient_segments(&mut main, &mut aux, quot_dom, &ch, &weights);
+            let _segments = Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
             assert_eq!(original_main_trace, main.trace_table());
             assert_eq!(original_aux_trace, aux.trace_table());
@@ -3778,18 +3905,27 @@ pub(crate) mod tests {
     }
 
     #[derive(Debug, Clone, Eq, PartialEq, Hash, test_strategy::Arbitrary)]
-    struct SegmentifyProptestData {
-        #[strategy(2_usize..8)]
-        log_trace_length: usize,
+    struct QuotientSegmentsProptestData {
+        #[strategy(2_usize..10)]
+        log_quotient_domain_len: usize,
 
-        #[strategy(1_usize..=#log_trace_length.min(4))]
-        log_num_cosets: usize,
+        /// `None` if the quotient has no more coefficients than the quotient
+        /// domain has points.
+        #[strategy(proptest::option::of(0..=#log_quotient_domain_len))]
+        log_overflow_domain_len: Option<usize>,
 
-        #[strategy(vec(arb(), (1 << #log_num_cosets) * (1 << #log_trace_length)))]
+        #[strategy(1_usize..=1 << #log_overflow_domain_len.unwrap_or(#log_quotient_domain_len))]
+        num_high_coefficients: usize,
+
+        #[strategy(vec(arb(), #log_overflow_domain_len.map_or(
+            #num_high_coefficients,
+            |_| (1 << #log_quotient_domain_len) + #num_high_coefficients,
+        )))]
         #[map(Polynomial::new)]
-        polynomial: Polynomial<'static, XFieldElement>,
+        quotient: Polynomial<'static, XFieldElement>,
 
         #[strategy(arb())]
+        #[filter(#psi != BFieldElement::ZERO)]
         psi: BFieldElement,
 
         #[strategy(arb())]
@@ -3797,61 +3933,43 @@ pub(crate) mod tests {
     }
 
     #[macro_rules_attr::apply(proptest)]
-    fn polynomial_segments_cohere_with_originating_polynomial(test_data: SegmentifyProptestData) {
-        fn segmentify_and_assert_coherence<const N: usize>(
-            test_data: &SegmentifyProptestData,
-        ) -> TestCaseResult {
-            let num_cosets = 1 << test_data.log_num_cosets;
-            let trace_length = 1 << test_data.log_trace_length;
+    fn quotient_segments_cohere_with_originating_quotient(test_data: QuotientSegmentsProptestData) {
+        let quotient_domain_len = 1 << test_data.log_quotient_domain_len;
+        let quotient_domain =
+            ArithmeticDomain::of_length(quotient_domain_len)?.with_offset(test_data.psi);
+        let quotient = &test_data.quotient;
 
-            let iota =
-                BFieldElement::primitive_root_of_unity((trace_length * num_cosets) as u64).unwrap();
-            let trace_domain = ArithmeticDomain::of_length(trace_length)?;
-            let coset_evaluations = (0..u32::try_from(num_cosets)?)
-                .flat_map(|i| {
-                    let coset = trace_domain.with_offset(iota.mod_pow_u32(i) * test_data.psi);
-                    coset.evaluate(&test_data.polynomial)
-                })
-                .collect();
-            let coset_evaluations =
-                Array2::from_shape_vec((trace_length, num_cosets).f(), coset_evaluations)?;
+        let overflow = test_data
+            .log_overflow_domain_len
+            .map(|log_len| -> Result<_, TestCaseError> {
+                let root_of_twice_the_order =
+                    ArithmeticDomain::generator_for_length(2 * quotient_domain_len as u64)?;
+                let overflow_domain = ArithmeticDomain::of_length(1 << log_len)?
+                    .with_offset(test_data.psi * root_of_twice_the_order);
+                Ok((overflow_domain, overflow_domain.evaluate(quotient)))
+            })
+            .transpose()?;
 
-            let segment_polynomials =
-                Prover::segmentify::<N>(coset_evaluations, test_data.psi, iota);
+        let segments = Prover::quotient_segments_from_codeword(
+            quotient_domain.evaluate(quotient),
+            quotient_domain,
+            overflow,
+        );
 
-            let segments_evaluated = (0..)
-                .zip(&segment_polynomials)
-                .map(|(segment_index, segment_polynomial)| -> XFieldElement {
-                    let point_to_the_seg_idx = test_data.random_point.mod_pow_u32(segment_index);
-                    let point_to_the_num_seg = test_data.random_point.mod_pow_u32(N as u32);
-                    let segment_in_point_to_the_num_seg =
-                        segment_polynomial.evaluate_in_same_field(point_to_the_num_seg);
-                    point_to_the_seg_idx * segment_in_point_to_the_num_seg
-                })
-                .sum::<XFieldElement>();
-            let evaluation_in_random_point = test_data
-                .polynomial
-                .evaluate_in_same_field(test_data.random_point);
-            prop_assert_eq!(segments_evaluated, evaluation_in_random_point);
+        let point = test_data.random_point;
+        let point_to_the_num_segments = point.mod_pow_u32(NUM_QUOTIENT_SEGMENTS as u32);
+        let recomposition = (0..)
+            .zip(&segments)
+            .map(|(segment_index, segment)| -> XFieldElement {
+                point.mod_pow_u32(segment_index)
+                    * segment.evaluate_in_same_field(point_to_the_num_segments)
+            })
+            .sum::<XFieldElement>();
+        prop_assert_eq!(quotient.evaluate_in_same_field(point), recomposition);
 
-            Ok(())
-        }
-
-        let num_cosets = 1 << test_data.log_num_cosets;
-        if num_cosets >= 1 {
-            segmentify_and_assert_coherence::<1>(&test_data)?;
-        }
-        if num_cosets >= 2 {
-            segmentify_and_assert_coherence::<2>(&test_data)?;
-        }
-        if num_cosets >= 4 {
-            segmentify_and_assert_coherence::<4>(&test_data)?;
-        }
-        if num_cosets >= 8 {
-            segmentify_and_assert_coherence::<8>(&test_data)?;
-        }
-        if num_cosets >= 16 {
-            segmentify_and_assert_coherence::<16>(&test_data)?;
+        let max_segment_degree = quotient.degree() / NUM_QUOTIENT_SEGMENTS as isize;
+        for segment in &segments {
+            prop_assert!(segment.degree() <= max_segment_degree);
         }
     }
 
