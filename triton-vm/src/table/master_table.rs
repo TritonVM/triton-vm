@@ -2143,6 +2143,12 @@ pub(crate) fn evaluate_randomized_interpolant_into<'c, FF>(
 where
     FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
 {
+    // The number of independent sequences of powers of the offset. A single
+    // running power makes every multiplication wait for the previous one.
+    // Several sequences, each advancing by `offset^NUM_SEQUENCES`, keep the
+    // CPU busy instead.
+    const NUM_SEQUENCES: usize = 8;
+
     let randomizer = randomizer.coefficients();
     assert_eq!(domain.len(), codeword.len());
     assert!(interpolant.len() <= codeword.len());
@@ -2152,10 +2158,27 @@ where
     // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
     let offset = domain.offset();
     let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
-    let mut power = BFieldElement::ONE;
-    for (cell, &coefficient) in scaled_interpolant.iter_mut().zip(interpolant) {
+    let mut powers = [BFieldElement::ONE; NUM_SEQUENCES];
+    for i in 1..NUM_SEQUENCES {
+        powers[i] = powers[i - 1] * offset;
+    }
+    let step = powers[NUM_SEQUENCES - 1] * offset;
+    let (cell_chunks, remaining_cells) = scaled_interpolant.as_chunks_mut::<NUM_SEQUENCES>();
+    let (coefficient_chunks, remaining_coefficients) = interpolant.as_chunks::<NUM_SEQUENCES>();
+    for (cells, coefficients) in cell_chunks.iter_mut().zip(coefficient_chunks) {
+        for i in 0..NUM_SEQUENCES {
+            cells[i].write(coefficients[i] * powers[i]);
+        }
+        for power in &mut powers {
+            *power *= step;
+        }
+    }
+    for ((cell, &coefficient), &power) in remaining_cells
+        .iter_mut()
+        .zip(remaining_coefficients)
+        .zip(&powers)
+    {
         cell.write(coefficient * power);
-        power *= offset;
     }
     for cell in zero_padding {
         cell.write(FF::ZERO);
