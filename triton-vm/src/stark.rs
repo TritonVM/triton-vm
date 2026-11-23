@@ -2190,6 +2190,10 @@ impl LinearCombinationWeights {
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
+mod soundness_doc;
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use std::collections::HashMap;
     use std::collections::HashSet;
