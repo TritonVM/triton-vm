@@ -28,6 +28,7 @@
     + [Proof of Memory Consistency](proof-of-memory-consistency.md)
 - [Program Attestation](program-attestation.md)
 - [Zero-Knowledge](zero-knowledge.md)
+- [Soundness](soundness.md)
 
 ---
 - [Index Sampling](index-sampling.md)
