@@ -14,7 +14,9 @@ on:
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: ubuntu-latest
+    # Pinned: CodSpeedHQ/action@v4 fails with "Unsupported system" on newer
+    # `ubuntu-latest` images. Unpin once CodSpeed supports them.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
