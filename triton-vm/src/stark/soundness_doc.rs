@@ -16,7 +16,6 @@ use twenty_first::tip5;
 
 use super::*;
 use crate::table::master_table::MasterAuxTable;
-use crate::tests::test;
 
 const SPEC_PATH: &str = "../specification/src/soundness.md";
 const CONSTANTS_MARKERS: [&str; 2] = [
@@ -299,7 +298,9 @@ fn constant(constants: &HashMap<String, Row>, key: &str) -> f64 {
     row[0].0
 }
 
-#[macro_rules_attr::apply(test)]
+// Don't `#[macro_rules_attr::apply(test)]`:
+// `wasm32-unknown-unknown` doesn't support opening files.
+#[test]
 fn soundness_chapter_agrees_with_code() {
     let spec = std::fs::read_to_string(Path::new(SPEC_PATH)).unwrap();
     let constants = read_table(&spec, CONSTANTS_MARKERS);
