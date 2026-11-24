@@ -1325,31 +1325,106 @@ impl Prover {
     /// Interpolate the quotient from its values on the quotient domain, and
     /// [split](Self::split_polynomial_into_segments) it into its segments.
     ///
-    /// The quotient may have more coefficients than the quotient domain has
-    /// points; see [`ProverDomains::quotient_overflow`]. Then, the quotient's
-    /// values on the overflow domain are required, too.
+    /// If the quotient has more coefficients than the quotient domain has
+    /// points, the quotient's values on the
+    /// [overflow domain](ProverDomains::quotient_overflow) are required, too.
+    /// The rest of this text explains that case.
     ///
-    /// Let `N` be the length of the quotient domain and `ψ` its offset. On the
-    /// quotient domain, `X^N` equals `c = ψ^N`. Therefore, splitting the
-    /// quotient as `q(X) = q_lo(X) + X^N·q_hi(X)` with `deg(q_lo) < N`,
-    /// interpolating the values on the quotient domain gives the “wrapped”
-    /// polynomial
+    /// # Definitions
+    ///
+    /// - `q` is the quotient, `M` the number of its coefficients as bounded
+    ///   by the AIR's degrees.
+    /// - `N` is the length of the quotient domain, `ψ` its offset, and
+    ///   `c = ψ^N`. Every point `x` of the quotient domain satisfies
+    ///   `x^N = c`.
+    /// - `E` is the length of the overflow domain and `γ` its offset. Every
+    ///   point `x` of the overflow domain satisfies `x^E = γ^E`.
+    /// - `q_lo` and `q_hi` are the unique polynomials with
+    ///   `q(X) = q_lo(X) + X^N·q_hi(X)` and `deg(q_lo) < N`. In other words,
+    ///   `q_lo` has the first `N` coefficients of `q`, and `q_hi` has the
+    ///   remaining `M - N`.
+    ///
+    /// # Why the quotient has more coefficients than the domain has points
+    ///
+    /// The length of a domain is a power of two, whereas `M` is slightly more
+    /// than a power of two: the constrained trace polynomials have
+    /// [degree][degree] `padded_height + num_trace_randomizers - 1`, and the
+    /// trace randomizers are what pushes `M` beyond a multiple of the padded
+    /// height. A domain with at least `M` points would be almost twice as
+    /// long as needed. Instead, `N` is the largest power of two that is not
+    /// greater than `M`, which makes for `N < M < 2·N`, and the
+    /// `M - N` excess coefficients are recovered separately. The domains are
+    /// chosen in [`ProverDomains::short_quotient_domains`][domains], and only
+    /// if `M - N` is small compared to `N`.
+    ///
+    /// # What the values on the quotient domain give
+    ///
+    /// On the quotient domain, `X^N` equals `c`. There, `q` takes the same
+    /// values as the “wrapped” polynomial
     ///
     /// ```text
     /// w(X) = q_lo(X) + c·q_hi(X).
     /// ```
     ///
-    /// The overflow domain is a coset of a subgroup of order `E > deg(q_hi)`
-    /// that divides `N`, with an offset `γ` such that `γ^N = -c`. On it, `X^N`
-    /// equals `-c`, and thus
+    /// Since `deg(w) < N`, interpolating the `N` values on the quotient domain
+    /// gives exactly `w`. The coefficients of `q_hi` are folded into the
+    /// lowest coefficients of `w`; they cannot be told apart from `w` alone.
+    ///
+    /// # Why the overflow domain exists
+    ///
+    /// The overflow domain is `{γ·η^j}` for an element `η` of order `E` and
+    /// an offset `γ` with `γ^N = -c`. Such an offset exists whenever the
+    /// length of the FRI domain is a multiple of `2·N`: then the FRI domain's
+    /// generator, raised to the appropriate power, is an element `ω` of order
+    /// `2·N`. Because `ω^N` is a square root of 1 other than 1, `ω^N = -1`,
+    /// and `γ = ψ·ω` satisfies `γ^N = ψ^N·ω^N = -c`. The divisibility is
+    /// checked where the [domains] are chosen; if it does not hold, the
+    /// quotient domain is not shortened, and there is no overflow domain.
+    ///
+    /// `E` is a power of two no greater than `N`, hence `E` divides `N`, and
+    /// `η^N = 1`. Therefore, every point `x` of the overflow domain satisfies
+    /// `x^N = γ^N = -c`. Two consequences:
+    ///
+    /// - The overflow domain is disjoint from the quotient domain, since
+    ///   `c ≠ -c`.
+    /// - On the overflow domain,
+    ///
+    ///   ```text
+    ///   q(X) - w(X) = (X^N - c)·q_hi(X) = -2c·q_hi(X).
+    ///   ```
+    ///
+    /// # Why the overflow domain is long enough
+    ///
+    /// `q_hi` has `M - N` coefficients, i.e., `deg(q_hi) < M - N`. The
+    /// [domains] are chosen with `E` being the smallest power of two that is
+    /// not less than `M - N`. Therefore, `E > deg(q_hi)`, and the `E` values
+    /// `(q(x) - w(x)) / (-2c)` on the overflow domain determine `q_hi` by
+    /// interpolation. With `q_hi` known, `q_lo(X) = w(X) - c·q_hi(X)`.
+    ///
+    /// # How the wrapped polynomial is evaluated on the overflow domain
+    ///
+    /// Evaluating `w`, which has `N` coefficients, in `E` points directly
+    /// would be expensive. Instead, `w` is first reduced modulo
+    /// `X^E - γ^E`. The remainder `r` agrees with `w` on the overflow domain:
+    /// `w - r` is a multiple of `X^E - γ^E`, which is zero in every point
+    /// of the overflow domain.
+    ///
+    /// To compute `r`, note that `X^(i + j·E)` is congruent to
+    /// `(γ^E)^j·X^i` modulo `X^E - γ^E`. Writing `w_k` for the
+    /// coefficients of `w`, coefficient `i` of `r` is
     ///
     /// ```text
-    /// q(X) - w(X) = (X^N - c)·q_hi(X) = -2c·q_hi(X).
+    /// r_i = Σ_j w_(i + j·E)·(γ^E)^j,
     /// ```
     ///
-    /// This gives `E` values of `q_hi`, which determine it. With `q_hi` known,
-    /// `q_lo` follows from `w`. The values of `w` on the overflow domain are
-    /// those of its remainder modulo `X^E - γ^E`, which is cheap to compute.
+    /// a polynomial in `γ^E` whose coefficients are every `E`th coefficient
+    /// of `w`, starting at index `i`. Horner's rule evaluates it, starting
+    /// from the highest `j`. In total, this takes `N` multiplications,
+    /// followed by one evaluation of the `E` coefficients of `r` on the
+    /// overflow domain.
+    ///
+    /// [degree]: Stark::max_constrained_trace_polynomial_degree
+    /// [domains]: ProverDomains::short_quotient_domains
     fn quotient_segments_from_codeword(
         quotient_codeword: Vec<XFieldElement>,
         quotient_domain: ArithmeticDomain,
@@ -1379,7 +1454,7 @@ impl Prover {
         let mut coefficients = wrapped_quotient.into_coefficients();
         coefficients.resize(quotient_domain_len, XFieldElement::ZERO);
 
-        // w(X) mod (X^E - γ^E), using Horner's rule for every coefficient
+        // r(X) = w(X) mod (X^E - γ^E), using Horner's rule for every r_i
         let gamma_to_the_e = to_the(overflow_domain.offset(), overflow_domain_len);
         let wrapped_remainder = (0..overflow_domain_len)
             .into_par_iter()
