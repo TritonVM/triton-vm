@@ -398,10 +398,21 @@ impl Prover {
 
         // Reserving the memory for the low-degree-extended tables early
         // makes it available faster once it is needed.
+        //
+        // If no cache decision could be made now, it is made when allocating
+        // memory for the tables. If this fails, the prover will not cache.
+        // That attempt must not come early: it could succeed by taking the
+        // memory the trace tables need, whose allocation cannot fail
+        // gracefully. Trying after the respective trace table exists lets
+        // the prover fall back to not caching instead.
         let cache_decision = Self::lde_trace_cache_decision(domains);
+        let reserve_early = cache_decision.is_some();
         let lde_num_rows = domains.quotient.len().max(domains.fri.len());
-        let main_lde_memory =
-            LdeMemory::reserve(lde_num_rows * MasterMainTable::NUM_COLUMNS, cache_decision);
+        let reserve_main_lde_memory =
+            || LdeMemory::reserve(lde_num_rows * MasterMainTable::NUM_COLUMNS, cache_decision);
+        let reserve_aux_lde_memory =
+            || LdeMemory::reserve(lde_num_rows * MasterAuxTable::NUM_COLUMNS, cache_decision);
+        let main_lde_memory = reserve_early.then(reserve_main_lde_memory).flatten();
 
         profiler!(start "main tables");
         profiler!(start "create" ("gen"));
@@ -417,10 +428,14 @@ impl Prover {
         master_main_table.pad();
         profiler!(stop "pad");
 
+        let main_lde_memory = if reserve_early {
+            main_lde_memory
+        } else {
+            reserve_main_lde_memory()
+        };
         master_main_table.maybe_low_degree_extend_all_columns_into(main_lde_memory);
 
-        let aux_lde_memory =
-            LdeMemory::reserve(lde_num_rows * MasterAuxTable::NUM_COLUMNS, cache_decision);
+        let aux_lde_memory = reserve_early.then(reserve_aux_lde_memory).flatten();
 
         profiler!(start "Merkle tree");
         let main_merkle_tree = master_main_table.merkle_tree();
@@ -438,6 +453,11 @@ impl Prover {
         profiler!(stop "main tables");
 
         profiler!(start "aux tables");
+        let aux_lde_memory = if reserve_early {
+            aux_lde_memory
+        } else {
+            reserve_aux_lde_memory()
+        };
         master_aux_table.maybe_low_degree_extend_all_columns_into(aux_lde_memory);
 
         // Without cached low-degree extensions, everything from here on works
