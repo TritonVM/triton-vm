@@ -194,18 +194,33 @@ impl BfeSlice for XFieldElement {
 /// The memory for a [low-degree-extended table][lde], reserved ahead of its
 /// use.
 ///
-/// The operating system hands out freshly allocated memory lazily, page by
-/// page, on first access, and zeroes every page before doing so. For tables
-/// of many gigabytes, this takes a considerable part of the time it takes to
-/// fill them. If the memory is reserved early, a few background threads
-/// trigger this process while the prover is busy with work that leaves many
-/// cores idle; for example, when creating the tables' traces. This only
-/// happens where it has been observed to help: on Linux, and if the thread
-/// pool is big.
+/// The operating system hands out freshly allocated memory lazily: a page is
+/// only backed by physical memory once it is accessed for the first time. At
+/// that point, the operating system also zeroes the page, because the
+/// physical memory might still hold the data of another process. For tables
+/// of many gigabytes, these page faults take a considerable part of the time
+/// it takes to fill the table.
+///
+/// If the memory is reserved early, a few background threads can trigger the
+/// page faults ahead of time, while the prover is busy with work that leaves
+/// many cores idle; for example, when creating the tables' traces. The
+/// background threads are only started where they have been observed to
+/// help: on Linux, and if the thread pool is big. Everywhere else, the
+/// memory is reserved but not touched.
+///
+/// # Invariant
+///
+/// While any background thread is running, the reserved memory is accessed
+/// by the background threads only, and is neither moved out of this struct,
+/// nor reallocated, nor freed. Any method that uses the reserved memory in
+/// any way must first [stop](Self::stop_background_threads) the background
+/// threads. The soundness of the background threads' writes depends on this.
 ///
 /// [lde]: MasterTable::maybe_low_degree_extend_all_columns_into
 #[derive(Debug)]
 pub(crate) struct LdeMemory<FF> {
+    /// Off limits while any of the `threads` is running; see the
+    /// [invariant](Self#invariant).
     memory: Vec<MaybeUninit<FF>>,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     threads: Vec<std::thread::JoinHandle<()>>,
@@ -285,8 +300,8 @@ impl<FF> LdeMemory<FF> {
 
                         // SAFETY: The byte is within the allocation, which
                         // is kept alive, and not accessed in any other way,
-                        // until this thread has been joined; see
-                        // `stop_background_threads`. The claims of the
+                        // until this thread has been joined; see the
+                        // invariant of `LdeMemory`. The claims of the
                         // threads are disjoint. Any bit pattern is valid for
                         // the uninitialized memory.
                         unsafe { byte.write_volatile(0) };
