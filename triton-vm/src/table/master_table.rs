@@ -429,16 +429,6 @@ where
     // object's fields.
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
-    /// Like [`Self::maybe_low_degree_extend_all_columns_into`], reserving the
-    /// memory on the spot. Without a decision, the table is cached if the
-    /// required memory can be reserved.
-    #[cfg(test)]
-    fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
-        let num_rows = self.evaluation_domain().len();
-        let memory = LdeMemory::reserve(num_rows * Self::NUM_COLUMNS, cache_decision);
-        self.maybe_low_degree_extend_all_columns_into(memory);
-    }
-
     /// Low-degree extend all columns of the trace table (including randomizers)
     /// _if_ it is to be [cached], which is the case if memory for it was
     /// [reserved](LdeMemory::reserve) ahead of time. In that case, the
@@ -2383,7 +2373,7 @@ fn gather_rows<FF: FiniteField>(
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
+pub(crate) mod tests {
     use fs_err as fs;
     use std::fmt::Debug;
     use std::ops::Add;
@@ -2517,6 +2507,21 @@ mod tests {
         );
     }
 
+    /// Low-degree extend all columns of the trace table and cache the result,
+    /// reserving the required memory on the spot.
+    ///
+    /// See also [`MasterTable::maybe_low_degree_extend_all_columns_into`].
+    pub(crate) fn low_degree_extend_all_columns<T>(table: &mut T)
+    where
+        T: MasterTable,
+        StandardUniform: Distribution<T::Field>,
+        XFieldElement: Add<T::Field, Output = XFieldElement>,
+    {
+        let num_elements = table.evaluation_domain().len() * T::NUM_COLUMNS;
+        let memory = LdeMemory::reserve(num_elements, Some(CacheDecision::Cache));
+        table.maybe_low_degree_extend_all_columns_into(memory);
+    }
+
     #[macro_rules_attr::apply(test)]
     fn trace_tables_are_in_column_major_order() {
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
@@ -2539,7 +2544,7 @@ mod tests {
             let jit_digests = table.hash_all_fri_domain_rows();
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            low_degree_extend_all_columns(&mut table);
 
             assert!(table.fri_domain_table().is_some());
             let cache_digests = table.hash_all_fri_domain_rows();
@@ -2619,7 +2624,7 @@ mod tests {
             let jit_rows = table.reveal_rows(indices);
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            low_degree_extend_all_columns(&mut table);
 
             assert!(table.fri_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);

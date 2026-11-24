@@ -2376,6 +2376,7 @@ pub(crate) mod tests {
     use crate::table::auxiliary_table;
     use crate::table::auxiliary_table::Evaluable;
     use crate::table::master_table::MasterAuxTable;
+    use crate::table::master_table::tests::low_degree_extend_all_columns;
     use crate::tests::proptest;
     use crate::tests::test;
     use crate::triton_program;
@@ -2534,11 +2535,11 @@ pub(crate) mod tests {
                 Prover::compute_quotient_segments(&mut main, &mut aux, &ch, &weights);
 
             debug_assert!(main.fri_domain_table().is_none());
-            main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            low_degree_extend_all_columns(&mut main);
             debug_assert!(main.fri_domain_table().is_some());
 
             debug_assert!(aux.fri_domain_table().is_none());
-            aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            low_degree_extend_all_columns(&mut aux);
             debug_assert!(aux.fri_domain_table().is_some());
 
             let cache_segments =
@@ -2595,10 +2596,10 @@ pub(crate) mod tests {
             let original_aux_trace = aux.trace_table().to_owned();
 
             if cache_decision == CacheDecision::Cache {
-                main.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+                low_degree_extend_all_columns(&mut main);
                 assert!(main.fri_domain_table().is_some());
 
-                aux.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+                low_degree_extend_all_columns(&mut aux);
                 assert!(aux.fri_domain_table().is_some());
             }
 
