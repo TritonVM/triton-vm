@@ -707,6 +707,32 @@ pub(crate) mod tests {
         }
     }
 
+    /// The two ways of filling rows of the Hash Table must not drift apart:
+    /// [`trace_to_table_rows`] handles whole permutation traces and inverts
+    /// in batches, [`trace_row_to_table_row`] handles single rows.
+    #[macro_rules_attr::apply(test)]
+    fn converting_a_trace_agrees_with_converting_its_rows_one_by_one() {
+        // The inverse-or-zero columns are zero only for state elements whose
+        // two highest limbs are all ones, which random states never hit.
+        let highest_limbs_all_ones = BFieldElement::from_raw_u64(0xffff_ffff_0000_0000);
+        assert!(complement_of_highest_2_limbs(highest_limbs_all_ones).is_zero());
+        let mut states = vec![Tip5::init().state, [highest_limbs_all_ones; STATE_SIZE]];
+        let mut tip5 = Tip5::init();
+        for _ in 0..20 {
+            tip5.permutation();
+            states.push(tip5.state);
+        }
+
+        for state in states {
+            let trace = Tip5 { state }.trace();
+            let rows = trace_to_table_rows(trace);
+            assert_eq!(trace.len(), rows.nrows());
+            for (round_number, (&trace_row, row)) in trace.iter().zip(rows.rows()).enumerate() {
+                assert_eq!(trace_row_to_table_row(trace_row, round_number), row);
+            }
+        }
+    }
+
     #[macro_rules_attr::apply(test)]
     fn hash_table_mode_discriminant_is_unique() {
         let mut discriminants_and_modes = HashMap::new();
