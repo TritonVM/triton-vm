@@ -67,6 +67,12 @@ impl TraceTable for RamTable {
     type FillParam = ();
     type FillReturnInfo = Vec<BFieldElement>;
 
+    /// Production code bypasses this method: in order to fill the Processor
+    /// Table concurrently, [`MasterMainTable::new`][new] calls
+    /// [`fill_in_two_steps`] directly. Changes to how the RAM Table is
+    /// filled belong there.
+    ///
+    /// [new]: crate::table::master_table::MasterMainTable::new
     fn fill(
         ram_table: ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
