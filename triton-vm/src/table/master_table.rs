@@ -381,10 +381,18 @@ where
 
     /// Presents underlying trace data, excluding trace randomizers and
     /// batch randomizers.
+    ///
+    /// The columns hold the trace only if the trace is not
+    /// [interpolated](Self::trace_is_interpolated). Otherwise, they hold the
+    /// coefficients of the trace interpolants.
     fn trace_table(&self) -> ArrayView2<'_, Self::Field>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and
     /// batch randomizers.
+    ///
+    /// The columns hold the trace only if the trace is not
+    /// [interpolated](Self::trace_is_interpolated). Otherwise, they hold the
+    /// coefficients of the trace interpolants.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, Self::Field>;
 
     /// Whether the columns of the [trace table](Self::trace_table) currently
@@ -1487,6 +1495,11 @@ impl MasterMainTable {
     /// efficient over the used base field when the number of rows is a power of
     /// two.
     pub fn pad(&mut self) {
+        assert!(
+            !self.trace_is_interpolated,
+            "trace must not be interpolated"
+        );
+
         let table_lengths = self.all_table_lengths();
 
         let tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
@@ -1690,12 +1703,20 @@ impl MasterMainTable {
     }
 
     /// A view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table(&self, table_id: TableId) -> ArrayView2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
@@ -1734,12 +1755,20 @@ impl MasterAuxTable {
     }
 
     /// A view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table(&self, table_id: TableId) -> ArrayView2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
