@@ -33,6 +33,7 @@ use twenty_first::prelude::*;
 use twenty_first::util_types::sponge;
 
 use crate::aet::AlgebraicExecutionTrace;
+use crate::aet::CascadeEntryIndexCache;
 use crate::error::VMError;
 use crate::execution_trace_profiler::ExecutionTraceProfile;
 use crate::execution_trace_profiler::ExecutionTraceProfiler;
@@ -179,6 +180,7 @@ impl VM {
         mut state: VMState,
     ) -> VMResult<(AlgebraicExecutionTrace, VMState)> {
         let mut aet = AlgebraicExecutionTrace::new(state.program.clone());
+        let mut cascade_entry_indices = CascadeEntryIndexCache::new();
 
         while !state.halting {
             if let Err(err) = aet.record_state(&state) {
@@ -189,7 +191,7 @@ impl VM {
                 Err(err) => return Err(VMError::new(err, state)),
             };
             for call in co_processor_calls {
-                aet.record_co_processor_call(call);
+                aet.record_co_processor_call(call, &mut cascade_entry_indices);
             }
         }
 
@@ -215,6 +217,7 @@ impl VM {
         let mut state = VMState::new(program.clone(), public_input, non_determinism);
         let mut previous_jump_stack_len = state.jump_stack.len();
         let mut aet = AlgebraicExecutionTrace::new(state.program.clone());
+        let mut cascade_entry_indices = CascadeEntryIndexCache::new();
         while !state.halting {
             if let Err(err) = aet.record_state(&state) {
                 return Err(VMError::new(err, state));
@@ -229,7 +232,7 @@ impl VM {
                 Err(err) => return Err(VMError::new(err, state)),
             };
             for call in co_processor_calls {
-                aet.record_co_processor_call(call);
+                aet.record_co_processor_call(call, &mut cascade_entry_indices);
             }
 
             if state.jump_stack.len() < previous_jump_stack_len {

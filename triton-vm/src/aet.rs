@@ -89,16 +89,31 @@ pub struct AlgebraicExecutionTrace {
 
     /// Records how often each entry in the lookup table was looked up.
     pub lookup_table_lookup_multiplicities: [u64; AlgebraicExecutionTrace::LOOKUP_TABLE_HEIGHT],
+}
 
-    /// For every 16-bit limb, its (presumed) index in
-    /// [`Self::cascade_table_lookup_multiplicities`], or [`u32::MAX`] if
-    /// unknown. Looking up a limb's multiplicity by index is a lot cheaper
-    /// than hashing the limb, and this happens for every limb of every
-    /// split-and-lookup S-box of every recorded permutation.
-    ///
-    /// This is only a hint: every use must check that the entry at the index
-    /// is the limb's entry, since the map is public and can be modified.
-    cascade_table_index_hints: Vec<u32>,
+/// Remembers, for every 16-bit limb, the index of the limb's entry in
+/// [`AlgebraicExecutionTrace::cascade_table_lookup_multiplicities`].
+///
+/// Looking up a limb's multiplicity by index is a lot cheaper than hashing
+/// the limb, and this happens for every limb of every split-and-lookup S-box
+/// of every recorded permutation.
+///
+/// The cache only speeds up recording an [`AlgebraicExecutionTrace`]. It is
+/// not part of the trace, and can be discarded, or replaced by a
+/// [new](Self::new) one, at any time.
+pub(crate) struct CascadeEntryIndexCache {
+    /// The (presumed) index of every limb's entry, or [`u32::MAX`] if
+    /// unknown. Every use must check that the entry at the index is the
+    /// limb's entry: the map is public and can be modified, and the cache
+    /// might have been used for a different trace.
+    indices: Vec<u32>,
+}
+
+impl CascadeEntryIndexCache {
+    pub fn new() -> Self {
+        let indices = vec![u32::MAX; 1 << u16::BITS];
+        Self { indices }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
@@ -130,7 +145,6 @@ impl AlgebraicExecutionTrace {
             u32_entries: IndexMap::new(),
             cascade_table_lookup_multiplicities: IndexMap::new(),
             lookup_table_lookup_multiplicities: [0; Self::LOOKUP_TABLE_HEIGHT],
-            cascade_table_index_hints: vec![u32::MAX; 1 << u16::BITS],
         };
         aet.fill_program_hash_trace();
         aet
@@ -198,6 +212,7 @@ impl AlgebraicExecutionTrace {
     fn fill_program_hash_trace(&mut self) {
         let padded_program = Self::hash_input_pad_program(&self.program);
         let mut program_sponge = Tip5::init();
+        let mut cascade_entry_indices = CascadeEntryIndexCache::new();
         for chunk_to_absorb in padded_program.chunks(Tip5::RATE) {
             program_sponge.state[..Tip5::RATE]
                 .iter_mut()
@@ -206,7 +221,7 @@ impl AlgebraicExecutionTrace {
             let hash_trace = program_sponge.trace();
             let trace_addendum = table::hash::trace_to_table_rows(hash_trace);
 
-            self.increase_lookup_multiplicities(hash_trace);
+            self.increase_lookup_multiplicities(hash_trace, &mut cascade_entry_indices);
             self.program_hash_trace
                 .append(ROW_AXIS, trace_addendum.view())
                 .expect("shapes must be identical");
@@ -260,12 +275,18 @@ impl AlgebraicExecutionTrace {
             .unwrap()
     }
 
-    pub(crate) fn record_co_processor_call(&mut self, co_processor_call: CoProcessorCall) {
+    pub(crate) fn record_co_processor_call(
+        &mut self,
+        co_processor_call: CoProcessorCall,
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
         match co_processor_call {
-            CoProcessorCall::Tip5Trace(Instruction::Hash, trace) => self.append_hash_trace(*trace),
+            CoProcessorCall::Tip5Trace(Instruction::Hash, trace) => {
+                self.append_hash_trace(*trace, cascade_entry_indices)
+            }
             CoProcessorCall::SpongeStateReset => self.append_initial_sponge_state(),
             CoProcessorCall::Tip5Trace(instruction, trace) => {
-                self.append_sponge_trace(instruction, *trace)
+                self.append_sponge_trace(instruction, *trace, cascade_entry_indices)
             }
             CoProcessorCall::U32(u32_entry) => self.record_u32_table_entry(u32_entry),
             CoProcessorCall::OpStack(op_stack_entry) => self.record_op_stack_entry(op_stack_entry),
@@ -273,8 +294,12 @@ impl AlgebraicExecutionTrace {
         }
     }
 
-    fn append_hash_trace(&mut self, trace: PermutationTrace) {
-        self.increase_lookup_multiplicities(trace);
+    fn append_hash_trace(
+        &mut self,
+        trace: PermutationTrace,
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
+        self.increase_lookup_multiplicities(trace, cascade_entry_indices);
         let mut hash_trace_addendum = table::hash::trace_to_table_rows(trace);
         hash_trace_addendum
             .slice_mut(s![.., CI.main_index()])
@@ -292,12 +317,17 @@ impl AlgebraicExecutionTrace {
         self.sponge_trace.push_row(hash_table_row.view()).unwrap();
     }
 
-    fn append_sponge_trace(&mut self, instruction: Instruction, trace: PermutationTrace) {
+    fn append_sponge_trace(
+        &mut self,
+        instruction: Instruction,
+        trace: PermutationTrace,
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
         assert!(matches!(
             instruction,
             Instruction::SpongeAbsorb | Instruction::SpongeSqueeze
         ));
-        self.increase_lookup_multiplicities(trace);
+        self.increase_lookup_multiplicities(trace, cascade_entry_indices);
         let mut sponge_trace_addendum = table::hash::trace_to_table_rows(trace);
         sponge_trace_addendum
             .slice_mut(s![.., CI.main_index()])
@@ -313,33 +343,48 @@ impl AlgebraicExecutionTrace {
     /// - lookup table was looked up;
     ///
     /// and increases the multiplicities accordingly
-    fn increase_lookup_multiplicities(&mut self, trace: PermutationTrace) {
+    fn increase_lookup_multiplicities(
+        &mut self,
+        trace: PermutationTrace,
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
         // The last row in the trace is the permutation's result: no lookups are
         // performed for it.
         let rows_for_which_lookups_are_performed = trace.iter().dropping_back(1);
         for row in rows_for_which_lookups_are_performed {
-            self.increase_lookup_multiplicities_for_row(row);
+            self.increase_lookup_multiplicities_for_row(row, cascade_entry_indices);
         }
     }
 
     /// Given one row of the hash function's permutation trace, increase the
     /// multiplicities of the relevant entries in the cascade table and/or
     /// the lookup table.
-    fn increase_lookup_multiplicities_for_row(&mut self, row: &[BFieldElement; tip5::STATE_SIZE]) {
+    fn increase_lookup_multiplicities_for_row(
+        &mut self,
+        row: &[BFieldElement; tip5::STATE_SIZE],
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
         for &state_element in &row[0..tip5::NUM_SPLIT_AND_LOOKUP] {
-            self.increase_lookup_multiplicities_for_state_element(state_element);
+            self.increase_lookup_multiplicities_for_state_element(
+                state_element,
+                cascade_entry_indices,
+            );
         }
     }
 
     /// Given one state element, increase the multiplicities of the
     /// corresponding entries in the cascade table and/or the lookup table.
-    fn increase_lookup_multiplicities_for_state_element(&mut self, state_element: BFieldElement) {
+    fn increase_lookup_multiplicities_for_state_element(
+        &mut self,
+        state_element: BFieldElement,
+        cascade_entry_indices: &mut CascadeEntryIndexCache,
+    ) {
         for limb in table::hash::base_field_element_into_16_bit_limbs(state_element) {
-            let index_hint = self.cascade_table_index_hints[usize::from(limb)] as usize;
-            if let Some((&hinted_limb, multiplicity)) = self
+            let cached_index = cascade_entry_indices.indices[usize::from(limb)] as usize;
+            if let Some((&limb_at_index, multiplicity)) = self
                 .cascade_table_lookup_multiplicities
-                .get_index_mut(index_hint)
-                && hinted_limb == limb
+                .get_index_mut(cached_index)
+                && limb_at_index == limb
             {
                 *multiplicity += 1;
                 continue;
@@ -349,12 +394,12 @@ impl AlgebraicExecutionTrace {
                 Occupied(mut cascade_table_entry) => {
                     let index = cascade_table_entry.index();
                     *cascade_table_entry.get_mut() += 1;
-                    self.cascade_table_index_hints[usize::from(limb)] = index as u32;
+                    cascade_entry_indices.indices[usize::from(limb)] = index as u32;
                 }
                 Vacant(cascade_table_entry) => {
                     let index = cascade_table_entry.index();
                     cascade_table_entry.insert(1);
-                    self.cascade_table_index_hints[usize::from(limb)] = index as u32;
+                    cascade_entry_indices.indices[usize::from(limb)] = index as u32;
                     self.increase_lookup_table_multiplicities_for_limb(limb);
                 }
             }
