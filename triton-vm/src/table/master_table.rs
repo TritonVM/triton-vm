@@ -363,6 +363,10 @@ where
 
     const NUM_COLUMNS: usize;
 
+    /// The number of columns the AIR constrains. These are the first columns
+    /// of the table.
+    const NUM_CONSTRAINED_COLUMNS: usize;
+
     fn domains(&self) -> ProverDomains;
 
     /// The [`ArithmeticDomain`] to [low-degree extend] into.
@@ -774,6 +778,22 @@ where
     /// section “Batch-Randomizer”.
     fn num_trace_randomizers_for_column(&self, _idx: usize) -> usize {
         self.num_trace_randomizers()
+    }
+
+    /// The largest degree of the trace polynomial of any column the AIR
+    /// constrains, derived from the actual number of trace randomizers of
+    /// every such column. Checks the premise of
+    /// [`Stark::max_constrained_trace_polynomial_degree`][bound], which
+    /// determines the length of the prover's quotient domain.
+    ///
+    /// [bound]: crate::stark::Stark::max_constrained_trace_polynomial_degree
+    fn max_constrained_trace_polynomial_degree(&self) -> usize {
+        let max_num_trace_randomizers = (0..Self::NUM_CONSTRAINED_COLUMNS)
+            .map(|idx| self.num_trace_randomizers_for_column(idx))
+            .max()
+            .unwrap_or(0);
+
+        (self.domains().trace.len() + max_num_trace_randomizers).saturating_sub(1)
     }
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
@@ -1197,6 +1217,7 @@ impl MasterTable for MasterMainTable {
     type Field = BFieldElement;
     const NUM_COLUMNS: usize = air::table::NUM_MAIN_COLUMNS
         + crate::table::degree_lowering::DegreeLoweringMainColumn::COUNT;
+    const NUM_CONSTRAINED_COLUMNS: usize = Self::NUM_COLUMNS;
 
     fn domains(&self) -> ProverDomains {
         self.domains
@@ -1274,6 +1295,9 @@ impl MasterTable for MasterAuxTable {
     const NUM_COLUMNS: usize = air::table::NUM_AUX_COLUMNS
         + crate::table::degree_lowering::DegreeLoweringAuxColumn::COUNT
         + NUM_BATCH_RANDOMIZERS;
+
+    // the batch randomizers are not constrained
+    const NUM_CONSTRAINED_COLUMNS: usize = Self::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
 
     fn domains(&self) -> ProverDomains {
         self.domains
@@ -2463,6 +2487,57 @@ pub(crate) mod tests {
 
     use super::*;
 
+    /// Low-degree extend all columns of the trace table and cache the result,
+    /// reserving the required memory on the spot.
+    ///
+    /// See also [`MasterTable::maybe_low_degree_extend_all_columns_into`].
+    pub(crate) fn low_degree_extend_all_columns<T>(table: &mut T)
+    where
+        T: MasterTable,
+        StandardUniform: Distribution<T::Field>,
+        XFieldElement: Add<T::Field, Output = XFieldElement>,
+    {
+        let num_elements = table.evaluation_domain().len() * T::NUM_COLUMNS;
+        let memory = LdeMemory::reserve(num_elements, Some(CacheDecision::Cache));
+        table.maybe_low_degree_extend_all_columns_into(memory);
+    }
+
+    /// The prover's quotient domain is derived from this bound.
+    #[macro_rules_attr::apply(test)]
+    fn constrained_trace_polynomials_respect_the_degree_bound() {
+        fn assert_bound<T>(table: &T)
+        where
+            T: MasterTable,
+            StandardUniform: Distribution<T::Field>,
+            XFieldElement: Add<T::Field, Output = XFieldElement>,
+        {
+            let bound = crate::stark::Stark::max_constrained_trace_polynomial_degree(
+                table.domains().trace.len(),
+                table.num_trace_randomizers(),
+            );
+            assert_eq!(bound, table.max_constrained_trace_polynomial_degree());
+
+            let bound = isize::try_from(bound).unwrap();
+            let max_degree = (0..T::NUM_CONSTRAINED_COLUMNS)
+                .map(|idx| table.randomized_column_interpolant(idx).degree())
+                .max()
+                .unwrap();
+            assert_eq!(bound, max_degree);
+        }
+
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        assert_bound(&artifacts.master_main_table);
+        assert_bound(&artifacts.master_aux_table);
+
+        // the batch randomizer is the reason for the distinction
+        let aux_table = artifacts.master_aux_table;
+        let batch_randomizer = MasterAuxTable::NUM_CONSTRAINED_COLUMNS;
+        assert!(
+            aux_table.num_trace_randomizers_for_column(batch_randomizer)
+                > aux_table.num_trace_randomizers()
+        );
+    }
+
     #[macro_rules_attr::apply(test)]
     fn main_table_width_is_correct() {
         let master_main_table = TestableProgram::new(triton_program!(halt))
@@ -2549,21 +2624,6 @@ pub(crate) mod tests {
             <U32Table as AIR>::AuxColumn::COUNT,
             master_aux_table.table(TableId::U32).ncols()
         );
-    }
-
-    /// Low-degree extend all columns of the trace table and cache the result,
-    /// reserving the required memory on the spot.
-    ///
-    /// See also [`MasterTable::maybe_low_degree_extend_all_columns_into`].
-    pub(crate) fn low_degree_extend_all_columns<T>(table: &mut T)
-    where
-        T: MasterTable,
-        StandardUniform: Distribution<T::Field>,
-        XFieldElement: Add<T::Field, Output = XFieldElement>,
-    {
-        let num_elements = table.evaluation_domain().len() * T::NUM_COLUMNS;
-        let memory = LdeMemory::reserve(num_elements, Some(CacheDecision::Cache));
-        table.maybe_low_degree_extend_all_columns_into(memory);
     }
 
     #[macro_rules_attr::apply(test)]

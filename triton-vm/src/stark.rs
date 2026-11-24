@@ -264,13 +264,12 @@ impl ProverDomains {
     ///
     /// The given quotient domain is long enough for constraints over
     /// polynomials whose degree is one less than the length of the randomized
-    /// trace domain. The actual degree of the trace polynomials is lower: one
-    /// less than the sum of the lengths of the trace and the trace
-    /// randomizers.[^batch] For traces of non-trivial length, this means
-    /// that the quotient has only slightly more than half as many coefficients
-    /// as the given quotient domain has points.
+    /// trace domain. The actual degree of the constrained trace polynomials
+    /// is [lower][degree]. For traces of non-trivial length, this means that
+    /// the quotient has only slightly more than half as many coefficients as
+    /// the given quotient domain has points.
     ///
-    /// [^batch]: The columns with more trace randomizers are not constrained.
+    /// [degree]: Stark::max_constrained_trace_polynomial_degree
     fn short_quotient_domains(
         padded_height: usize,
         num_trace_randomizers: usize,
@@ -288,8 +287,10 @@ impl ProverDomains {
             return None;
         }
 
-        let interpolant_degree = isize::try_from(padded_height + num_trace_randomizers - 1).ok()?;
-        let max_degree = max_degree_with_origin(interpolant_degree, padded_height).degree;
+        let trace_polynomial_degree =
+            Stark::max_constrained_trace_polynomial_degree(padded_height, num_trace_randomizers);
+        let trace_polynomial_degree = isize::try_from(trace_polynomial_degree).ok()?;
+        let max_degree = max_degree_with_origin(trace_polynomial_degree, padded_height).degree;
         let num_coefficients = usize::try_from(max_degree).ok()? + 1;
 
         // the largest power of two that is not greater
@@ -877,6 +878,17 @@ impl Prover {
         challenges: &Challenges,
         quotient_combination_weights: &[XFieldElement],
     ) -> [Polynomial<'static, XFieldElement>; NUM_QUOTIENT_SEGMENTS] {
+        // The quotient domain is only long enough if the constrained trace
+        // polynomials are of the degree it has been derived for.
+        let max_trace_polynomial_degree = Stark::max_constrained_trace_polynomial_degree(
+            main_table.domains().trace.len(),
+            main_table.num_trace_randomizers(),
+        );
+        assert!(
+            main_table.max_constrained_trace_polynomial_degree() <= max_trace_polynomial_degree
+        );
+        assert!(aux_table.max_constrained_trace_polynomial_degree() <= max_trace_polynomial_degree);
+
         let (Some(main_quotient_domain_codewords), Some(aux_quotient_domain_codewords)) = (
             main_table.quotient_domain_table(),
             aux_table.quotient_domain_table(),
@@ -2161,8 +2173,41 @@ impl Stark {
         (num_trace_randomizers + NUM_OUT_OF_DOMAIN_QUOTIENTS) * NUM_RANDOMIZED_QUOTIENT_SEGMENTS
     }
 
+    /// An upper bound for the degree of any trace polynomial: one less than
+    /// the length of the randomized trace domain. The verifier uses this
+    /// bound. For the polynomials the AIR constrains, the prover knows a
+    /// tighter one; see [`Self::max_constrained_trace_polynomial_degree`].
     pub(crate) fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> isize {
         (Self::randomized_trace_len(padded_height, num_trace_randomizers) - 1) as isize
+    }
+
+    /// The largest degree of any trace polynomial that the AIR constrains.
+    ///
+    /// A trace polynomial is the sum of the interpolant of a trace column,
+    /// which has degree less than the padded height, and the product of the
+    /// trace domain's zerofier, of degree `padded_height`, with the column's
+    /// trace randomizer, which has as many coefficients as the column has
+    /// trace randomizers.
+    ///
+    /// # Premise
+    ///
+    /// Every column the AIR constrains has at most `num_trace_randomizers`
+    /// trace randomizers. Columns with more of them, like the batch
+    /// randomizer, must not be constrained. The prover
+    /// [asserts] this before it uses the bound.
+    ///
+    /// The prover's quotient domain is sized by this bound. If the premise
+    /// were violated, the prover would compute a wrong quotient, and honest
+    /// proofs would fail to verify. Whoever changes how trace randomizers are
+    /// allotted has to adapt this function.
+    ///
+    /// [asserts]: crate::table::master_table::MasterTable::max_constrained_trace_polynomial_degree
+    pub(crate) fn max_constrained_trace_polynomial_degree(
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> usize {
+        // also correct without trace randomizers
+        (padded_height + num_trace_randomizers).saturating_sub(1)
     }
 
     /// The upper bound to use for the maximum degree the quotients given the
