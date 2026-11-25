@@ -1000,6 +1000,8 @@ probability that all are consistent drops to
 
 $$ \varepsilon_\mathsf{query} := (1 - \delta)^t . $$
 
+> **Note:** The verifier implements a variant of these checks, described in [Verifier Checks](#verifier-checks). Its soundness is out of scope for this page; the chapter on [FRI Soundness](fri-soundness.md) analyzes it.
+
 The verifier samples the indices independently and with replacement. Repeated
 indices do not invalidate this bound, which is stated for independent queries.
 
@@ -1324,3 +1326,40 @@ radius $81879/2^{18} \approx 0.312$ at rate $1/2$, where the Johnson radius is
 $1 - \sqrt{1/2} \approx 0.293$. The proof concerns that field, rate, and length
 only. It does not apply to Triton VM's parameters, so the proven regime of this
 page ends at the Johnson radius.
+
+## Verifier Checks
+
+This section lists every check that the Rust verifier, `Verifier::verify` in `triton-vm/src/stark.rs`, performs on a proof. A *check* is a place where `Verifier::verify` returns an error, either directly or by propagating one with `?`. The error type is `VerificationError`. It has 16 variants: `Log2PaddedHeightTooLarge`, which enforces the bound on the padded height, and 15 others. One of the 15, `FriValidationError`, stands for the checks of the FRI verifier in `triton-vm/src/fri.rs`, which are listed individually. For each check, the table gives the error it returns, the function that performs it, and the part of this page that relies on it. Functions of the FRI verifier belong to `FriVerifier`.
+
+| Check | Error | Function | Relied on by |
+| :--- | :--- | :--- | :--- |
+| The proof decodes to a sequence of proof items. | `ProofStreamError::DecodingError`, also wrapped in `FriValidationError` | `ProofStream::try_from` | every round: each message has the type the round prescribes |
+| Each item is of the kind the protocol expects next. Rows and segment values are fixed-size arrays, so this also fixes their widths. | `ProofStreamError::UnexpectedItem`, also wrapped in `FriValidationError` | `ProofItem::try_into_*` | every round, as above |
+| No item is missing. | `ProofStreamError::EmptyQueue`, also wrapped in `FriValidationError` | `ProofStream::dequeue` | every round, as above |
+| $\log_2 N \leqslant 28$ | `Log2PaddedHeightTooLarge` | `Verifier::verify` | [the note on $N$](#the-interactive-oracle-proof); [Query Round](#query-round), where $\vert D \vert \leqslant 2^{31}$ makes the indices uniform; [Concrete Numbers](#concrete-numbers) |
+| The quotient equation holds. The claim enters it through `Challenges::new`, which computes the terminals of the program digest, the public input, and the public output. | `OutOfDomainQuotientValueMismatch` | `Verifier::verify` | [Round 3](#round-3-out-of-domain-point); the [conditions](#conditions) after round 4 |
+| The last FRI codeword has $\vert D_R \vert$ entries. | `FriValidationError::LastCodewordMismatch` | `initialize` | [Final Round](#final-round) |
+| Each FRI opening reveals $t$ values. | `FriValidationError::IncorrectNumberOfRevealedLeaves` | `assert_enough_leaves_were_received` | [Query Round](#query-round): $t$ queries |
+| The opened values $f_0(x)$ and $f_0(-x)$ are in the tree of $f_0$. | `FriValidationError::BadMerkleAuthenticationPath` | `authenticate_partial_codeword_a_for_first_round`, `authenticate_partial_codeword_b_for_round` | [Query Round](#query-round); [From IOP to Non-Interactive Proof](#from-iop-to-non-interactive-proof) |
+| For $1 \leqslant r < R$, the opened value $f_r(-x^{2^r})$ is in the tree of $f_r$. | `FriValidationError::BadMerkleAuthenticationPath` | `authenticate_partial_codeword_b_for_round` | as above |
+| The last codeword has the committed Merkle root. | `FriValidationError::BadMerkleRootForLastCodeword` | `assert_last_round_codeword_matches_last_round_commitment` | [Final Round](#final-round) |
+| $f_R(x^{2^R})$ equals the value folded from the opened values. | `FriValidationError::LastCodewordMismatch` | `assert_last_round_codeword_agrees_with_last_round_folded_codeword` | [Query Round](#query-round) |
+| The last polynomial has degree less than $\vert D_R \vert / 4$. | `FriValidationError::LastRoundPolynomialHasTooHighDegree` | `assert_last_round_codeword_corresponds_to_low_degree_polynomial` | [Final Round](#final-round) |
+| The last polynomial and the interpolant of the last codeword agree at a random point. | `FriValidationError::LastRoundPolynomialEvaluationMismatch` | `assert_last_round_codeword_corresponds_to_low_degree_polynomial` | [Final Round](#final-round): $\varepsilon_\mathsf{last}$ |
+| $t$ rows of the main table, $t$ rows of the auxiliary table, and $t$ rows of the quotient table are opened. | `IncorrectNumberOfMainTableRows`, `IncorrectNumberOfAuxTableRows`, `IncorrectNumberOfQuotientSegmentElements` | `Verifier::verify` | [FRI](#fri): $y$ is checked at every queried position |
+| The opened rows are in the trees of the main, auxiliary, and quotient tables. | `MainCodewordAuthenticationFailure`, `AuxiliaryCodewordAuthenticationFailure`, `QuotientCodewordAuthenticationFailure` | `Verifier::verify`, through `MerkleTreeInclusionProof::verify` | rounds 1 to 3, whose oracles these trees commit to; [From IOP to Non-Interactive Proof](#from-iop-to-non-interactive-proof) |
+| $f_0(x) = y(x)$, where $y(x)$ is computed from the opened rows | `CombinationCodewordMismatch` | `Verifier::verify` | [FRI](#fri) |
+
+The following checks are not relied on by this page.
+
+- `FriSetupError`, and `ArithmeticDomainError`, also when wrapped in `FriValidationError`. They depend on the parameters and on $\log_2 N$ only, and cannot fail for the default parameters and $\log_2 N \leqslant 28$.
+- `IncorrectNumberOfRowIndices` and `IncorrectNumberOfFRIValues`. The FRI verifier returns exactly $t$ indices and $t$ values, so these checks cannot fail.
+- `FriValidationError::MerkleTreeError`. It arises when the verifier builds the Merkle tree of the last codeword, which cannot fail once the length of that codeword is checked.
+- `SuperfluousProofItems`. Items after the last one the protocol reads influence no challenge and no check.
+
+The verifier differs from the protocol on this page in the following four respects.
+
+- **FRI consistency.** The section [Query Round](#query-round) assumes that, for each query $x$, the verifier checks $f_0(\pm x) = y(\pm x)$ and $f_r(x^{2^r}) = \mathrm{fold}(f_{r-1}, z_r)(x^{2^r})$ for every $1 \leqslant r \leqslant R$, with the folding challenges $z_r$ and the fold defined in [FRI](#fri). The verifier compares $f_0$ with $y$ only at $x$, not at $-x$. For $1 \leqslant r < R$, it opens $f_r$ only at $-x^{2^r}$. At $x^{2^r}$, it uses the value it folded from round $r - 1$ in place of $f_r(x^{2^r})$, and it compares a folded value with a committed value only once, for $f_R$ at $x^{2^R}$. Every transcript that passes the assumed checks passes the verifier's checks, but not conversely. The bound $(1 - \delta)^t$, cited from [Block et al., Theorem 4.2](https://eprint.iacr.org/2023/1071), therefore does not apply directly to the verifier as implemented. The soundness of this variant of FRI is the subject of the chapter on [FRI Soundness](fri-soundness.md). It is out of scope for this page, which uses the errors $\varepsilon_{\mathsf{fold},r}$ and $\varepsilon_\mathsf{query}$ as derived for the checks described in [FRI](#fri).
+- **Version.** The verifier absorbs the claim, including `Claim::version`, into the sponge, but does not compare the version with `CURRENT_VERSION`. It checks every claim against the AIR of the current version, whatever version the claim names. So the version binds the proof to the claim only through the transcript, and the soundness error on this page is for claims about the current version of Triton VM.
+- **Bad out-of-domain points.** The verifier does not check whether $\alpha$ is bad in the sense of [Round 3](#round-3-out-of-domain-point). If $\alpha \in H$, `XFieldElement::inverse` panics while computing the zerofiers. If a queried point of $D$ equals $\alpha$, $g\alpha$, $\alpha^k$, or $(\zeta\alpha)^k$, the division in `Stark::deep_update` panics. A panic does not accept. The probability of a bad $\alpha$ is part of $\varepsilon_\alpha$, because the state function counts a bad $\alpha$ as escaping doom, so the soundness error needs no check for it.
+- **Length of the public input and output.** The verifier does not bound the length $L$ of the public input or output. The bound $\varepsilon_{\boldsymbol{\chi}}$ holds for $L \leqslant 34N$; the note at the end of [Round 1](#round-1-table-linking-challenges) gives the error for larger $L$.

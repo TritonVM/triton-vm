@@ -18,6 +18,7 @@ use super::*;
 use crate::table::master_table::MasterAuxTable;
 
 const SPEC_PATH: &str = "../specification/src/soundness.md";
+const FRI_SPEC_PATH: &str = "../specification/src/fri-soundness.md";
 const CONSTANTS_MARKERS: [&str; 2] = [
     "<!-- soundness-constants start -->",
     "<!-- soundness-constants stop -->",
@@ -29,6 +30,10 @@ const SENSITIVITY_MARKERS: [&str; 2] = [
 const RESULTS_MARKERS: [&str; 2] = [
     "<!-- soundness-results start -->",
     "<!-- soundness-results stop -->",
+];
+const FRI_RESULTS_MARKERS: [&str; 2] = [
+    "<!-- fri-soundness-results start -->",
+    "<!-- fri-soundness-results stop -->",
 ];
 
 /// The trace lengths (as log₂) for which the chapter lists results, in the
@@ -167,6 +172,18 @@ fn ceil2(x: f64) -> f64 {
     (x * 100.0).ceil() / 100.0
 }
 
+/// The FRI verifier the bounds are computed for.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum FriVariant {
+    /// The checks described in section “FRI” of `soundness.md`.
+    Described,
+
+    /// The checks of the implemented verifier, analyzed in `fri-soundness.md`:
+    /// the tested code has `2^R − 2` more coefficients, and every folding
+    /// round tests a line on the domain D_1 of length |D|/2.
+    Implemented,
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Regime {
     Proven,
@@ -191,6 +208,7 @@ struct Params {
     max_link_terms_per_row: f64,
     /// The form of the conjecture, with its constants.
     form: Form,
+    fri_variant: FriVariant,
 }
 
 impl Params {
@@ -198,25 +216,55 @@ impl Params {
         3.0 * self.log2_field
     }
 
+    /// The number of coefficients of the code the low-degree test tests:
+    /// ρ|D| for the described FRI, and ρ|D| + 2^R − 2 for the implemented one.
+    fn code_dim(&self) -> f64 {
+        match self.fri_variant {
+            FriVariant::Described => self.randomized_trace_len,
+            FriVariant::Implemented => {
+                self.randomized_trace_len + 2_f64.powf(self.num_folding_rounds) - 2.0
+            }
+        }
+    }
+
     /// The chapter's error terms for a given slack η and list size ℓ,
-    /// exceptional count B(m) for code length m, and agreement A.
+    /// exceptional count B(m, k) for code length m and k coefficients, and
+    /// agreement A.
     fn bounds(
         &self,
         eta: f64,
         list_size: f64,
-        exceptional: impl Fn(f64) -> f64,
+        exceptional: impl Fn(f64, f64) -> f64,
         agreement: f64,
     ) -> Bounds {
         let log2_e = self.log2_ext_field();
         let n = self.fri_domain_len;
         let k = self.num_segments;
         let l = list_size;
-        let qe_degree = self.trace_len + k * self.randomized_trace_len + k - 1.0;
+        let qe_degree = self.trace_len + k * self.code_dim() + k - 1.0;
         let ood_exclusions = self.trace_len + (2.0 + 2.0 * k) * n;
 
-        // Folding round r tests a line on the domain D_r of length |D|/2^r.
-        let fold_lens = (1..=self.num_folding_rounds as i32).map(|r| n / 2_f64.powi(r));
-        let fold_sum = fold_lens.map(&exceptional).sum::<f64>();
+        // In the described FRI, folding round r tests a line on the domain D_r
+        // of length |D|/2^r. In the implemented FRI, every folding round tests
+        // a line on D_1.
+        // a line on D_1 whose words agree with polynomials of fewer than
+        // k_r = ρ|D_1| + 2^(R−1) − 2^(r−1) coefficients.
+        let rate = self.randomized_trace_len / n;
+        let fold_errors = (1..=self.num_folding_rounds as i32)
+            .map(|r| match self.fri_variant {
+                FriVariant::Described => {
+                    let m = n / 2_f64.powi(r);
+                    exceptional(m, rate * m)
+                }
+                FriVariant::Implemented => {
+                    let k = rate * n / 2.0 + 2_f64.powf(self.num_folding_rounds - 1.0)
+                        - 2_f64.powi(r - 1);
+                    exceptional(n / 2.0, k)
+                }
+            })
+            .collect_vec();
+        let fold_sum = fold_errors.iter().sum::<f64>();
+        let fold_max = fold_errors.iter().copied().fold(f64::MIN, f64::max);
 
         Bounds {
             log2_eta: eta.log2(),
@@ -226,8 +274,8 @@ impl Params {
             eps_ood_point: (l * qe_degree + ood_exclusions).log2() - log2_e,
             // The false witness probability is B/(|E| − 1) for exceptional
             // count B; the − 1 is invisible at f64 precision.
-            eps_deep_weights: (2.0 * exceptional(n)).log2() - log2_e,
-            eps_folding: exceptional(n / 2.0).log2() - log2_e,
+            eps_deep_weights: (2.0 * exceptional(n, self.code_dim())).log2() - log2_e,
+            eps_folding: fold_max.log2() - log2_e,
             eps_queries: self.num_queries * (agreement / n).log2(),
             eps_last_round: (self.last_fri_domain_len - 1.0).log2() - log2_e,
             eps_folding_sum: fold_sum.log2() - log2_e,
@@ -239,34 +287,45 @@ impl Params {
     /// Dao–Kominers–Thaler, Theorem 5.12, plus the Johnson bound.
     fn proven(&self, eta: f64) -> Option<Bounds> {
         let n = self.fri_domain_len;
-        let rho_minus = (self.randomized_trace_len - 1.0) / n;
+        let rho_minus = (self.code_dim() - 1.0) / n;
         let agreement = ((rho_minus.sqrt() + eta) * n).ceil();
-        let rate = self.randomized_trace_len / n;
-        let exceptional = |m: f64| {
-            let rho_minus = (rate * m - 1.0) / m;
+        let rate = self.code_dim() / n;
+        let exceptional = |m: f64, k: f64| {
+            // The described FRI neglects the rounding of the radius on D_r and
+            // uses η on every domain. The implemented FRI uses the slack of
+            // the agreement fraction A/|D| over the code with k coefficients.
+            let (rho_minus, eta) = match self.fri_variant {
+                FriVariant::Described => ((rate * m - 1.0) / m, eta),
+                FriVariant::Implemented => {
+                    let rho_minus = (k - 1.0) / m;
+                    (rho_minus, agreement / n - rho_minus.sqrt())
+                }
+            };
             let theta = (rho_minus.sqrt() / (2.0 * eta)).ceil().max(3.0) + 0.5;
             8.0 / 3.0 * m * theta.powi(3) / rho_minus
         };
 
-        // list size for polynomials of degree at most ρ|D|
-        let list_denominator = agreement * agreement - n * self.randomized_trace_len;
+        // list size for polynomials of degree at most the code's dimension
+        let list_denominator = agreement * agreement - n * self.code_dim();
         if list_denominator <= 0.0 {
             return None;
         }
-        let list_size = n * (agreement - self.randomized_trace_len) / list_denominator;
+        let list_size = n * (agreement - self.code_dim()) / list_denominator;
         Some(self.bounds(eta, list_size, exceptional, agreement))
     }
 
     /// The conjecture of section “Conjectured Regime” of `soundness.md`.
     fn conjectured(&self, eta: f64) -> Option<Bounds> {
-        let rate = self.randomized_trace_len / self.fri_domain_len;
+        let rate = self.code_dim() / self.fri_domain_len;
         let eta_elias = 1.0 - rate - elias_radius(rate, self.log2_field);
         if eta < eta_elias {
             return None;
         }
         let n = self.fri_domain_len;
-        let exceptional = |m: f64| self.form.exceptional(m, eta, rate);
-        let list_size = exceptional(n) / n;
+        // A code with k coefficients at the same radius 1 − ρ − η has rate
+        // k/m and slack η + ρ − k/m.
+        let exceptional = |m: f64, k: f64| self.form.exceptional(m, eta + rate - k / m, k / m);
+        let list_size = exceptional(n, rate * n) / n;
         let agreement = (rate + eta) * self.fri_domain_len;
         Some(self.bounds(eta, list_size, exceptional, agreement))
     }
@@ -401,6 +460,7 @@ fn soundness_chapter_agrees_with_code() {
     let max_link_terms_per_row = 2.0 * (c("num_cascade_clients") + 1.0);
 
     let mut computed: HashMap<&str, Vec<f64>> = HashMap::new();
+    let mut computed_fri: HashMap<&str, Vec<f64>> = HashMap::new();
     for log2_trace_len in LOG2_TRACE_LENGTHS {
         let fri = stark.fri(1 << log2_trace_len).unwrap();
         let randomized_trace_len =
@@ -416,6 +476,7 @@ fn soundness_chapter_agrees_with_code() {
             num_folding_rounds: fri.num_rounds() as f64,
             max_link_terms_per_row,
             form,
+            fri_variant: FriVariant::Described,
         };
         for (key, form) in forms {
             let b = Params { form, ..params }.optimal(Regime::Conjectured);
@@ -441,36 +502,52 @@ fn soundness_chapter_agrees_with_code() {
                 b.eps_iop()
             );
         }
-        for regime in [Regime::Proven, Regime::Conjectured] {
-            let b = params.optimal(regime);
-            let entries = [
-                ("log2_eta", b.log2_eta),
-                ("log2_list_size", b.log2_list_size),
-                ("eps_challenges", b.eps_challenges),
-                ("eps_quotient_weights", b.eps_quotient_weights),
-                ("eps_ood_point", b.eps_ood_point),
-                ("eps_deep_weights", b.eps_deep_weights),
-                ("eps_folding", b.eps_folding),
-                ("eps_folding_sum", b.eps_folding_sum),
-                ("eps_extractor", b.eps_extractor),
-                ("eps_queries", b.eps_queries),
-                ("eps_last_round", b.eps_last_round),
-                ("eps_rbr", b.eps_rbr()),
-                ("eps_iop", b.eps_iop()),
-                ("num_folding_rounds", b.num_folding_rounds),
-            ];
-            for (key, value) in entries {
-                computed.entry(key).or_default().push(value);
+        let variants = [
+            (FriVariant::Described, &mut computed),
+            (FriVariant::Implemented, &mut computed_fri),
+        ];
+        for (fri_variant, computed) in variants {
+            for regime in [Regime::Proven, Regime::Conjectured] {
+                let b = Params {
+                    fri_variant,
+                    ..params
+                }
+                .optimal(regime);
+                let entries = [
+                    ("log2_eta", b.log2_eta),
+                    ("log2_list_size", b.log2_list_size),
+                    ("eps_challenges", b.eps_challenges),
+                    ("eps_quotient_weights", b.eps_quotient_weights),
+                    ("eps_ood_point", b.eps_ood_point),
+                    ("eps_deep_weights", b.eps_deep_weights),
+                    ("eps_folding", b.eps_folding),
+                    ("eps_folding_sum", b.eps_folding_sum),
+                    ("eps_extractor", b.eps_extractor),
+                    ("eps_queries", b.eps_queries),
+                    ("eps_last_round", b.eps_last_round),
+                    ("eps_rbr", b.eps_rbr()),
+                    ("eps_iop", b.eps_iop()),
+                    ("num_folding_rounds", b.num_folding_rounds),
+                ];
+                for (key, value) in entries {
+                    computed.entry(key).or_default().push(value);
+                }
             }
         }
     }
 
+    assert_results_agree(&results, &computed);
+    let fri_spec = std::fs::read_to_string(Path::new(FRI_SPEC_PATH)).unwrap();
+    assert_results_agree(&read_table(&fri_spec, FRI_RESULTS_MARKERS), &computed_fri);
+}
+
+fn assert_results_agree(results: &HashMap<String, Row>, computed: &HashMap<&str, Vec<f64>>) {
     let report = computed
         .iter()
         .sorted_by_key(|(k, _)| *k)
         .map(|(k, v)| format!("{k}: {}", v.iter().map(|x| format!("{x:.3}")).join(" | ")))
         .join("\n");
-    for (key, values) in &computed {
+    for (key, values) in computed {
         let row = results
             .get(*key)
             .unwrap_or_else(|| panic!("result `{key}` must be listed\n{report}"));

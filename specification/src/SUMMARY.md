@@ -29,6 +29,8 @@
 - [Program Attestation](program-attestation.md)
 - [Zero-Knowledge](zero-knowledge.md)
 - [Soundness](soundness.md)
+    + [FRI Soundness](fri-soundness.md)
+- [Completeness](completeness.md)
 
 ---
 - [Index Sampling](index-sampling.md)
