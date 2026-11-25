@@ -56,16 +56,6 @@ pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug>(
     returnable_slices
 }
 
-/// Computes the list of partial sums, beginning with zero and including the
-/// total.
-pub fn partial_sums(summands: &[usize]) -> Vec<usize> {
-    let mut sums = vec![0];
-    for &summand in summands {
-        sums.push(sums.last().copied().unwrap() + summand);
-    }
-    sums
-}
-
 /// Given a list of neighboring columns, represented as their sorted indices,
 /// return a list of indices whose consecutive pairs (overlapping) denote the
 /// start and end point of every column. In practice, this means "append
@@ -261,6 +251,16 @@ mod tests {
     use super::*;
     use crate::tests::proptest;
     use crate::tests::test;
+
+    /// Computes the list of partial sums, beginning with zero and including the
+    /// total.
+    fn partial_sums(summands: &[usize]) -> Vec<usize> {
+        let mut sums = vec![0];
+        for &summand in summands {
+            sums.push(sums.last().copied().unwrap() + summand);
+        }
+        sums
+    }
 
     #[macro_rules_attr::apply(proptest)]
     fn contiguous_column_slices_generates_valid_partition(

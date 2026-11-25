@@ -50,6 +50,7 @@
 //! [master_aux_table]: MasterAuxTable
 //! [master_quot_table]: all_quotients_combined
 
+use std::fmt::Debug;
 use std::mem::MaybeUninit;
 use std::ops::Add;
 use std::ops::Mul;
@@ -103,24 +104,6 @@ use air::table::processor::ProcessorTable;
 use air::table::program::ProgramTable;
 use air::table::ram::RamTable;
 use air::table::u32::U32Table;
-use air::table_column::CascadeAuxColumn;
-use air::table_column::CascadeMainColumn;
-use air::table_column::HashAuxColumn;
-use air::table_column::HashMainColumn;
-use air::table_column::JumpStackAuxColumn;
-use air::table_column::JumpStackMainColumn;
-use air::table_column::LookupAuxColumn;
-use air::table_column::LookupMainColumn;
-use air::table_column::OpStackAuxColumn;
-use air::table_column::OpStackMainColumn;
-use air::table_column::ProcessorAuxColumn;
-use air::table_column::ProcessorMainColumn;
-use air::table_column::ProgramAuxColumn;
-use air::table_column::ProgramMainColumn;
-use air::table_column::RamAuxColumn;
-use air::table_column::RamMainColumn;
-use air::table_column::U32AuxColumn;
-use air::table_column::U32MainColumn;
 use itertools::EitherOrBoth;
 use itertools::Itertools;
 use itertools::izip;
@@ -138,6 +121,7 @@ use rand::distr::StandardUniform;
 use rand::prelude::*;
 use rayon::prelude::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
@@ -156,7 +140,6 @@ use crate::ndarray_helper;
 use crate::ndarray_helper::COL_AXIS;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
-use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_BATCH_RANDOMIZERS;
 use crate::stark::ProverDomains;
@@ -1408,6 +1391,36 @@ where
     Polynomial::new(coefficients)
 }
 
+/// Split a master table into its constituent tables.
+///
+/// The returned tables are in the order of [`TableId`], which means that the
+/// table with a given ID is at index `id as usize`. Columns that belong to none
+/// of the tables, like those of the degree-lowering table, are not part of any
+/// returned view.
+///
+/// The column layout is taken from `column_indices_for_table`, making that
+/// function the only place that relates tables to columns.
+///
+/// # Panics
+///
+/// Panics if the tables' columns, taken in the order of [`TableId`], are not
+/// contiguous or do not start at column 0.
+fn split_into_tables<FF: Debug>(
+    master_table: ArrayViewMut2<'_, FF>,
+    column_indices_for_table: fn(TableId) -> Range<usize>,
+) -> [ArrayViewMut2<'_, FF>; TableId::COUNT] {
+    let mut boundaries = vec![0];
+    for id in TableId::iter() {
+        let Range { start, end } = column_indices_for_table(id);
+        assert_eq!(boundaries.last(), Some(&start), "{id} table is misplaced");
+        boundaries.push(end);
+    }
+
+    horizontal_multi_slice_mut(master_table, &boundaries)
+        .try_into()
+        .unwrap()
+}
+
 type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
 type ExtendFunction = fn(ArrayView2<BFieldElement>, ArrayViewMut2<XFieldElement>, &Challenges);
 
@@ -1443,32 +1456,21 @@ impl MasterMainTable {
             trace_is_interpolated: false,
         };
 
-        let [
-            program_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-            cascade_table,
-            lookup_table,
-            u32_table,
-        ]: [_; TableId::COUNT] = horizontal_multi_slice_mut(
+        let mut tables = split_into_tables(
             master_main_table.trace_table.view_mut(),
-            &partial_sums(&[
-                ProgramMainColumn::COUNT,
-                ProcessorMainColumn::COUNT,
-                OpStackMainColumn::COUNT,
-                RamMainColumn::COUNT,
-                JumpStackMainColumn::COUNT,
-                HashMainColumn::COUNT,
-                CascadeMainColumn::COUNT,
-                LookupMainColumn::COUNT,
-                U32MainColumn::COUNT,
-            ]),
+            Self::column_indices_for_table,
         )
-        .try_into()
-        .unwrap();
+        .map(Some);
+        let mut table = |id: TableId| tables[id as usize].take().unwrap();
+        let program_table = table(TableId::Program);
+        let processor_table = table(TableId::Processor);
+        let op_stack_table = table(TableId::OpStack);
+        let ram_table = table(TableId::Ram);
+        let jump_stack_table = table(TableId::JumpStack);
+        let hash_table = table(TableId::Hash);
+        let cascade_table = table(TableId::Cascade);
+        let lookup_table = table(TableId::Lookup);
+        let u32_table = table(TableId::U32);
 
         // The tables are independent of each other, with one exception: the
         // processor table needs the clock jump differences of the memory-like
@@ -1526,22 +1528,7 @@ impl MasterMainTable {
 
         let table_lengths = self.all_table_lengths();
 
-        let tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
-            self.trace_table.view_mut(),
-            &partial_sums(&[
-                ProgramMainColumn::COUNT,
-                ProcessorMainColumn::COUNT,
-                OpStackMainColumn::COUNT,
-                RamMainColumn::COUNT,
-                JumpStackMainColumn::COUNT,
-                HashMainColumn::COUNT,
-                CascadeMainColumn::COUNT,
-                LookupMainColumn::COUNT,
-                U32MainColumn::COUNT,
-            ]),
-        )
-        .try_into()
-        .unwrap();
+        let tables = split_into_tables(self.trace_table.view_mut(), Self::column_indices_for_table);
 
         profiler!(start "pad original tables");
         let all_pad_functions: [PadFunction; TableId::COUNT] = [
@@ -1622,22 +1609,8 @@ impl MasterMainTable {
             .trace_table
             .view_mut()
             .split_at(COL_AXIS, randomizers_start);
-        let auxiliary_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
-            aux_trace_table,
-            &partial_sums(&[
-                ProgramAuxColumn::COUNT,
-                ProcessorAuxColumn::COUNT,
-                OpStackAuxColumn::COUNT,
-                RamAuxColumn::COUNT,
-                JumpStackAuxColumn::COUNT,
-                HashAuxColumn::COUNT,
-                CascadeAuxColumn::COUNT,
-                LookupAuxColumn::COUNT,
-                U32AuxColumn::COUNT,
-            ]),
-        )
-        .try_into()
-        .unwrap();
+        let auxiliary_tables =
+            split_into_tables(aux_trace_table, MasterAuxTable::column_indices_for_table);
         profiler!(stop "slice master table");
 
         // Both the batch randomizers and their trace randomizers are long
@@ -2452,8 +2425,26 @@ pub(crate) mod tests {
     use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
     use air::table::jump_stack::JumpStackTable;
+    use air::table_column::CascadeAuxColumn;
+    use air::table_column::CascadeMainColumn;
+    use air::table_column::HashAuxColumn;
+    use air::table_column::HashMainColumn;
+    use air::table_column::JumpStackAuxColumn;
+    use air::table_column::JumpStackMainColumn;
+    use air::table_column::LookupAuxColumn;
+    use air::table_column::LookupMainColumn;
     use air::table_column::MasterAuxColumn;
     use air::table_column::MasterMainColumn;
+    use air::table_column::OpStackAuxColumn;
+    use air::table_column::OpStackMainColumn;
+    use air::table_column::ProcessorAuxColumn;
+    use air::table_column::ProcessorMainColumn;
+    use air::table_column::ProgramAuxColumn;
+    use air::table_column::ProgramMainColumn;
+    use air::table_column::RamAuxColumn;
+    use air::table_column::RamMainColumn;
+    use air::table_column::U32AuxColumn;
+    use air::table_column::U32MainColumn;
     use constraint_circuit::ConstraintCircuitBuilder;
     use constraint_circuit::ConstraintCircuitMonad;
     use constraint_circuit::DegreeLoweringInfo;
