@@ -122,6 +122,7 @@ use rand::prelude::*;
 use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
+use twenty_first::math::ntt::coset_ntt_into;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
@@ -2153,8 +2154,8 @@ where
 /// also [`ArithmeticDomain::randomized_interpolant`].
 ///
 /// The randomizer, whose degree is small, is added to the interpolant's
-/// scaled coefficients before the (single, in-place) NTT, which avoids
-/// evaluating it separately.
+/// coefficients before the (single) NTT, which avoids evaluating it
+/// separately.
 ///
 /// Every element of `codeword` is written to; whatever it contained before is
 /// irrelevant. The initialized codeword is returned.
@@ -2185,9 +2186,20 @@ where
     assert!(interpolant.len() <= codeword.len());
     assert!(randomizer.len() <= codeword.len());
 
+    // The usual case: the interpolant has as many coefficients as the domain
+    // has points. Then, scaling the coefficients, which is what moves the
+    // evaluation to the coset, is part of the transform.
+    let offset = domain.offset();
+    if interpolant.len() == codeword.len() {
+        let scaled_randomizer = randomizer.iter().map(|&r| r * zerofier).collect_vec();
+        coset_ntt_into(interpolant, &scaled_randomizer, offset, codeword);
+
+        // SAFETY: `coset_ntt_into` initializes every element.
+        return unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) };
+    }
+
     // Evaluating `p(x)` on the coset `offset·⟨ω⟩` is evaluating `p(offset·x)`
     // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
-    let offset = domain.offset();
     let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
     let mut powers = [BFieldElement::ONE; NUM_SEQUENCES];
     for i in 1..NUM_SEQUENCES {
