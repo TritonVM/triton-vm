@@ -531,26 +531,24 @@ where
     fn clear_cache(&mut self);
 
     /// The working memory of the memory-frugal code paths, if it was
-    /// [kept](Self::keep_working_table) earlier: a column-major table of the
-    /// trace table's dimensions, with arbitrary content.
+    /// [kept](Self::keep_working_table) earlier.
     ///
     /// Without caching the low-degree extended trace, both hashing its rows
     /// and computing the quotient need such a table. Handing it from one to
     /// the other, instead of freeing and allocating anew, guarantees that the
-    /// memory is reused, whatever the allocator.
-    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<Self::Field>>>;
+    /// memory is reused, whatever the allocator. It also hands over the
+    /// table's content, see [`WorkingTable::coset_offset`].
+    fn take_working_table(&mut self) -> Option<WorkingTable<Self::Field>>;
 
     /// See [`Self::take_working_table`].
-    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<Self::Field>>);
+    fn keep_working_table(&mut self, working_table: WorkingTable<Self::Field>);
 
     /// The [kept](Self::keep_working_table) working table, or a new one.
-    fn working_table(&mut self) -> Array2<MaybeUninit<Self::Field>> {
+    fn working_table(&mut self) -> WorkingTable<Self::Field> {
         let num_rows = self.trace_table().nrows();
         self.take_working_table()
-            .filter(|table| table.dim() == (num_rows, Self::NUM_COLUMNS))
-            .unwrap_or_else(|| {
-                ndarray_helper::uninitialized_column_major_table(num_rows, Self::NUM_COLUMNS)
-            })
+            .filter(|working_table| working_table.table.dim() == (num_rows, Self::NUM_COLUMNS))
+            .unwrap_or_else(|| WorkingTable::new(num_rows, Self::NUM_COLUMNS))
     }
 
     /// Return the FRI domain view of the cached low-degree-extended table, if
@@ -835,9 +833,15 @@ where
         assert_eq!(BFieldElement::ONE, trace_domain.offset());
         let num_rows_u64 = u64::try_from(num_rows).unwrap();
         // Every coset overwrites the entire table.
-        let mut coset_table = self.working_table();
+        let mut coset_table = self.working_table().table;
         let mut all_digests = vec![Digest::default(); fri_domain.len()];
-        for coset_index in 0..num_cosets {
+
+        // The coset that is hashed last stays in the working table. The
+        // first coset of the FRI domain is also one of the cosets the
+        // quotient is computed on, which saves evaluating the columns there
+        // a second time.
+        let last_coset_index = 0;
+        for coset_index in (1..num_cosets).chain([last_coset_index]) {
             // The coset's points are `coset_offset · trace_generator^i`.
             let coset_offset =
                 fri_domain.offset() * fri_domain.generator().mod_pow(coset_index as u64);
@@ -887,8 +891,13 @@ where
         }
         profiler!(stop "restore trace");
 
-        // computing the quotient needs a table like this, too
-        self.keep_working_table(coset_table);
+        // Computing the quotient needs a table like this, too.
+        let last_coset_offset =
+            fri_domain.offset() * fri_domain.generator().mod_pow(last_coset_index as u64);
+        self.keep_working_table(WorkingTable {
+            table: coset_table,
+            coset_offset: Some(last_coset_offset),
+        });
 
         all_digests
     }
@@ -1165,7 +1174,7 @@ pub struct MasterMainTable {
     low_degree_extended_table: Option<Array2<BFieldElement>>,
 
     /// See [`MasterTable::take_working_table`].
-    working_table: Option<Array2<MaybeUninit<BFieldElement>>>,
+    working_table: Option<WorkingTable<BFieldElement>>,
 
     /// See [`MasterTable::trace_is_interpolated`].
     trace_is_interpolated: bool,
@@ -1191,7 +1200,7 @@ pub struct MasterAuxTable {
     low_degree_extended_table: Option<Array2<XFieldElement>>,
 
     /// See [`MasterTable::take_working_table`].
-    working_table: Option<Array2<MaybeUninit<XFieldElement>>>,
+    working_table: Option<WorkingTable<XFieldElement>>,
 
     /// See [`MasterTable::trace_is_interpolated`].
     trace_is_interpolated: bool,
@@ -1246,11 +1255,11 @@ impl MasterTable for MasterMainTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<BFieldElement>>> {
+    fn take_working_table(&mut self) -> Option<WorkingTable<BFieldElement>> {
         self.working_table.take()
     }
 
-    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<BFieldElement>>) {
+    fn keep_working_table(&mut self, working_table: WorkingTable<BFieldElement>) {
         self.working_table = Some(working_table);
     }
 
@@ -1325,11 +1334,11 @@ impl MasterTable for MasterAuxTable {
         drop(self.low_degree_extended_table.take());
     }
 
-    fn take_working_table(&mut self) -> Option<Array2<MaybeUninit<XFieldElement>>> {
+    fn take_working_table(&mut self) -> Option<WorkingTable<XFieldElement>> {
         self.working_table.take()
     }
 
-    fn keep_working_table(&mut self, working_table: Array2<MaybeUninit<XFieldElement>>) {
+    fn keep_working_table(&mut self, working_table: WorkingTable<XFieldElement>) {
         self.working_table = Some(working_table);
     }
 
@@ -1390,6 +1399,39 @@ where
     let mut rng = StdRng::from_seed(offset_rng_seed(seed, column_idx));
     let coefficients = (0..num_trace_randomizers).map(|_| rng.random()).collect();
     Polynomial::new(coefficients)
+}
+
+/// The working memory of the code paths that do not cache the low-degree
+/// extended trace. See [`MasterTable::take_working_table`].
+#[derive(Debug)]
+pub(crate) struct WorkingTable<FF> {
+    /// A column-major table of the trace table's dimensions.
+    pub table: Array2<MaybeUninit<FF>>,
+
+    /// If set, every element of the table is initialized: column `i` holds
+    /// the values of the trace-randomized column `i` on the coset of the trace
+    /// domain that has this offset. Else, the table's content is arbitrary.
+    pub coset_offset: Option<BFieldElement>,
+}
+
+// Not derived: `MaybeUninit<FF>` is `Clone` only if `FF` is `Copy`.
+impl<FF: Copy> Clone for WorkingTable<FF> {
+    fn clone(&self) -> Self {
+        Self {
+            table: self.table.clone(),
+            coset_offset: self.coset_offset,
+        }
+    }
+}
+
+impl<FF> WorkingTable<FF> {
+    /// A table of the given dimensions with arbitrary content.
+    pub fn new(num_rows: usize, num_columns: usize) -> Self {
+        Self {
+            table: ndarray_helper::uninitialized_column_major_table(num_rows, num_columns),
+            coset_offset: None,
+        }
+    }
 }
 
 /// Split a master table into its constituent tables.

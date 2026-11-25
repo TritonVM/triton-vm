@@ -45,6 +45,7 @@ use crate::table::master_table::LdeMemory;
 use crate::table::master_table::MasterAuxTable;
 use crate::table::master_table::MasterMainTable;
 use crate::table::master_table::MasterTable;
+use crate::table::master_table::WorkingTable;
 use crate::table::master_table::all_quotients_combined;
 use crate::table::master_table::all_quotients_combined_in_points;
 use crate::table::master_table::evaluate_randomized_interpolant_into;
@@ -1047,21 +1048,24 @@ impl Prover {
         let mut quotient_multicoset_evaluations = ndarray_helper::par_zeros((num_rows, num_cosets));
         // Column majority for contiguous column slices. Every coset overwrites
         // both tables entirely.
-        let (mut main_columns, mut aux_columns) = if num_rows == domains.trace.len() {
-            // reuse the memory that hashing the rows needed
+        let (main_working_table, aux_working_table) = if num_rows == domains.trace.len() {
+            // Reuse the memory that hashing the rows needed, and the values
+            // it left there.
             (main_table.working_table(), aux_table.working_table())
         } else {
             (
-                ndarray_helper::uninitialized_column_major_table(
-                    num_rows,
-                    MasterMainTable::NUM_COLUMNS,
-                ),
-                ndarray_helper::uninitialized_column_major_table(
-                    num_rows,
-                    MasterAuxTable::NUM_COLUMNS,
-                ),
+                WorkingTable::new(num_rows, MasterMainTable::NUM_COLUMNS),
+                WorkingTable::new(num_rows, MasterAuxTable::NUM_COLUMNS),
             )
         };
+        let WorkingTable {
+            table: mut main_columns,
+            coset_offset: mut main_columns_coset,
+        } = main_working_table;
+        let WorkingTable {
+            table: mut aux_columns,
+            coset_offset: mut aux_columns_coset,
+        } = aux_working_table;
         profiler!(stop "zero-initialization");
 
         profiler!(start "fetch trace randomizers");
@@ -1143,36 +1147,48 @@ impl Prover {
             profiler!(start "poly evaluate" ("LDE"));
             let trace_domain_len = u64::try_from(domains.trace.len()).unwrap();
             let zerofier = working_domain.offset().mod_pow(trace_domain_len) - BFieldElement::ONE;
-            Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
-                .and(main_columns.axis_iter_mut(COL_AXIS))
-                .and(main_trace_randomizers.view())
-                .par_for_each(|interpolant, mut codeword, randomizer| {
-                    evaluate_randomized_interpolant_into(
-                        interpolant.as_slice().unwrap(),
-                        randomizer,
-                        zerofier,
-                        working_domain,
-                        codeword.as_slice_mut().unwrap(),
-                    );
-                });
-            Zip::from(aux_table.trace_table().axis_iter(COL_AXIS))
-                .and(aux_columns.axis_iter_mut(COL_AXIS))
-                .and(aux_trace_randomizers.view())
-                .par_for_each(|interpolant, mut codeword, randomizer| {
-                    evaluate_randomized_interpolant_into(
-                        interpolant.as_slice().unwrap(),
-                        randomizer,
-                        zerofier,
-                        working_domain,
-                        codeword.as_slice_mut().unwrap(),
-                    );
-                });
+            // Hashing the rows of the FRI domain leaves the columns' values
+            // on one of its cosets in the working tables. If that is the
+            // current coset, the values are used as they are. In any case,
+            // the tables hold the values on the current coset afterwards.
+            let is_current_coset =
+                |kept_coset: Option<BFieldElement>| kept_coset == Some(working_domain.offset());
+            if !is_current_coset(main_columns_coset.take()) {
+                Zip::from(main_table.trace_table().axis_iter(COL_AXIS))
+                    .and(main_columns.axis_iter_mut(COL_AXIS))
+                    .and(main_trace_randomizers.view())
+                    .par_for_each(|interpolant, mut codeword, randomizer| {
+                        evaluate_randomized_interpolant_into(
+                            interpolant.as_slice().unwrap(),
+                            randomizer,
+                            zerofier,
+                            working_domain,
+                            codeword.as_slice_mut().unwrap(),
+                        );
+                    });
+            }
+            if !is_current_coset(aux_columns_coset.take()) {
+                Zip::from(aux_table.trace_table().axis_iter(COL_AXIS))
+                    .and(aux_columns.axis_iter_mut(COL_AXIS))
+                    .and(aux_trace_randomizers.view())
+                    .par_for_each(|interpolant, mut codeword, randomizer| {
+                        evaluate_randomized_interpolant_into(
+                            interpolant.as_slice().unwrap(),
+                            randomizer,
+                            zerofier,
+                            working_domain,
+                            codeword.as_slice_mut().unwrap(),
+                        );
+                    });
+            }
             profiler!(stop "poly evaluate");
 
             profiler!(start "AIR evaluation" ("AIR"));
             // SAFETY: `evaluate_randomized_interpolant_into` initializes the
             // column it is given, and it was just given every column of both
-            // tables.
+            // tables, except for a table that was skipped because it holds
+            // the current coset's values, which means it is initialized; see
+            // `WorkingTable::coset_offset`.
             let (main_columns, aux_columns) = unsafe {
                 (
                     main_columns.view().assume_init(),
