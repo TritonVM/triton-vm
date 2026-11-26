@@ -2696,6 +2696,7 @@ pub(crate) mod tests {
         assert!(memory.capacity() >= num_elements);
     }
 
+    #[cfg(target_os = "linux")]
     #[macro_rules_attr::apply(test)]
     fn reserved_lde_memory_can_be_dropped_while_background_threads_are_claiming_it() {
         type Memory = LdeMemory<BFieldElement>;
