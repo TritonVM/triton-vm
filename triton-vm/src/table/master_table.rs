@@ -2197,16 +2197,17 @@ where
 ///
 /// The randomizer, whose degree is small, is added to the interpolant's
 /// coefficients before the (single) NTT, which avoids evaluating it
-/// separately.
+/// separately. Scaling the coefficients, which is what moves the evaluation
+/// to the domain's coset, is part of that transform.
 ///
 /// Every element of `codeword` is written to; whatever it contained before is
 /// irrelevant. The initialized codeword is returned.
 ///
 /// # Panics
 ///
-/// Panics if the codeword's length differs from the domain's, or if the
-/// interpolant or the randomizer has more coefficients than the codeword is
-/// long.
+/// Panics if the lengths of the domain, the interpolant, and the codeword
+/// are not all the same, or if the randomizer has more coefficients than
+/// that.
 pub(crate) fn evaluate_randomized_interpolant_into<'c, FF>(
     interpolant: &[FF],
     randomizer: &Polynomial<FF>,
@@ -2217,71 +2218,16 @@ pub(crate) fn evaluate_randomized_interpolant_into<'c, FF>(
 where
     FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
 {
-    // The number of independent sequences of powers of the offset. A single
-    // running power makes every multiplication wait for the previous one.
-    // Several sequences, each advancing by `offset^NUM_SEQUENCES`, keep the
-    // CPU busy instead.
-    const NUM_SEQUENCES: usize = 8;
-
     let randomizer = randomizer.coefficients();
     assert_eq!(domain.len(), codeword.len());
-    assert!(interpolant.len() <= codeword.len());
+    assert_eq!(interpolant.len(), codeword.len());
     assert!(randomizer.len() <= codeword.len());
 
-    // The usual case: the interpolant has as many coefficients as the domain
-    // has points. Then, scaling the coefficients, which is what moves the
-    // evaluation to the coset, is part of the transform.
-    let offset = domain.offset();
-    if interpolant.len() == codeword.len() {
-        let scaled_randomizer = randomizer.iter().map(|&r| r * zerofier).collect_vec();
-        coset_ntt_into(interpolant, &scaled_randomizer, offset, codeword);
+    let scaled_randomizer = randomizer.iter().map(|&r| r * zerofier).collect_vec();
+    coset_ntt_into(interpolant, &scaled_randomizer, domain.offset(), codeword);
 
-        // SAFETY: `coset_ntt_into` initializes every element.
-        return unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) };
-    }
-
-    // Evaluating `p(x)` on the coset `offset·⟨ω⟩` is evaluating `p(offset·x)`
-    // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
-    let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
-    let mut powers = [BFieldElement::ONE; NUM_SEQUENCES];
-    for i in 1..NUM_SEQUENCES {
-        powers[i] = powers[i - 1] * offset;
-    }
-    let step = powers[NUM_SEQUENCES - 1] * offset;
-    let (cell_chunks, remaining_cells) = scaled_interpolant.as_chunks_mut::<NUM_SEQUENCES>();
-    let (coefficient_chunks, remaining_coefficients) = interpolant.as_chunks::<NUM_SEQUENCES>();
-    for (cells, coefficients) in cell_chunks.iter_mut().zip(coefficient_chunks) {
-        for i in 0..NUM_SEQUENCES {
-            cells[i].write(coefficients[i] * powers[i]);
-        }
-        for power in &mut powers {
-            *power *= step;
-        }
-    }
-    for ((cell, &coefficient), &power) in remaining_cells
-        .iter_mut()
-        .zip(remaining_coefficients)
-        .zip(&powers)
-    {
-        cell.write(coefficient * power);
-    }
-    for cell in zero_padding {
-        cell.write(FF::ZERO);
-    }
-
-    // SAFETY: Every element was just written to: the two parts above
-    // partition the codeword, and the interpolant has as many coefficients
-    // as the first part is long.
-    let codeword = unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) };
-
-    let mut power = zerofier;
-    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
-        *cell += coefficient * power;
-        power *= offset;
-    }
-
-    ntt(codeword);
-    codeword
+    // SAFETY: `coset_ntt_into` initializes every element.
+    unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) }
 }
 
 /// The inner product `Σ values[i] · weights[i]`, where the first
@@ -2682,30 +2628,148 @@ pub(crate) mod tests {
         assert!(aux.column(0).as_slice().is_some());
     }
 
+    fn assert_row_hashes_are_independent_of_caching<FF>(mut table: impl MasterTable<Field = FF>)
+    where
+        StandardUniform: Distribution<FF>,
+        XFieldElement: Add<FF, Output = XFieldElement>,
+    {
+        assert!(table.fri_domain_table().is_none());
+        let jit_digests = table.hash_all_fri_domain_rows();
+
+        assert!(table.fri_domain_table().is_none());
+        low_degree_extend_all_columns(&mut table);
+
+        assert!(table.fri_domain_table().is_some());
+        let cache_digests = table.hash_all_fri_domain_rows();
+
+        assert_eq!(jit_digests, cache_digests);
+    }
+
     #[macro_rules_attr::apply(test)]
     fn fri_domain_table_row_hashing_is_independent_of_fri_table_caching() {
-        fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
-        where
-            StandardUniform: Distribution<FF>,
-            XFieldElement: Add<FF, Output = XFieldElement>,
-        {
-            assert!(table.fri_domain_table().is_none());
-            let jit_digests = table.hash_all_fri_domain_rows();
-
-            assert!(table.fri_domain_table().is_none());
-            low_degree_extend_all_columns(&mut table);
-
-            assert!(table.fri_domain_table().is_some());
-            let cache_digests = table.hash_all_fri_domain_rows();
-
-            assert_eq!(jit_digests, cache_digests);
-        }
-
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
-        row_hashes_are_identical(artifacts.master_main_table);
-        row_hashes_are_identical(artifacts.master_aux_table);
+        assert_row_hashes_are_independent_of_caching(artifacts.master_main_table);
+        assert_row_hashes_are_independent_of_caching(artifacts.master_aux_table);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn fri_domain_table_row_hashing_is_independent_of_caching_with_more_threads_than_columns() {
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+
+        let num_threads = MasterMainTable::NUM_COLUMNS.max(MasterAuxTable::NUM_COLUMNS) + 1;
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        thread_pool.install(|| {
+            assert_row_hashes_are_independent_of_caching(artifacts.master_main_table);
+            assert_row_hashes_are_independent_of_caching(artifacts.master_aux_table);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[macro_rules_attr::apply(test)]
+    fn reserved_lde_memory_is_intact_after_background_threads_have_claimed_it() {
+        type Memory = LdeMemory<BFieldElement>;
+
+        let num_threads = Memory::POOL_THREADS_PER_BACKGROUND_THREAD;
+        let num_elements = 2 * Memory::BYTES_PER_CLAIM / size_of::<BFieldElement>();
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        let mut memory = thread_pool
+            .install(|| Memory::reserve(num_elements, Some(CacheDecision::Cache)))
+            .unwrap();
+        assert!(!memory.threads.is_empty());
+
+        // let the background threads claim all of the memory
+        for thread in memory.threads.drain(..) {
+            thread.join().unwrap();
+        }
+
+        let memory = memory.into_inner();
+        assert!(memory.is_empty());
+        assert!(memory.capacity() >= num_elements);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn reserved_lde_memory_can_be_dropped_while_background_threads_are_claiming_it() {
+        type Memory = LdeMemory<BFieldElement>;
+
+        let num_threads = Memory::POOL_THREADS_PER_BACKGROUND_THREAD;
+        let num_elements = 1 << 25;
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        let memory = thread_pool.install(|| Memory::reserve(num_elements, None));
+        drop(memory);
+
+        let no_memory = Memory::reserve(num_elements, Some(CacheDecision::NoCache));
+        assert!(no_memory.is_none());
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn rows_of_wrong_length_cannot_be_converted_to_main_or_aux_rows() {
+        let too_short_row = Array1::<BFieldElement>::zeros(MasterMainTable::NUM_COLUMNS - 1);
+        let Err(ProvingError::TableRowConversionError {
+            expected_len,
+            actual_len,
+        }) = MasterMainTable::try_to_main_row(too_short_row)
+        else {
+            panic!("conversion must fail");
+        };
+        assert_eq!(MasterMainTable::NUM_COLUMNS, expected_len);
+        assert_eq!(MasterMainTable::NUM_COLUMNS - 1, actual_len);
+
+        let too_long_row = Array1::<XFieldElement>::zeros(MasterAuxTable::NUM_COLUMNS + 1);
+        let Err(ProvingError::TableRowConversionError {
+            expected_len,
+            actual_len,
+        }) = MasterAuxTable::try_to_aux_row(too_long_row)
+        else {
+            panic!("conversion must fail");
+        };
+        assert_eq!(MasterAuxTable::NUM_COLUMNS, expected_len);
+        assert_eq!(MasterAuxTable::NUM_COLUMNS + 1, actual_len);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn mutable_and_immutable_views_of_main_tables_have_same_dimensions() {
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let mut master_main_table = artifacts.master_main_table;
+        for table_id in TableId::iter() {
+            let dimensions = master_main_table.table(table_id).dim();
+            assert_eq!(dimensions, master_main_table.table_mut(table_id).dim());
+        }
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn restoring_trace_twice_is_the_same_as_restoring_it_once() {
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let mut master_main_table = artifacts.master_main_table;
+
+        master_main_table.restore_trace();
+        assert!(!master_main_table.trace_is_interpolated());
+        let trace = master_main_table.trace_table().to_owned();
+
+        master_main_table.restore_trace();
+        assert!(!master_main_table.trace_is_interpolated());
+        assert_eq!(trace, master_main_table.trace_table());
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn clone_of_working_table_has_same_dimensions_and_holds_same_coset() {
+        let mut working_table = WorkingTable::<XFieldElement>::new(8, 3);
+        working_table.coset_offset = Some(BFieldElement::new(42));
+
+        let clone = working_table.clone();
+        assert_eq!(working_table.table.dim(), clone.table.dim());
+        assert_eq!(working_table.coset_offset, clone.coset_offset);
     }
 
     fn naive_inner_product(values: &[XFieldElement], weights: &[XFieldElement]) -> XFieldElement {

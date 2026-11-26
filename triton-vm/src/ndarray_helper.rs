@@ -273,6 +273,21 @@ mod tests {
     }
 
     #[macro_rules_attr::apply(test)]
+    fn columns_of_row_major_and_column_major_tables_are_filled_identically() {
+        let values = (0..5_u64).collect_vec();
+        let mut row_major = Array2::<u64>::zeros((5, 3));
+        let mut column_major = Array2::<u64>::zeros((5, 3).f());
+        for table in [&mut row_major, &mut column_major] {
+            par_fill_column(&mut table.view_mut(), 1, &values);
+            par_fill_column_with(&mut table.view_mut(), 2, 1..4, |row| 10 * row as u64);
+        }
+
+        let expected = array![[0, 0, 0], [0, 1, 10], [0, 2, 20], [0, 3, 30], [0, 4, 0]];
+        assert_eq!(expected, row_major);
+        assert_eq!(expected, column_major);
+    }
+
+    #[macro_rules_attr::apply(test)]
     fn can_start_at_non_zero_index_and_stop_before_end() {
         let dimensions = (2, 6);
         let mut array = Array2::<usize>::zeros(dimensions);
