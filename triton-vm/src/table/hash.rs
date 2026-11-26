@@ -12,11 +12,13 @@ use isa::instruction::Instruction;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use num_traits::ConstOne;
+use num_traits::ConstZero;
 use num_traits::Zero;
 use rayon::prelude::*;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use twenty_first::prelude::tip5::NUM_ROUNDS;
+use twenty_first::prelude::tip5::NUM_SPLIT_AND_LOOKUP;
 use twenty_first::prelude::tip5::STATE_SIZE;
 use twenty_first::prelude::*;
 
@@ -25,8 +27,9 @@ use crate::challenges::Challenges;
 use crate::ndarray_helper::COL_AXIS;
 use crate::profiler::profiler;
 use crate::table::TraceTable;
-use crate::table::running_arguments::par_log_derivative;
-use crate::table::running_arguments::par_running_evaluation;
+use crate::table::running_arguments::par_log_derivative_into;
+use crate::table::running_arguments::par_running_evaluation_into;
+use crate::table::running_arguments::with_contiguous_column;
 
 type MainColumn = <HashTable as air::AIR>::MainColumn;
 type AuxColumn = <HashTable as air::AIR>::AuxColumn;
@@ -45,7 +48,14 @@ type AuxColumn = <HashTable as air::AIR>::AuxColumn;
 /// Note: this is distinct from the seemingly similar
 /// [`raw_u16s`](BFieldElement::raw_u16s).
 pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4] {
-    let r_times_x = (MONTGOMERY_MODULUS * x).value();
+    // The internal representation of `x` is congruent to `R·x`; no
+    // multiplication is needed.
+    let raw = x.raw_u64();
+    let r_times_x = if raw >= BFieldElement::P {
+        raw - BFieldElement::P
+    } else {
+        raw
+    };
     [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16)
 }
 
@@ -55,12 +65,71 @@ pub(crate) fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4]
 ///
 /// [ci]: air::table_column::HashMainColumn::CI
 pub(crate) fn trace_to_table_rows(trace: PermutationTrace) -> Array2<BFieldElement> {
-    let mut table_rows = Array2::default([0, MainColumn::COUNT]);
-    for (round_number, &trace_row) in trace.iter().enumerate() {
-        let table_row = trace_row_to_table_row(trace_row, round_number);
-        table_rows.push_row(table_row.view()).unwrap();
+    const INVERSE_COLUMNS: [MainColumn; NUM_SPLIT_AND_LOOKUP] = [
+        MainColumn::State0Inv,
+        MainColumn::State1Inv,
+        MainColumn::State2Inv,
+        MainColumn::State3Inv,
+    ];
+
+    let mut table_rows = Array2::zeros([trace.len(), MainColumn::COUNT]);
+    for (round_number, (&trace_row, table_row)) in
+        trace.iter().zip(table_rows.rows_mut()).enumerate()
+    {
+        let row = Array1::zeros([MainColumn::COUNT]);
+        let row = fill_row_with_round_number(row, round_number);
+        let row = fill_row_with_split_state_elements_using_trace_row(row, trace_row);
+        let row = fill_row_with_unsplit_state_elements_using_trace_row(row, trace_row);
+        let row = fill_row_with_round_constants_for_round(row, round_number);
+        row.move_into(table_row);
     }
+
+    // Inverting field elements is expensive, and every row needs several
+    // inverses. Batch inversion gets all of the trace's inverses for the
+    // price of a single inversion and a few multiplications.
+    let to_invert = trace
+        .iter()
+        .flat_map(|trace_row| &trace_row[..NUM_SPLIT_AND_LOOKUP])
+        .map(|&state_element| complement_of_highest_2_limbs(state_element))
+        .collect_vec();
+    let inverses = batch_inverse_or_zero(&to_invert);
+    for (mut table_row, row_inverses) in table_rows
+        .rows_mut()
+        .into_iter()
+        .zip(inverses.chunks_exact(NUM_SPLIT_AND_LOOKUP))
+    {
+        for (column, &inverse) in INVERSE_COLUMNS.iter().zip(row_inverses) {
+            table_row[column.main_index()] = inverse;
+        }
+    }
+
     table_rows
+}
+
+/// The inverse-or-zero of every given element, using one inversion in total.
+fn batch_inverse_or_zero(elements: &[BFieldElement]) -> Vec<BFieldElement> {
+    // the products of all non-zero elements before the respective index
+    let mut running_product = BFieldElement::ONE;
+    let mut prefix_products = Vec::with_capacity(elements.len());
+    for &element in elements {
+        prefix_products.push(running_product);
+        if !element.is_zero() {
+            running_product *= element;
+        }
+    }
+
+    // the inverse of the product of all non-zero elements up to and including
+    // the respective index
+    let mut running_inverse = running_product.inverse();
+    let mut inverses = vec![BFieldElement::ZERO; elements.len()];
+    for (i, &element) in elements.iter().enumerate().rev() {
+        if !element.is_zero() {
+            inverses[i] = running_inverse * prefix_products[i];
+            running_inverse *= element;
+        }
+    }
+
+    inverses
 }
 
 pub(crate) fn trace_row_to_table_row(
@@ -207,13 +276,19 @@ fn fill_row_with_state_inverses_using_trace_row(
 /// `highest` is the most significant limb of the given `state_element`, and
 /// `mid_high` the second-most significant limb.
 fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
+    complement_of_highest_2_limbs(state_element).inverse_or_zero()
+}
+
+/// 2^32 - 1 - 2^16·`highest` - `mid_high` where `highest` is the most
+/// significant limb of the given `state_element`, and `mid_high` the
+/// second-most significant limb.
+fn complement_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
     let limbs = base_field_element_into_16_bit_limbs(state_element);
     let highest: u64 = limbs[3].into();
     let mid_high: u64 = limbs[2].into();
     let high_limbs = bfe!((highest << 16) + mid_high);
     let two_pow_32_minus_1 = bfe!((1_u64 << 32) - 1);
-    let to_invert = two_pow_32_minus_1 - high_limbs;
-    to_invert.inverse_or_zero()
+    two_pow_32_minus_1 - high_limbs
 }
 
 fn fill_row_with_round_constants_for_round(
@@ -453,16 +528,13 @@ impl TraceTable for HashTable {
             (in_hash_mode(row) && in_last_round(row)).then(|| compressed_digest(row))
         };
 
-        let rows = || {
-            (0..main_table.nrows())
-                .into_par_iter()
-                .map(|row_idx| main_table.row(row_idx))
-        };
         let running_evaluation =
-            |addend: &(dyn Fn(ArrayView1<BFieldElement>) -> Option<XFieldElement> + Sync),
+            |column: &mut [XFieldElement],
+             addend: &(dyn Fn(ArrayView1<BFieldElement>) -> Option<XFieldElement> + Sync),
              indeterminate| {
-                let addends = rows().map(addend).collect::<Vec<_>>();
-                par_running_evaluation(&addends, indeterminate, EvalArg::default_initial())
+                let addend = |row_idx: usize| addend(main_table.row(row_idx));
+                let initial = EvalArg::default_initial();
+                par_running_evaluation_into(column, indeterminate, initial, addend);
             };
 
         // The contribution of each row to the cascade table lookups' log
@@ -470,19 +542,22 @@ impl TraceTable for HashTable {
         let contributes_to_cascade_lookup = |row: ArrayView1<BFieldElement>| {
             !in_pad_mode(row) && !in_last_round(row) && !current_instruction_is_sponge_init(row)
         };
-        let cascade_log_derivative = |lk_in_col: Self::MainColumn, lk_out_col: Self::MainColumn| {
-            let fractions = rows()
-                .map(|row| {
-                    contributes_to_cascade_lookup(row).then(|| {
+        let cascade_log_derivative =
+            |column: &mut [XFieldElement],
+             lk_in_col: Self::MainColumn,
+             lk_out_col: Self::MainColumn| {
+                let fraction = |row_idx: usize| {
+                    let row = main_table.row(row_idx);
+                    let fraction = contributes_to_cascade_lookup(row).then(|| {
                         let denominator = cascade_indeterminate
                             - cascade_look_in_weight * row[lk_in_col.main_index()]
                             - cascade_look_out_weight * row[lk_out_col.main_index()];
                         (denominator, XFieldElement::ONE)
-                    })
-                })
-                .collect::<Vec<_>>();
-            par_log_derivative(&fractions, LookupArg::default_initial())
-        };
+                    });
+                    [fraction]
+                };
+                par_log_derivative_into(column, LookupArg::default_initial(), fraction);
+            };
 
         let all_aux_columns = AuxColumn::iter().collect_vec();
         aux_table
@@ -492,85 +567,104 @@ impl TraceTable for HashTable {
             .enumerate()
             .for_each(|(column_idx, (target_column, aux_column))| {
                 debug_assert_eq!(column_idx, aux_column.aux_index());
-                let column = match aux_column {
+                with_contiguous_column(target_column, |column| match aux_column {
                     AuxColumn::ReceiveChunkRunningEvaluation => {
-                        running_evaluation(&receive_chunk_addend, send_chunk_indeterminate)
+                        running_evaluation(column, &receive_chunk_addend, send_chunk_indeterminate)
                     }
-                    AuxColumn::HashInputRunningEvaluation => {
-                        running_evaluation(&hash_input_addend, hash_input_eval_indeterminate)
-                    }
-                    AuxColumn::HashDigestRunningEvaluation => {
-                        running_evaluation(&hash_digest_addend, hash_digest_eval_indeterminate)
-                    }
+                    AuxColumn::HashInputRunningEvaluation => running_evaluation(
+                        column,
+                        &hash_input_addend,
+                        hash_input_eval_indeterminate,
+                    ),
+                    AuxColumn::HashDigestRunningEvaluation => running_evaluation(
+                        column,
+                        &hash_digest_addend,
+                        hash_digest_eval_indeterminate,
+                    ),
                     AuxColumn::SpongeRunningEvaluation => {
-                        running_evaluation(&sponge_addend, sponge_eval_indeterminate)
+                        running_evaluation(column, &sponge_addend, sponge_eval_indeterminate)
                     }
                     AuxColumn::CascadeState0HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0HighestLkIn,
                         MainColumn::State0HighestLkOut,
                     ),
                     AuxColumn::CascadeState0MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0MidHighLkIn,
                         MainColumn::State0MidHighLkOut,
                     ),
                     AuxColumn::CascadeState0MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0MidLowLkIn,
                         MainColumn::State0MidLowLkOut,
                     ),
                     AuxColumn::CascadeState0LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State0LowestLkIn,
                         MainColumn::State0LowestLkOut,
                     ),
                     AuxColumn::CascadeState1HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1HighestLkIn,
                         MainColumn::State1HighestLkOut,
                     ),
                     AuxColumn::CascadeState1MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1MidHighLkIn,
                         MainColumn::State1MidHighLkOut,
                     ),
                     AuxColumn::CascadeState1MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1MidLowLkIn,
                         MainColumn::State1MidLowLkOut,
                     ),
                     AuxColumn::CascadeState1LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State1LowestLkIn,
                         MainColumn::State1LowestLkOut,
                     ),
                     AuxColumn::CascadeState2HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2HighestLkIn,
                         MainColumn::State2HighestLkOut,
                     ),
                     AuxColumn::CascadeState2MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2MidHighLkIn,
                         MainColumn::State2MidHighLkOut,
                     ),
                     AuxColumn::CascadeState2MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2MidLowLkIn,
                         MainColumn::State2MidLowLkOut,
                     ),
                     AuxColumn::CascadeState2LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State2LowestLkIn,
                         MainColumn::State2LowestLkOut,
                     ),
                     AuxColumn::CascadeState3HighestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3HighestLkIn,
                         MainColumn::State3HighestLkOut,
                     ),
                     AuxColumn::CascadeState3MidHighClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3MidHighLkIn,
                         MainColumn::State3MidHighLkOut,
                     ),
                     AuxColumn::CascadeState3MidLowClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3MidLowLkIn,
                         MainColumn::State3MidLowLkOut,
                     ),
                     AuxColumn::CascadeState3LowestClientLogDerivative => cascade_log_derivative(
+                        column,
                         MainColumn::State3LowestLkIn,
                         MainColumn::State3LowestLkOut,
                     ),
-                };
-                Array1::from(column).move_into(target_column);
+                });
             });
         profiler!(stop "hash table");
     }
@@ -593,6 +687,51 @@ pub(crate) mod tests {
     use crate::vm::VM;
 
     use super::*;
+
+    #[macro_rules_attr::apply(test)]
+    fn limbs_are_those_of_the_element_times_the_montgomery_modulus() {
+        // includes non-canonical internal representations
+        let edge_cases = [0, 1, BFieldElement::P - 1, BFieldElement::P, u64::MAX];
+        let mut raw = 0x9e37_79b9_7f4a_7c15_u64;
+        let pseudorandom = std::iter::repeat_with(|| {
+            raw = raw
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            raw
+        });
+        for raw in edge_cases.into_iter().chain(pseudorandom.take(10_000)) {
+            let x = BFieldElement::from_raw_u64(raw);
+            let r_times_x = (MONTGOMERY_MODULUS * x).value();
+            let expected = [0, 16, 32, 48].map(|shift| ((r_times_x >> shift) & 0xffff) as u16);
+            assert_eq!(expected, base_field_element_into_16_bit_limbs(x));
+        }
+    }
+
+    /// The two ways of filling rows of the Hash Table must not drift apart:
+    /// [`trace_to_table_rows`] handles whole permutation traces and inverts
+    /// in batches, [`trace_row_to_table_row`] handles single rows.
+    #[macro_rules_attr::apply(test)]
+    fn converting_a_trace_agrees_with_converting_its_rows_one_by_one() {
+        // The inverse-or-zero columns are zero only for state elements whose
+        // two highest limbs are all ones, which random states never hit.
+        let highest_limbs_all_ones = BFieldElement::from_raw_u64(0xffff_ffff_0000_0000);
+        assert!(complement_of_highest_2_limbs(highest_limbs_all_ones).is_zero());
+        let mut states = vec![Tip5::init().state, [highest_limbs_all_ones; STATE_SIZE]];
+        let mut tip5 = Tip5::init();
+        for _ in 0..20 {
+            tip5.permutation();
+            states.push(tip5.state);
+        }
+
+        for state in states {
+            let trace = Tip5 { state }.trace();
+            let rows = trace_to_table_rows(trace);
+            assert_eq!(trace.len(), rows.nrows());
+            for (round_number, (&trace_row, row)) in trace.iter().zip(rows.rows()).enumerate() {
+                assert_eq!(trace_row_to_table_row(trace_row, round_number), row);
+            }
+        }
+    }
 
     #[macro_rules_attr::apply(test)]
     fn hash_table_mode_discriminant_is_unique() {

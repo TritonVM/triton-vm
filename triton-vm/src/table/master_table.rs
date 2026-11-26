@@ -50,11 +50,13 @@
 //! [master_aux_table]: MasterAuxTable
 //! [master_quot_table]: all_quotients_combined
 
+use std::fmt::Debug;
 use std::mem::MaybeUninit;
 use std::ops::Add;
 use std::ops::Mul;
 use std::ops::MulAssign;
 use std::ops::Range;
+use std::sync::OnceLock;
 
 use air::table::AUX_CASCADE_TABLE_END;
 use air::table::AUX_CASCADE_TABLE_START;
@@ -102,24 +104,6 @@ use air::table::processor::ProcessorTable;
 use air::table::program::ProgramTable;
 use air::table::ram::RamTable;
 use air::table::u32::U32Table;
-use air::table_column::CascadeAuxColumn;
-use air::table_column::CascadeMainColumn;
-use air::table_column::HashAuxColumn;
-use air::table_column::HashMainColumn;
-use air::table_column::JumpStackAuxColumn;
-use air::table_column::JumpStackMainColumn;
-use air::table_column::LookupAuxColumn;
-use air::table_column::LookupMainColumn;
-use air::table_column::OpStackAuxColumn;
-use air::table_column::OpStackMainColumn;
-use air::table_column::ProcessorAuxColumn;
-use air::table_column::ProcessorMainColumn;
-use air::table_column::ProgramAuxColumn;
-use air::table_column::ProgramMainColumn;
-use air::table_column::RamAuxColumn;
-use air::table_column::RamMainColumn;
-use air::table_column::U32AuxColumn;
-use air::table_column::U32MainColumn;
 use itertools::EitherOrBoth;
 use itertools::Itertools;
 use itertools::izip;
@@ -137,9 +121,12 @@ use rand::distr::StandardUniform;
 use rand::prelude::*;
 use rayon::prelude::*;
 use strum::EnumCount;
+use strum::IntoEnumIterator;
+use twenty_first::math::ntt::coset_ntt_into;
 use twenty_first::math::ntt::intt;
 use twenty_first::math::ntt::ntt;
 use twenty_first::math::traits::FiniteField;
+use twenty_first::math::traits::ModPowU64;
 use twenty_first::prelude::x_field_element::EXTENSION_DEGREE;
 use twenty_first::prelude::*;
 use twenty_first::tip5::ColumnElement;
@@ -149,11 +136,11 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::challenges::Challenges;
 use crate::config::CacheDecision;
 use crate::error::ProvingError;
+use crate::error::USIZE_TO_U64_ERR;
 use crate::ndarray_helper;
 use crate::ndarray_helper::COL_AXIS;
 use crate::ndarray_helper::ROW_AXIS;
 use crate::ndarray_helper::horizontal_multi_slice_mut;
-use crate::ndarray_helper::partial_sums;
 use crate::profiler::profiler;
 use crate::stark::NUM_BATCH_RANDOMIZERS;
 use crate::stark::ProverDomains;
@@ -188,6 +175,159 @@ impl BfeSlice for XFieldElement {
     }
 }
 
+/// The memory for a [low-degree-extended table][lde], reserved ahead of its
+/// use.
+///
+/// The operating system hands out freshly allocated memory lazily: a page is
+/// only backed by physical memory once it is accessed for the first time. At
+/// that point, the operating system also zeroes the page, because the
+/// physical memory might still hold the data of another process. For tables
+/// of many gigabytes, these page faults take a considerable part of the time
+/// it takes to fill the table.
+///
+/// If the memory is reserved early, a few background threads can trigger the
+/// page faults ahead of time, while the prover is busy with work that leaves
+/// many cores idle; for example, when creating the tables' traces. The
+/// background threads are only started where they have been observed to
+/// help: on Linux, and if the thread pool is big. Everywhere else, the
+/// memory is reserved but not touched.
+///
+/// # Invariant
+///
+/// While any background thread is running, the reserved memory is accessed
+/// by the background threads only, and is neither moved out of this struct,
+/// nor reallocated, nor freed. Any method that uses the reserved memory in
+/// any way must first [stop](Self::stop_background_threads) the background
+/// threads. The soundness of the background threads' writes depends on this.
+///
+/// [lde]: MasterTable::maybe_low_degree_extend_all_columns_into
+#[derive(Debug)]
+pub(crate) struct LdeMemory<FF> {
+    /// Off limits while any of the `threads` is running; see the
+    /// [invariant](Self#invariant).
+    memory: Vec<MaybeUninit<FF>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+}
+
+impl<FF> LdeMemory<FF> {
+    /// One background thread per this many threads of the thread pool.
+    #[cfg(target_os = "linux")]
+    const POOL_THREADS_PER_BACKGROUND_THREAD: usize = 32;
+
+    /// Very few threads suffice to get the memory in time. More threads get
+    /// it faster, but slow down the prover's concurrent work by competing
+    /// for caches, memory bandwidth, and the operating system's attention.
+    #[cfg(target_os = "linux")]
+    const MAX_NUM_BACKGROUND_THREADS: usize = 2;
+
+    /// The background threads claim the memory in pieces of this many bytes.
+    #[cfg(target_os = "linux")]
+    const BYTES_PER_CLAIM: usize = 1 << 26;
+
+    /// The distance, in bytes, of the memory accesses of the background
+    /// threads. No page is smaller on the supported platforms.
+    #[cfg(target_os = "linux")]
+    const PAGE_SIZE: usize = 1 << 12;
+
+    /// Reserve memory for the given number of elements, unless the decision
+    /// is to not cache the low-degree-extended table. Without a decision,
+    /// the memory is reserved if that is possible.
+    pub fn reserve(num_elements: usize, cache_decision: Option<CacheDecision>) -> Option<Self> {
+        let mut memory = Vec::with_capacity(0);
+        match cache_decision {
+            Some(CacheDecision::NoCache) => return None,
+            Some(CacheDecision::Cache) => memory.reserve_exact(num_elements),
+            None => memory.try_reserve_exact(num_elements).ok()?,
+        }
+        twenty_first::memory::advise_huge_pages(memory.spare_capacity_mut());
+
+        let mut reserved = Self {
+            memory,
+            stop: std::sync::Arc::default(),
+            threads: vec![],
+        };
+        reserved.start_background_threads();
+
+        Some(reserved)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn start_background_threads(&mut self) {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        let num_threads = (rayon::current_num_threads() / Self::POOL_THREADS_PER_BACKGROUND_THREAD)
+            .min(Self::MAX_NUM_BACKGROUND_THREADS);
+        let num_bytes = self.memory.capacity() * size_of::<FF>();
+        if num_threads == 0 || num_bytes < 2 * Self::BYTES_PER_CLAIM {
+            return;
+        }
+
+        let start = self.memory.as_mut_ptr().expose_provenance();
+        let next_claim = std::sync::Arc::new(AtomicUsize::new(0));
+        for _ in 0..num_threads {
+            let stop = self.stop.clone();
+            let next_claim = next_claim.clone();
+            let touch_pages = move || {
+                loop {
+                    let claim = next_claim.fetch_add(Self::BYTES_PER_CLAIM, Ordering::Relaxed);
+                    if claim >= num_bytes {
+                        return;
+                    }
+                    let claim_end = (claim + Self::BYTES_PER_CLAIM).min(num_bytes);
+                    for offset in (claim..claim_end).step_by(Self::PAGE_SIZE) {
+                        if stop.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let byte = std::ptr::with_exposed_provenance_mut::<u8>(start + offset);
+
+                        // SAFETY: The byte is within the allocation, which
+                        // is kept alive, and not accessed in any other way,
+                        // until this thread has been joined; see the
+                        // invariant of `LdeMemory`. The claims of the
+                        // threads are disjoint. Any bit pattern is valid for
+                        // the uninitialized memory.
+                        unsafe { byte.write_volatile(0) };
+                    }
+                }
+            };
+            let thread = std::thread::Builder::new()
+                .name("lde-memory".to_string())
+                .spawn(touch_pages);
+
+            // not being able to spawn a thread only costs performance
+            let Ok(thread) = thread else { break };
+            self.threads.push(thread);
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn start_background_threads(&mut self) {}
+
+    fn stop_background_threads(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        for thread in self.threads.drain(..) {
+            // the threads cannot panic
+            drop(thread.join());
+        }
+    }
+
+    /// The reserved memory. Its length is 0, its capacity at least the
+    /// number of elements it was reserved for.
+    fn into_inner(mut self) -> Vec<MaybeUninit<FF>> {
+        self.stop_background_threads();
+        std::mem::take(&mut self.memory)
+    }
+}
+
+impl<FF> Drop for LdeMemory<FF> {
+    fn drop(&mut self) {
+        // The memory must outlive the threads accessing it.
+        self.stop_background_threads();
+    }
+}
+
 pub(crate) trait MasterTable: Sync
 where
     StandardUniform: Distribution<Self::Field>,
@@ -207,13 +347,17 @@ where
 
     const NUM_COLUMNS: usize;
 
+    /// The number of columns the AIR constrains. These are the first columns
+    /// of the table.
+    const NUM_CONSTRAINED_COLUMNS: usize;
+
     fn domains(&self) -> ProverDomains;
 
     /// The [`ArithmeticDomain`] to [low-degree extend] into.
     /// The larger of the [`quotient_domain`](ProverDomains::quotient) and the
     /// [`fri_domain`](ProverDomains::fri).
     ///
-    /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns
+    /// [low-degree extend]: Self::maybe_low_degree_extend_all_columns_into
     fn evaluation_domain(&self) -> ArithmeticDomain {
         let domains = self.domains();
         if domains.quotient.len() > domains.fri.len() {
@@ -225,17 +369,69 @@ where
 
     /// Presents underlying trace data, excluding trace randomizers and
     /// batch randomizers.
+    ///
+    /// The columns hold the trace only if the trace is not
+    /// [interpolated](Self::trace_is_interpolated). Otherwise, they hold the
+    /// coefficients of the trace interpolants.
     fn trace_table(&self) -> ArrayView2<'_, Self::Field>;
 
     /// Mutably presents underlying trace data, excluding trace randomizers and
     /// batch randomizers.
+    ///
+    /// The columns hold the trace only if the trace is not
+    /// [interpolated](Self::trace_is_interpolated). Otherwise, they hold the
+    /// coefficients of the trace interpolants.
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, Self::Field>;
+
+    /// Whether the columns of the [trace table](Self::trace_table) currently
+    /// hold the coefficients of the trace interpolants instead of the trace.
+    /// See [`Self::interpolate_trace`].
+    fn trace_is_interpolated(&self) -> bool;
+
+    /// Only for [`Self::interpolate_trace`] and [`Self::restore_trace`].
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool);
+
+    /// Replace every column of the trace table by the coefficients of its
+    /// interpolant over the trace domain, in place. Does nothing if this has
+    /// happened already.
+    ///
+    /// The memory-frugal code paths work with the interpolants. Any of them
+    /// leaves the trace table in the form it has found it in: computations
+    /// that need the trace are unaffected by default. If the trace itself is
+    /// not needed anymore, interpolating it explicitly spares those code
+    /// paths from transforming the table back and forth.
+    ///
+    /// All methods that are needed after the trace table has been committed
+    /// to can deal with either form.
+    fn interpolate_trace(&mut self) {
+        if self.trace_is_interpolated() {
+            return;
+        }
+        assert_eq!(BFieldElement::ONE, self.domains().trace.offset());
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        self.set_trace_is_interpolated(true);
+    }
+
+    /// The inverse of [`Self::interpolate_trace`].
+    fn restore_trace(&mut self) {
+        if !self.trace_is_interpolated() {
+            return;
+        }
+        self.trace_table_mut()
+            .axis_iter_mut(COL_AXIS)
+            .into_par_iter()
+            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        self.set_trace_is_interpolated(false);
+    }
 
     /// The quotient-domain view of the cached low-degree-extended table, if
     /// 1. the table has been [low-degree extended][lde], and
     /// 2. the low-degree-extended table [has been cached][cache].
     ///
-    /// [lde]: Self::maybe_low_degree_extend_all_columns
+    /// [lde]: Self::maybe_low_degree_extend_all_columns_into
     /// [cache]: crate::config::overwrite_lde_trace_caching_to
     //
     // This cannot be implemented generically on the trait because it returns a
@@ -245,28 +441,23 @@ where
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, Self::Field>>;
 
     /// Low-degree extend all columns of the trace table (including randomizers)
-    /// _if_ it is to be [cached]. In that case, the resulting low-degree
-    /// extended columns can be accessed using [`quotient_domain_table`][table]
-    /// and [`fri_domain_table`][Self::fri_domain_table]. Without a decision,
-    /// the table is cached if the required memory can be reserved.
+    /// _if_ it is to be [cached], which is the case if memory for it was
+    /// [reserved](LdeMemory::reserve) ahead of time. In that case, the
+    /// resulting low-degree extended columns can be accessed using
+    /// [`quotient_domain_table`][table] and
+    /// [`fri_domain_table`][Self::fri_domain_table]. Does nothing if no memory
+    /// was reserved.
     ///
     /// [table]: Self::quotient_domain_table
     /// [cached]: crate::config::overwrite_lde_trace_caching_to
-    fn maybe_low_degree_extend_all_columns(&mut self, cache_decision: Option<CacheDecision>) {
+    fn maybe_low_degree_extend_all_columns_into(&mut self, memory: Option<LdeMemory<Self::Field>>) {
         let evaluation_domain = self.evaluation_domain();
         let num_rows = evaluation_domain.len();
         let num_elements = num_rows * Self::NUM_COLUMNS;
-
-        let mut extended_trace: Vec<MaybeUninit<Self::Field>> = Vec::with_capacity(0);
-        match cache_decision {
-            Some(CacheDecision::NoCache) => return,
-            Some(CacheDecision::Cache) => extended_trace.reserve_exact(num_elements),
-            None => {
-                let Ok(()) = extended_trace.try_reserve_exact(num_elements) else {
-                    return;
-                };
-            }
+        let Some(memory) = memory else {
+            return;
         };
+        let mut extended_trace = memory.into_inner();
 
         profiler!(start "LDE" ("LDE"));
         profiler!(start "polynomial zero-initialization");
@@ -284,7 +475,6 @@ where
         profiler!(stop "interpolation");
 
         assert!(extended_trace.capacity() >= num_elements);
-        twenty_first::memory::advise_huge_pages(extended_trace.spare_capacity_mut());
         unsafe {
             // SAFETY:
             // 1. The capacity is sufficiently large – see above `assert!`.
@@ -304,13 +494,20 @@ where
         let mut extended_columns = Array2::from_shape_vec(shape, extended_trace).unwrap();
 
         profiler!(start "evaluation");
+        // With fewer columns than threads, evaluating one column per thread
+        // leaves threads idle.
+        let is_parallel_within_columns = Self::NUM_COLUMNS < rayon::current_num_threads();
         Zip::from(extended_columns.axis_iter_mut(COL_AXIS))
             .and(interpolation_polynomials.axis_iter(ROW_AXIS))
             .par_for_each(|mut lde_column, interpolant| {
                 // The NTT runs in place, directly in the table's column: no
                 // temporary allocation, no copy.
                 let lde_column = lde_column.as_slice_mut().unwrap();
-                evaluation_domain.evaluate_into(&interpolant[()], lde_column);
+                if is_parallel_within_columns {
+                    evaluation_domain.par_evaluate_into(&interpolant[()], lde_column);
+                } else {
+                    evaluation_domain.evaluate_into(&interpolant[()], lde_column);
+                }
             });
         // SAFETY: Every column of the table was written to by `evaluate_into`,
         // which initializes every element of the column. The columns
@@ -324,7 +521,7 @@ where
     }
 
     /// Not intended for direct use, but through
-    /// [`Self::maybe_low_degree_extend_all_columns`].
+    /// [`Self::maybe_low_degree_extend_all_columns_into`].
     #[doc(hidden)]
     fn memoize_low_degree_extended_table(
         &mut self,
@@ -332,6 +529,27 @@ where
     );
 
     fn clear_cache(&mut self);
+
+    /// The working memory of the memory-frugal code paths, if it was
+    /// [kept](Self::keep_working_table) earlier.
+    ///
+    /// Without caching the low-degree extended trace, both hashing its rows
+    /// and computing the quotient need such a table. Handing it from one to
+    /// the other, instead of freeing and allocating anew, guarantees that the
+    /// memory is reused, whatever the allocator. It also hands over the
+    /// table's content, see [`WorkingTable::coset_offset`].
+    fn take_working_table(&mut self) -> Option<WorkingTable<Self::Field>>;
+
+    /// See [`Self::take_working_table`].
+    fn keep_working_table(&mut self, working_table: WorkingTable<Self::Field>);
+
+    /// The [kept](Self::keep_working_table) working table, or a new one.
+    fn working_table(&mut self) -> WorkingTable<Self::Field> {
+        let num_rows = self.trace_table().nrows();
+        self.take_working_table()
+            .filter(|working_table| working_table.table.dim() == (num_rows, Self::NUM_COLUMNS))
+            .unwrap_or_else(|| WorkingTable::new(num_rows, Self::NUM_COLUMNS))
+    }
 
     /// Return the FRI domain view of the cached low-degree-extended table, if
     /// any.
@@ -350,9 +568,10 @@ where
     /// The evaluations of all column polynomials, including their trace
     /// randomizers, in each of the given indeterminates.
     ///
-    /// Uses barycentric Lagrangian evaluation, batched in two ways. First,
-    /// the barycentric weights of an indeterminate are shared across all
-    /// columns. Second, the table is streamed only once, in blocks of rows,
+    /// Uses barycentric Lagrangian evaluation – or, should the trace table
+    /// [be interpolated](Self::interpolate_trace), plain evaluation –,
+    /// batched in two ways. First, the weights of an indeterminate are shared
+    /// across all columns. Second, the table is streamed only once, in blocks of rows,
     /// for all indeterminates and columns at once: for a table with hundreds
     /// of long columns, the memory traffic of reading the table, not the
     /// arithmetic, dominates the runtime. A block's rows of all columns and
@@ -364,24 +583,51 @@ where
         let domain = trace_domain.values();
         let num_rows = domain.len();
 
-        // barycentric weights `d / (z - d)` for every point `d` of the
-        // domain, per indeterminate `z`, and the inverses of their sums
-        let weights = indeterminates
-            .iter()
-            .map(|&indeterminate| {
-                let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
-                let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
-                domain
-                    .par_iter()
-                    .zip_eq(domain_shift_inverses)
-                    .map(|(&d, inv)| d * inv)
-                    .collect::<Vec<_>>()
-            })
-            .collect_vec();
-        let weight_sum_inverses = weights
-            .iter()
-            .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
-            .collect_vec();
+        // The value of a column's interpolant in indeterminate `z` is a
+        // weighted sum of the column's elements, up to a factor.
+        // - For a column of values, the weights are the barycentric weights
+        //   `d / (z - d)` for every point `d` of the domain, and the factor is
+        //   the inverse of their sum.
+        // - For a column of coefficients, the weights are the powers of `z`.
+        let (weights, weight_sum_inverses) = if self.trace_is_interpolated() {
+            let weights = indeterminates
+                .iter()
+                .map(|&indeterminate| {
+                    let mut powers = vec![XFieldElement::ONE; num_rows];
+                    powers.par_chunks_mut(ROWS_PER_BLOCK).enumerate().for_each(
+                        |(block_index, powers)| {
+                            let first_exponent = u64::try_from(block_index * ROWS_PER_BLOCK)
+                                .expect(USIZE_TO_U64_ERR);
+                            let mut power = indeterminate.mod_pow_u64(first_exponent);
+                            for cell in powers {
+                                *cell = power;
+                                power *= indeterminate;
+                            }
+                        },
+                    );
+                    powers
+                })
+                .collect_vec();
+            (weights, vec![XFieldElement::ONE; indeterminates.len()])
+        } else {
+            let weights = indeterminates
+                .iter()
+                .map(|&indeterminate| {
+                    let domain_shift = domain.par_iter().map(|&d| indeterminate - d).collect();
+                    let domain_shift_inverses = XFieldElement::par_batch_inversion(domain_shift);
+                    domain
+                        .par_iter()
+                        .zip_eq(domain_shift_inverses)
+                        .map(|(&d, inv)| d * inv)
+                        .collect::<Vec<_>>()
+                })
+                .collect_vec();
+            let weight_sum_inverses = weights
+                .iter()
+                .map(|weights| weights.par_iter().copied().sum::<XFieldElement>().inverse())
+                .collect_vec();
+            (weights, weight_sum_inverses)
+        };
         let zerofier_evaluations = indeterminates
             .iter()
             .map(|&indeterminate| trace_domain.evaluate_zerofier(indeterminate))
@@ -401,11 +647,9 @@ where
                     .iter()
                     .zip_eq(numerators.chunks_exact_mut(num_columns))
                 {
-                    let mut numerator = XFieldElement::ZERO;
-                    for (&value, &weight) in column.iter().zip_eq(&weights[rows.clone()]) {
-                        numerator += value * weight;
-                    }
-                    numerators[column_index] = numerator;
+                    let mut sums = UnreducedProduct::ZERO;
+                    sums.add_products(column, &weights[rows.clone()]);
+                    numerators[column_index] = sums.reduce();
                 }
             }
             numerators
@@ -461,6 +705,10 @@ where
     }
 
     fn randomized_column_interpolant(&self, idx: usize) -> Polynomial<'static, Self::Field> {
+        assert!(
+            !self.trace_is_interpolated(),
+            "trace must not be interpolated"
+        );
         let trace_table = self.trace_table();
         let column_codeword = trace_table.column(idx);
         let trace_domain = self.domains().trace;
@@ -487,17 +735,14 @@ where
     /// # Panics
     ///
     /// Panics if the `idx` is larger than or equal to [`Self::NUM_COLUMNS`].
-    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'static, Self::Field> {
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'_, Self::Field> {
         // While possible to produce some randomizer for a too-large index, it
         // does not have any useful application and is almost certainly a logic
         // error.
         assert!(idx < Self::NUM_COLUMNS);
 
-        let mut rng = StdRng::from_seed(offset_rng_seed(self.trace_randomizer_seed(), idx));
-        let coefficients = (0..self.num_trace_randomizers_for_column(idx))
-            .map(|_| rng.random())
-            .collect();
-        Polynomial::new(coefficients)
+        let seed = self.trace_randomizer_seed();
+        trace_randomizer(seed, idx, self.num_trace_randomizers_for_column(idx))
     }
 
     fn trace_randomizer_seed(&self) -> <StdRng as SeedableRng>::Seed;
@@ -515,6 +760,22 @@ where
     /// section “Batch-Randomizer”.
     fn num_trace_randomizers_for_column(&self, _idx: usize) -> usize {
         self.num_trace_randomizers()
+    }
+
+    /// The largest degree of the trace polynomial of any column the AIR
+    /// constrains, derived from the actual number of trace randomizers of
+    /// every such column. Checks the premise of
+    /// [`Stark::max_constrained_trace_polynomial_degree`][bound], which
+    /// determines the length of the prover's quotient domain.
+    ///
+    /// [bound]: crate::stark::Stark::max_constrained_trace_polynomial_degree
+    fn max_constrained_trace_polynomial_degree(&self) -> usize {
+        let max_num_trace_randomizers = (0..Self::NUM_CONSTRAINED_COLUMNS)
+            .map(|idx| self.num_trace_randomizers_for_column(idx))
+            .max()
+            .unwrap_or(0);
+
+        (self.domains().trace.len() + max_num_trace_randomizers).saturating_sub(1)
     }
 
     /// Compute a Merkle tree of the FRI domain table. Every row gives one leaf
@@ -556,25 +817,31 @@ where
         profiler!(start "fetch trace randomizers");
         let randomizers = (0..Self::NUM_COLUMNS)
             .into_par_iter()
-            .map(|i| self.trace_randomizer_for_column(i))
+            .map(|i| self.trace_randomizer_for_column(i).into_owned())
             .collect::<Vec<_>>();
         profiler!(stop "fetch trace randomizers");
 
         // The trace table's columns are replaced by their interpolants'
-        // coefficients here and restored below.
+        // coefficients here, unless they have been already, and restored
+        // below.
         profiler!(start "interpolate" ("LDE"));
-        self.trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| intt(column.as_slice_mut().unwrap()));
+        let trace_was_interpolated = self.trace_is_interpolated();
+        self.interpolate_trace();
         profiler!(stop "interpolate");
 
         // The interpolants are polynomials in the trace domain's values.
         assert_eq!(BFieldElement::ONE, trace_domain.offset());
         let num_rows_u64 = u64::try_from(num_rows).unwrap();
-        let mut coset_table = ndarray_helper::par_zeros((num_rows, Self::NUM_COLUMNS).f());
+        // Every coset overwrites the entire table.
+        let mut coset_table = self.working_table().table;
         let mut all_digests = vec![Digest::default(); fri_domain.len()];
-        for coset_index in 0..num_cosets {
+
+        // The coset that is hashed last stays in the working table. The
+        // first coset of the FRI domain is also one of the cosets the
+        // quotient is computed on, which saves evaluating the columns there
+        // a second time.
+        let last_coset_index = 0;
+        for coset_index in (1..num_cosets).chain([last_coset_index]) {
             // The coset's points are `coset_offset · trace_generator^i`.
             let coset_offset =
                 fri_domain.offset() * fri_domain.generator().mod_pow(coset_index as u64);
@@ -605,7 +872,10 @@ where
             profiler!(stop "LDE");
 
             profiler!(start "hash rows" ("hash"));
-            let coset_digests = Self::hash_rows_of_column_major_table(coset_table.view());
+            // SAFETY: `evaluate_randomized_interpolant_into` initializes the
+            // column it is given, and it was just given every column.
+            let coset_table = unsafe { coset_table.view().assume_init() };
+            let coset_digests = Self::hash_rows_of_column_major_table(coset_table);
             all_digests
                 .par_iter_mut()
                 .skip(coset_index)
@@ -616,11 +886,18 @@ where
         }
 
         profiler!(start "restore trace" ("LDE"));
-        self.trace_table_mut()
-            .axis_iter_mut(COL_AXIS)
-            .into_par_iter()
-            .for_each(|mut column| ntt(column.as_slice_mut().unwrap()));
+        if !trace_was_interpolated {
+            self.restore_trace();
+        }
         profiler!(stop "restore trace");
+
+        // Computing the quotient needs a table like this, too.
+        let last_coset_offset =
+            fri_domain.offset() * fri_domain.generator().mod_pow(last_coset_index as u64);
+        self.keep_working_table(WorkingTable {
+            table: coset_table,
+            coset_offset: Some(last_coset_offset),
+        });
 
         all_digests
     }
@@ -678,8 +955,9 @@ where
         weights: Array1<XFieldElement>,
     ) -> Polynomial<'_, XFieldElement> {
         // The table is column-major, so the rows are summed block by block:
-        // within a block, every column's contiguous piece is read once.
-        const ROWS_PER_BLOCK: usize = 1 << 11;
+        // within a block, every column's contiguous piece is read once. A
+        // block's unreduced sums fit into the L2 cache.
+        const ROWS_PER_BLOCK: usize = 1 << 10;
 
         assert_eq!(Self::NUM_COLUMNS, weights.len());
 
@@ -692,16 +970,24 @@ where
             .for_each(|(block_index, sums)| {
                 let first_row = block_index * ROWS_PER_BLOCK;
                 let rows = first_row..first_row + sums.len();
+                let mut unreduced_sums = vec![UnreducedProduct::ZERO; sums.len()];
                 for (column, &weight) in trace_table.columns().into_iter().zip_eq(weights) {
                     let column = column.slice(s![rows.clone()]);
                     let column = column.as_slice().expect("columns are contiguous");
-                    for (sum, &value) in sums.iter_mut().zip(column) {
-                        *sum += value * weight;
-                    }
+                    UnreducedProduct::add_scaled(&mut unreduced_sums, column, weight);
+                }
+                for (sum, unreduced_sum) in sums.iter_mut().zip(unreduced_sums) {
+                    *sum = unreduced_sum.reduce();
                 }
             });
+        // Interpolation is linear: the weighted sum of the interpolants'
+        // coefficients is the interpolant of the weighted sum.
         let trace_domain = self.domains().trace;
-        let interpolant = trace_domain.par_interpolate(&weighted_sum_of_trace_columns);
+        let interpolant = if self.trace_is_interpolated() {
+            Polynomial::new(weighted_sum_of_trace_columns)
+        } else {
+            trace_domain.par_interpolate(&weighted_sum_of_trace_columns)
+        };
 
         // the weighted sum of the trace randomizers, coefficient by coefficient
         let randomizers = (0..Self::NUM_COLUMNS)
@@ -761,11 +1047,19 @@ where
             .map(Self::Field::from)
             .collect::<Vec<_>>();
 
-        // fast multi-point extrapolate every column
+        // fast multi-point evaluate or extrapolate every column, depending on
+        // whether it holds its interpolant's coefficients or its values
         let offset = domains.trace.offset();
         let trace_table = self.trace_table();
+        let trace_is_interpolated = self.trace_is_interpolated();
         let columns = trace_table.axis_iter(COL_AXIS).into_par_iter().map(|col| {
-            Polynomial::coset_extrapolate(offset, col.as_slice().unwrap(), &indeterminates)
+            let col = col.as_slice().unwrap();
+            if trace_is_interpolated {
+                // the copy is negligible compared to the evaluation
+                Polynomial::new(col.to_vec()).batch_evaluate(&indeterminates)
+            } else {
+                Polynomial::coset_extrapolate(offset, col, &indeterminates)
+            }
         });
 
         // add trace randomizers to their columns
@@ -776,10 +1070,11 @@ where
             .map(|&i| domains.trace.evaluate_zerofier(i))
             .collect::<Vec<_>>();
 
-        let trace_randomizers = (0..Self::NUM_COLUMNS)
-            .into_par_iter()
-            .map(|col_idx| self.trace_randomizer_for_column(col_idx))
-            .map(|trace_randomizer| trace_randomizer.batch_evaluate(&indeterminates));
+        let trace_randomizers = (0..Self::NUM_COLUMNS).into_par_iter().map(|col_idx| {
+            self.trace_randomizer_for_column(col_idx)
+                .into_owned()
+                .batch_evaluate(&indeterminates)
+        });
 
         let columns = columns
             .zip_eq(trace_randomizers)
@@ -877,6 +1172,12 @@ pub struct MasterMainTable {
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
 
     low_degree_extended_table: Option<Array2<BFieldElement>>,
+
+    /// See [`MasterTable::take_working_table`].
+    working_table: Option<WorkingTable<BFieldElement>>,
+
+    /// See [`MasterTable::trace_is_interpolated`].
+    trace_is_interpolated: bool,
 }
 
 /// The Master Auxiliary Table, as described in the
@@ -889,13 +1190,27 @@ pub struct MasterAuxTable {
     trace_table: Array2<XFieldElement>,
     trace_randomizer_seed: <StdRng as SeedableRng>::Seed,
 
+    /// The [trace randomizers][Self::trace_randomizer_for_column] of the batch
+    /// randomizer columns. Unlike those of any other column, they are long
+    /// (see [`Self::num_trace_randomizers_for_column`]), take a while to
+    /// generate, and are needed in several steps of proving.
+    batch_randomizer_trace_randomizers:
+        [OnceLock<Polynomial<'static, XFieldElement>>; NUM_BATCH_RANDOMIZERS],
+
     low_degree_extended_table: Option<Array2<XFieldElement>>,
+
+    /// See [`MasterTable::take_working_table`].
+    working_table: Option<WorkingTable<XFieldElement>>,
+
+    /// See [`MasterTable::trace_is_interpolated`].
+    trace_is_interpolated: bool,
 }
 
 impl MasterTable for MasterMainTable {
     type Field = BFieldElement;
     const NUM_COLUMNS: usize = air::table::NUM_MAIN_COLUMNS
         + crate::table::degree_lowering::DegreeLoweringMainColumn::COUNT;
+    const NUM_CONSTRAINED_COLUMNS: usize = Self::NUM_COLUMNS;
 
     fn domains(&self) -> ProverDomains {
         self.domains
@@ -907,6 +1222,14 @@ impl MasterTable for MasterMainTable {
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, BFieldElement> {
         self.trace_table.view_mut()
+    }
+
+    fn trace_is_interpolated(&self) -> bool {
+        self.trace_is_interpolated
+    }
+
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool) {
+        self.trace_is_interpolated = trace_is_interpolated;
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
@@ -930,6 +1253,14 @@ impl MasterTable for MasterMainTable {
 
     fn clear_cache(&mut self) {
         drop(self.low_degree_extended_table.take());
+    }
+
+    fn take_working_table(&mut self) -> Option<WorkingTable<BFieldElement>> {
+        self.working_table.take()
+    }
+
+    fn keep_working_table(&mut self, working_table: WorkingTable<BFieldElement>) {
+        self.working_table = Some(working_table);
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, BFieldElement>> {
@@ -958,6 +1289,9 @@ impl MasterTable for MasterAuxTable {
         + crate::table::degree_lowering::DegreeLoweringAuxColumn::COUNT
         + NUM_BATCH_RANDOMIZERS;
 
+    // the batch randomizers are not constrained
+    const NUM_CONSTRAINED_COLUMNS: usize = Self::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
+
     fn domains(&self) -> ProverDomains {
         self.domains
     }
@@ -968,6 +1302,14 @@ impl MasterTable for MasterAuxTable {
 
     fn trace_table_mut(&mut self) -> ArrayViewMut2<'_, XFieldElement> {
         self.trace_table.slice_mut(s![.., ..Self::NUM_COLUMNS])
+    }
+
+    fn trace_is_interpolated(&self) -> bool {
+        self.trace_is_interpolated
+    }
+
+    fn set_trace_is_interpolated(&mut self, trace_is_interpolated: bool) {
+        self.trace_is_interpolated = trace_is_interpolated;
     }
 
     fn quotient_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
@@ -990,6 +1332,14 @@ impl MasterTable for MasterAuxTable {
 
     fn clear_cache(&mut self) {
         drop(self.low_degree_extended_table.take());
+    }
+
+    fn take_working_table(&mut self) -> Option<WorkingTable<XFieldElement>> {
+        self.working_table.take()
+    }
+
+    fn keep_working_table(&mut self, working_table: WorkingTable<XFieldElement>) {
+        self.working_table = Some(working_table);
     }
 
     fn fri_domain_table(&self) -> Option<ArrayView2<'_, XFieldElement>> {
@@ -1018,6 +1368,100 @@ impl MasterTable for MasterAuxTable {
             self.num_trace_randomizers
         }
     }
+
+    fn trace_randomizer_for_column(&self, idx: usize) -> Polynomial<'_, XFieldElement> {
+        assert!(idx < Self::NUM_COLUMNS);
+
+        let seed = self.trace_randomizer_seed;
+        let num_trace_randomizers = self.num_trace_randomizers_for_column(idx);
+        let Some(batch_randomizer_idx) = idx.checked_sub(Self::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS)
+        else {
+            return trace_randomizer(seed, idx, num_trace_randomizers);
+        };
+        let randomizer = self.batch_randomizer_trace_randomizers[batch_randomizer_idx]
+            .get_or_init(|| trace_randomizer(seed, idx, num_trace_randomizers));
+
+        Polynomial::new_borrowed(randomizer.coefficients())
+    }
+}
+
+/// The trace randomizer for the column with the given index. See also
+/// [`MasterTable::trace_randomizer_for_column`].
+fn trace_randomizer<FF>(
+    seed: <StdRng as SeedableRng>::Seed,
+    column_idx: usize,
+    num_trace_randomizers: usize,
+) -> Polynomial<'static, FF>
+where
+    FF: FiniteField,
+    StandardUniform: Distribution<FF>,
+{
+    let mut rng = StdRng::from_seed(offset_rng_seed(seed, column_idx));
+    let coefficients = (0..num_trace_randomizers).map(|_| rng.random()).collect();
+    Polynomial::new(coefficients)
+}
+
+/// The working memory of the code paths that do not cache the low-degree
+/// extended trace. See [`MasterTable::take_working_table`].
+#[derive(Debug)]
+pub(crate) struct WorkingTable<FF> {
+    /// A column-major table of the trace table's dimensions.
+    pub table: Array2<MaybeUninit<FF>>,
+
+    /// If set, every element of the table is initialized: column `i` holds
+    /// the values of the trace-randomized column `i` on the coset of the trace
+    /// domain that has this offset. Else, the table's content is arbitrary.
+    pub coset_offset: Option<BFieldElement>,
+}
+
+// Not derived: `MaybeUninit<FF>` is `Clone` only if `FF` is `Copy`.
+impl<FF: Copy> Clone for WorkingTable<FF> {
+    fn clone(&self) -> Self {
+        Self {
+            table: self.table.clone(),
+            coset_offset: self.coset_offset,
+        }
+    }
+}
+
+impl<FF> WorkingTable<FF> {
+    /// A table of the given dimensions with arbitrary content.
+    pub fn new(num_rows: usize, num_columns: usize) -> Self {
+        Self {
+            table: ndarray_helper::uninitialized_column_major_table(num_rows, num_columns),
+            coset_offset: None,
+        }
+    }
+}
+
+/// Split a master table into its constituent tables.
+///
+/// The returned tables are in the order of [`TableId`], which means that the
+/// table with a given ID is at index `id as usize`. Columns that belong to none
+/// of the tables, like those of the degree-lowering table, are not part of any
+/// returned view.
+///
+/// The column layout is taken from `column_indices_for_table`, making that
+/// function the only place that relates tables to columns.
+///
+/// # Panics
+///
+/// Panics if the tables' columns, taken in the order of [`TableId`], are not
+/// contiguous or do not start at column 0.
+fn split_into_tables<FF: Debug>(
+    master_table: ArrayViewMut2<'_, FF>,
+    column_indices_for_table: fn(TableId) -> Range<usize>,
+) -> [ArrayViewMut2<'_, FF>; TableId::COUNT] {
+    let mut boundaries = vec![0];
+    for id in TableId::iter() {
+        let Range { start, end } = column_indices_for_table(id);
+        assert_eq!(boundaries.last(), Some(&start), "{id} table is misplaced");
+        boundaries.push(end);
+    }
+
+    horizontal_multi_slice_mut(master_table, &boundaries)
+        .try_into()
+        .unwrap()
 }
 
 type PadFunction = fn(ArrayViewMut2<BFieldElement>, usize);
@@ -1051,55 +1495,60 @@ impl MasterMainTable {
             trace_table,
             trace_randomizer_seed,
             low_degree_extended_table: None,
+            working_table: None,
+            trace_is_interpolated: false,
         };
 
-        // memory-like tables must be filled in before clock jump differences
-        // are known, hence the break from the usual order
-        let clk_jump_diffs_op_stack = {
-            profiler!(start "op stack table");
-            let filled = OpStackTable::fill(master_main_table.table_mut(TableId::OpStack), aet, ());
-            profiler!(stop "op stack table");
-            filled
-        };
-        let clk_jump_diffs_ram = {
-            profiler!(start "ram table");
-            let filled = RamTable::fill(master_main_table.table_mut(TableId::Ram), aet, ());
-            profiler!(stop "ram table");
-            filled
-        };
-        let clk_jump_diffs_jump_stack = {
-            profiler!(start "jump stack table");
-            let filled =
-                JumpStackTable::fill(master_main_table.table_mut(TableId::JumpStack), aet, ());
-            profiler!(stop "jump stack table");
-            filled
-        };
+        let mut tables = split_into_tables(
+            master_main_table.trace_table.view_mut(),
+            Self::column_indices_for_table,
+        )
+        .map(Some);
+        let mut table = |id: TableId| tables[id as usize].take().unwrap();
+        let program_table = table(TableId::Program);
+        let processor_table = table(TableId::Processor);
+        let op_stack_table = table(TableId::OpStack);
+        let ram_table = table(TableId::Ram);
+        let jump_stack_table = table(TableId::JumpStack);
+        let hash_table = table(TableId::Hash);
+        let cascade_table = table(TableId::Cascade);
+        let lookup_table = table(TableId::Lookup);
+        let u32_table = table(TableId::U32);
 
-        let clk_jump_diffs = ClkJumpDiffs {
-            op_stack: clk_jump_diffs_op_stack,
-            ram: clk_jump_diffs_ram,
-            jump_stack: clk_jump_diffs_jump_stack,
-        };
-        let processor_table = master_main_table.table_mut(TableId::Processor);
-        profiler!(start "processor table");
-        ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
-        profiler!(stop "processor table");
+        // The tables are independent of each other, with one exception: the
+        // processor table needs the clock jump differences of the memory-like
+        // tables. Those are known as soon as the memory-like tables' rows are
+        // sorted, which is early. Hence, all tables are filled concurrently,
+        // with the processor table starting a little later. The tables do not
+        // show up in the profile individually: the profiler is local to this
+        // thread, and the tables are filled on threads of the pool.
+        rayon::scope(|scope| {
+            scope.spawn(|_| ProgramTable::fill(program_table, aet, ()));
+            scope.spawn(|_| HashTable::fill(hash_table, aet, ()));
+            scope.spawn(|_| CascadeTable::fill(cascade_table, aet, ()));
+            scope.spawn(|_| LookupTable::fill(lookup_table, aet, ()));
+            scope.spawn(|_| U32Table::fill(u32_table, aet, ()));
 
-        profiler!(start "program table");
-        ProgramTable::fill(master_main_table.table_mut(TableId::Program), aet, ());
-        profiler!(stop "program table");
-        profiler!(start "hash table");
-        HashTable::fill(master_main_table.table_mut(TableId::Hash), aet, ());
-        profiler!(stop "hash table");
-        profiler!(start "cascade table");
-        CascadeTable::fill(master_main_table.table_mut(TableId::Cascade), aet, ());
-        profiler!(stop "cascade table");
-        profiler!(start "lookup table");
-        LookupTable::fill(master_main_table.table_mut(TableId::Lookup), aet, ());
-        profiler!(stop "lookup table");
-        profiler!(start "u32 table");
-        U32Table::fill(master_main_table.table_mut(TableId::U32), aet, ());
-        profiler!(stop "u32 table");
+            let ((op_stack, jump_stack), (ram, fill_remaining_ram_table_columns)) = rayon::join(
+                || {
+                    rayon::join(
+                        || OpStackTable::fill(op_stack_table, aet, ()),
+                        || JumpStackTable::fill(jump_stack_table, aet, ()),
+                    )
+                },
+                || crate::table::ram::fill_in_two_steps(ram_table, aet),
+            );
+
+            // the remaining columns of the RAM table take the longest
+            scope.spawn(|_| fill_remaining_ram_table_columns());
+
+            let clk_jump_diffs = ClkJumpDiffs {
+                op_stack,
+                ram,
+                jump_stack,
+            };
+            ProcessorTable::fill(processor_table, aet, clk_jump_diffs);
+        });
 
         // Filling the degree-lowering table only makes sense after padding has
         // happened. Hence, this table is omitted here.
@@ -1115,24 +1564,14 @@ impl MasterMainTable {
     /// efficient over the used base field when the number of rows is a power of
     /// two.
     pub fn pad(&mut self) {
+        assert!(
+            !self.trace_is_interpolated,
+            "trace must not be interpolated"
+        );
+
         let table_lengths = self.all_table_lengths();
 
-        let tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
-            self.trace_table.view_mut(),
-            &partial_sums(&[
-                ProgramMainColumn::COUNT,
-                ProcessorMainColumn::COUNT,
-                OpStackMainColumn::COUNT,
-                RamMainColumn::COUNT,
-                JumpStackMainColumn::COUNT,
-                HashMainColumn::COUNT,
-                CascadeMainColumn::COUNT,
-                LookupMainColumn::COUNT,
-                U32MainColumn::COUNT,
-            ]),
-        )
-        .try_into()
-        .unwrap();
+        let tables = split_into_tables(self.trace_table.view_mut(), Self::column_indices_for_table);
 
         profiler!(start "pad original tables");
         let all_pad_functions: [PadFunction; TableId::COUNT] = [
@@ -1181,6 +1620,11 @@ impl MasterMainTable {
     /// specific to that table, but always involves adding some number of
     /// columns.
     pub fn extend(&self, challenges: &Challenges) -> MasterAuxTable {
+        assert!(
+            !self.trace_is_interpolated,
+            "trace must not be interpolated"
+        );
+
         // a seed that hasn't been used for any main table trace randomizer
         let aux_table_trace_randomizer_seed =
             offset_rng_seed(self.trace_randomizer_seed(), Self::NUM_COLUMNS);
@@ -1188,16 +1632,8 @@ impl MasterMainTable {
         profiler!(start "initialize master table");
         // column majority (“`F`”) for contiguous column slices
         let aux_trace_table_shape = (self.trace_table().nrows(), MasterAuxTable::NUM_COLUMNS).f();
-        let mut aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
-
-        // a seed that also won't be used for any aux table trace randomizer
-        let batch_randomizer_seed =
-            offset_rng_seed(aux_table_trace_randomizer_seed, MasterAuxTable::NUM_COLUMNS);
-        let mut rng = StdRng::from_seed(batch_randomizer_seed);
+        let aux_trace_table = ndarray_helper::par_zeros(aux_trace_table_shape);
         let randomizers_start = MasterAuxTable::NUM_COLUMNS - NUM_BATCH_RANDOMIZERS;
-        aux_trace_table
-            .slice_mut(s![.., randomizers_start..])
-            .mapv_inplace(|_| rng.random());
         profiler!(stop "initialize master table");
 
         let mut master_aux_table = MasterAuxTable {
@@ -1205,39 +1641,52 @@ impl MasterMainTable {
             domains: self.domains,
             trace_table: aux_trace_table,
             trace_randomizer_seed: aux_table_trace_randomizer_seed,
+            batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
+            working_table: None,
+            trace_is_interpolated: false,
         };
 
         profiler!(start "slice master table");
-        let aux_trace_table = master_aux_table
+        let (aux_trace_table, mut batch_randomizers) = master_aux_table
             .trace_table
-            .slice_mut(s![.., ..randomizers_start]);
-        let auxiliary_tables: [_; TableId::COUNT] = horizontal_multi_slice_mut(
-            aux_trace_table,
-            &partial_sums(&[
-                ProgramAuxColumn::COUNT,
-                ProcessorAuxColumn::COUNT,
-                OpStackAuxColumn::COUNT,
-                RamAuxColumn::COUNT,
-                JumpStackAuxColumn::COUNT,
-                HashAuxColumn::COUNT,
-                CascadeAuxColumn::COUNT,
-                LookupAuxColumn::COUNT,
-                U32AuxColumn::COUNT,
-            ]),
-        )
-        .try_into()
-        .unwrap();
+            .view_mut()
+            .split_at(COL_AXIS, randomizers_start);
+        let auxiliary_tables =
+            split_into_tables(aux_trace_table, MasterAuxTable::column_indices_for_table);
         profiler!(stop "slice master table");
 
+        // Both the batch randomizers and their trace randomizers are long
+        // sequences of random elements, the generation of which is inherently
+        // sequential. Generating them alongside the tables' extension hides
+        // the latency.
         profiler!(start "all tables");
-        Self::all_extend_functions()
-            .into_par_iter()
-            .zip_eq(self.main_tables_for_extending())
-            .zip_eq(auxiliary_tables)
-            .for_each(|((extend, main_table), aux_table)| {
-                extend(main_table, aux_table, challenges)
+        let trace_len = self.domains.trace.len();
+        let batch_randomizer_trace_randomizers =
+            &master_aux_table.batch_randomizer_trace_randomizers;
+        rayon::scope(|scope| {
+            scope.spawn(|_| {
+                // a seed that won't be used for any aux table trace randomizer
+                let batch_randomizer_seed =
+                    offset_rng_seed(aux_table_trace_randomizer_seed, MasterAuxTable::NUM_COLUMNS);
+                let mut rng = StdRng::from_seed(batch_randomizer_seed);
+                batch_randomizers.mapv_inplace(|_| rng.random());
             });
+            for (idx, cell) in (randomizers_start..).zip(batch_randomizer_trace_randomizers) {
+                scope.spawn(move |_| {
+                    let seed = aux_table_trace_randomizer_seed;
+                    cell.get_or_init(|| trace_randomizer(seed, idx, trace_len));
+                });
+            }
+
+            Self::all_extend_functions()
+                .into_par_iter()
+                .zip_eq(self.main_tables_for_extending())
+                .zip_eq(auxiliary_tables)
+                .for_each(|((extend, main_table), aux_table)| {
+                    extend(main_table, aux_table, challenges)
+                });
+        });
         profiler!(stop "all tables");
 
         profiler!(start "fill degree lowering table");
@@ -1294,12 +1743,20 @@ impl MasterMainTable {
     }
 
     /// A view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table(&self, table_id: TableId) -> ArrayView2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, BFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
@@ -1338,12 +1795,20 @@ impl MasterAuxTable {
     }
 
     /// A view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table(&self, table_id: TableId) -> ArrayView2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice(s![.., column_indices])
     }
 
     /// A mutable view of the specified table, without any randomizers.
+    ///
+    /// The view holds the table's trace only as long as the prover has not
+    /// replaced the trace by the coefficients of its interpolants, which it
+    /// does in place once it no longer needs the trace itself.
     pub fn table_mut(&mut self, table_id: TableId) -> ArrayViewMut2<'_, XFieldElement> {
         let column_indices = Self::column_indices_for_table(table_id);
         self.trace_table.slice_mut(s![.., column_indices])
@@ -1466,10 +1931,6 @@ pub fn all_quotients_combined(
     );
     assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
 
-    let init_section_end = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
-    let cons_section_end = init_section_end + MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
-    let tran_section_end = cons_section_end + MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
-
     profiler!(start "zerofier inverse");
     let initial_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
     let consistency_zerofier_inverse =
@@ -1512,63 +1973,219 @@ pub fn all_quotients_combined(
                 let next_row_main = rows_main.row(i + unit_distance);
                 let next_row_aux = rows_aux.row(i + unit_distance);
 
-                let initial_constraint_values = MasterAuxTable::evaluate_initial_constraints(
-                    current_row_main,
-                    current_row_aux,
+                *quotient_value = combined_quotient_value(
+                    [current_row_main, next_row_main],
+                    [current_row_aux, next_row_aux],
                     challenges,
+                    quotient_weights,
+                    [
+                        initial_zerofier_inverse[row_index],
+                        consistency_zerofier_inverse[row_index],
+                        transition_zerofier_inverse[row_index],
+                        terminal_zerofier_inverse[row_index],
+                    ],
                 );
-                let initial_inner_product = inner_product(
-                    &initial_constraint_values,
-                    &quotient_weights[..init_section_end],
-                    MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
-                );
-                let mut value = initial_inner_product * initial_zerofier_inverse[row_index];
-
-                let consistency_constraint_values =
-                    MasterAuxTable::evaluate_consistency_constraints(
-                        current_row_main,
-                        current_row_aux,
-                        challenges,
-                    );
-                let consistency_inner_product = inner_product(
-                    &consistency_constraint_values,
-                    &quotient_weights[init_section_end..cons_section_end],
-                    MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
-                );
-                value += consistency_inner_product * consistency_zerofier_inverse[row_index];
-
-                let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
-                    current_row_main,
-                    current_row_aux,
-                    next_row_main,
-                    next_row_aux,
-                    challenges,
-                );
-                let transition_inner_product = inner_product(
-                    &transition_constraint_values,
-                    &quotient_weights[cons_section_end..tran_section_end],
-                    MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
-                );
-                value += transition_inner_product * transition_zerofier_inverse[row_index];
-
-                let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
-                    current_row_main,
-                    current_row_aux,
-                    challenges,
-                );
-                let terminal_inner_product = inner_product(
-                    &terminal_constraint_values,
-                    &quotient_weights[tran_section_end..],
-                    MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
-                );
-                value += terminal_inner_product * terminal_zerofier_inverse[row_index];
-
-                *quotient_value = value;
             }
         });
     profiler!(stop "evaluate AIR, compute quotient codeword");
 
     quotient_codeword
+}
+
+/// The value of the quotient codeword – the randomized linear combination of
+/// all individual quotients – in one point, given the main and auxiliary rows
+/// in that point (“current”) and in the point's successor (“next”).
+///
+/// The inverses of the zerofiers in that point are expected in the order
+/// initial, consistency, transition, terminal.
+#[inline(always)]
+fn combined_quotient_value(
+    [current_row_main, next_row_main]: [ArrayView1<BFieldElement>; 2],
+    [current_row_aux, next_row_aux]: [ArrayView1<XFieldElement>; 2],
+    challenges: &Challenges,
+    quotient_weights: &[XFieldElement],
+    [
+        initial_zerofier_inverse,
+        consistency_zerofier_inverse,
+        transition_zerofier_inverse,
+        terminal_zerofier_inverse,
+    ]: [BFieldElement; 4],
+) -> XFieldElement {
+    let init_section_end = MasterAuxTable::NUM_INITIAL_CONSTRAINTS;
+    let cons_section_end = init_section_end + MasterAuxTable::NUM_CONSISTENCY_CONSTRAINTS;
+    let tran_section_end = cons_section_end + MasterAuxTable::NUM_TRANSITION_CONSTRAINTS;
+
+    let initial_constraint_values =
+        MasterAuxTable::evaluate_initial_constraints(current_row_main, current_row_aux, challenges);
+    let initial_inner_product = inner_product(
+        &initial_constraint_values,
+        &quotient_weights[..init_section_end],
+        MasterAuxTable::NUM_INITIAL_MAIN_CONSTRAINTS,
+    );
+    let mut value = initial_inner_product * initial_zerofier_inverse;
+
+    let consistency_constraint_values = MasterAuxTable::evaluate_consistency_constraints(
+        current_row_main,
+        current_row_aux,
+        challenges,
+    );
+    let consistency_inner_product = inner_product(
+        &consistency_constraint_values,
+        &quotient_weights[init_section_end..cons_section_end],
+        MasterAuxTable::NUM_CONSISTENCY_MAIN_CONSTRAINTS,
+    );
+    value += consistency_inner_product * consistency_zerofier_inverse;
+
+    let transition_constraint_values = MasterAuxTable::evaluate_transition_constraints(
+        current_row_main,
+        current_row_aux,
+        next_row_main,
+        next_row_aux,
+        challenges,
+    );
+    let transition_inner_product = inner_product(
+        &transition_constraint_values,
+        &quotient_weights[cons_section_end..tran_section_end],
+        MasterAuxTable::NUM_TRANSITION_MAIN_CONSTRAINTS,
+    );
+    value += transition_inner_product * transition_zerofier_inverse;
+
+    let terminal_constraint_values = MasterAuxTable::evaluate_terminal_constraints(
+        current_row_main,
+        current_row_aux,
+        challenges,
+    );
+    let terminal_inner_product = inner_product(
+        &terminal_constraint_values,
+        &quotient_weights[tran_section_end..],
+        MasterAuxTable::NUM_TERMINAL_MAIN_CONSTRAINTS,
+    );
+    value += terminal_inner_product * terminal_zerofier_inverse;
+
+    value
+}
+
+/// The values of the [quotient codeword](all_quotients_combined) in the given
+/// points, which can be arbitrary as long as none of them is in the trace
+/// domain.
+///
+/// Row `i` of the “current” tables holds the values of the main and
+/// auxiliary columns in point `i`, and row `i` of the “next” tables their
+/// values in the successor of point `i`, that is, in point `i` times the trace
+/// domain's generator. For contiguous rows, the tables should be row-major.
+pub(crate) fn all_quotients_combined_in_points(
+    points: &[BFieldElement],
+    [current_rows_main, next_rows_main]: [ArrayView2<BFieldElement>; 2],
+    [current_rows_aux, next_rows_aux]: [ArrayView2<XFieldElement>; 2],
+    trace_domain: ArithmeticDomain,
+    challenges: &Challenges,
+    quotient_weights: &[XFieldElement],
+) -> Vec<XFieldElement> {
+    assert_eq!(MasterAuxTable::NUM_CONSTRAINTS, quotient_weights.len());
+    for num_rows in [
+        current_rows_main.nrows(),
+        next_rows_main.nrows(),
+        current_rows_aux.nrows(),
+        next_rows_aux.nrows(),
+    ] {
+        assert_eq!(points.len(), num_rows);
+    }
+
+    // The zerofiers are, in this order: `x - 1` for the first row, `x^n - 1`
+    // for all rows, and `x - ω^(-1)` for the last row. The zerofier for all
+    // rows but the last is the quotient of the latter two.
+    let trace_domain_len = u64::try_from(trace_domain.len()).expect(USIZE_TO_U64_ERR);
+    let last_trace_domain_value = trace_domain.generator().inverse();
+    let zerofiers = points
+        .iter()
+        .flat_map(|&x| {
+            let first_row = x - BFieldElement::ONE;
+            let all_rows = x.mod_pow(trace_domain_len) - BFieldElement::ONE;
+            let last_row = x - last_trace_domain_value;
+            [first_row, all_rows, last_row]
+        })
+        .collect();
+    let zerofier_inverses = BFieldElement::batch_inversion(zerofiers);
+
+    // few points: don't spread them too thin
+    points
+        .par_iter()
+        .enumerate()
+        .with_min_len(4)
+        .map(|(i, &x)| {
+            let [first_row_inverse, all_rows_inverse, last_row_inverse] = zerofier_inverses
+                [3 * i..3 * i + 3]
+                .try_into()
+                .expect("three zerofiers per point");
+            let transition_zerofier_inverse = (x - last_trace_domain_value) * all_rows_inverse;
+            combined_quotient_value(
+                [current_rows_main.row(i), next_rows_main.row(i)],
+                [current_rows_aux.row(i), next_rows_aux.row(i)],
+                challenges,
+                quotient_weights,
+                [
+                    first_row_inverse,
+                    all_rows_inverse,
+                    transition_zerofier_inverse,
+                    last_row_inverse,
+                ],
+            )
+        })
+        .collect()
+}
+
+/// The values of the randomized interpolant `interpolant + zerofier ·
+/// randomizer` on the given domain, which is (much) shorter than the
+/// interpolant has coefficients.
+///
+/// Since `x^len` is the same for all `len`-many points `x` of the domain, the
+/// polynomial is first reduced modulo `x^len - offset^len`, which takes one
+/// multiplication per coefficient. The remainder is then evaluated as usual.
+///
+/// The trace zerofier must be constant on the domain, and `zerofier` must be
+/// that constant; compare [`evaluate_randomized_interpolant_into`].
+pub(crate) fn evaluate_randomized_interpolant_on_short_domain<FF>(
+    interpolant: &[FF],
+    randomizer: &Polynomial<FF>,
+    zerofier: BFieldElement,
+    domain: ArithmeticDomain,
+) -> Vec<FF>
+where
+    FF: FiniteField
+        + MulAssign<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + From<BFieldElement>
+        + 'static,
+{
+    let len = domain.len();
+    let offset_to_the_len = domain
+        .offset()
+        .mod_pow(u64::try_from(len).expect(USIZE_TO_U64_ERR));
+
+    // Horner's rule, for all `len`-many coefficients of the remainder at once
+    let reduce = |coefficients: &[FF], remainder: &mut [FF]| {
+        for chunk in coefficients.chunks(len).rev() {
+            for cell in remainder.iter_mut() {
+                *cell *= offset_to_the_len;
+            }
+            for (cell, &coefficient) in remainder.iter_mut().zip(chunk) {
+                *cell += coefficient;
+            }
+        }
+    };
+
+    let mut remainder = vec![FF::ZERO; len];
+    reduce(randomizer.coefficients(), &mut remainder);
+    for cell in &mut remainder {
+        *cell *= zerofier;
+    }
+    let mut interpolant_remainder = vec![FF::ZERO; len];
+    reduce(interpolant, &mut interpolant_remainder);
+    for (cell, interpolant_cell) in remainder.iter_mut().zip(interpolant_remainder) {
+        *cell += interpolant_cell;
+    }
+
+    domain.evaluate(&Polynomial::new(remainder))
 }
 
 /// Evaluate the randomized interpolant `interpolant + zerofier · randomizer` on
@@ -1579,46 +2196,38 @@ pub fn all_quotients_combined(
 /// also [`ArithmeticDomain::randomized_interpolant`].
 ///
 /// The randomizer, whose degree is small, is added to the interpolant's
-/// scaled coefficients before the (single, in-place) NTT, which avoids
-/// evaluating it separately.
+/// coefficients before the (single) NTT, which avoids evaluating it
+/// separately. Scaling the coefficients, which is what moves the evaluation
+/// to the domain's coset, is part of that transform.
+///
+/// Every element of `codeword` is written to; whatever it contained before is
+/// irrelevant. The initialized codeword is returned.
 ///
 /// # Panics
 ///
-/// Panics if the codeword's length differs from the domain's, or if the
-/// interpolant or the randomizer has more coefficients than the codeword is
-/// long.
-pub(crate) fn evaluate_randomized_interpolant_into<FF>(
+/// Panics if the lengths of the domain, the interpolant, and the codeword
+/// are not all the same, or if the randomizer has more coefficients than
+/// that.
+pub(crate) fn evaluate_randomized_interpolant_into<'c, FF>(
     interpolant: &[FF],
     randomizer: &Polynomial<FF>,
     zerofier: BFieldElement,
     domain: ArithmeticDomain,
-    codeword: &mut [FF],
-) where
+    codeword: &'c mut [MaybeUninit<FF>],
+) -> &'c mut [FF]
+where
     FF: FiniteField + MulAssign<BFieldElement> + Mul<BFieldElement, Output = FF>,
 {
     let randomizer = randomizer.coefficients();
     assert_eq!(domain.len(), codeword.len());
-    assert!(interpolant.len() <= codeword.len());
+    assert_eq!(interpolant.len(), codeword.len());
     assert!(randomizer.len() <= codeword.len());
 
-    // Evaluating `p(x)` on the coset `offset·⟨ω⟩` is evaluating `p(offset·x)`
-    // on `⟨ω⟩`, whose coefficients are `p`'s, scaled by powers of the offset.
-    let offset = domain.offset();
-    let (scaled_interpolant, zero_padding) = codeword.split_at_mut(interpolant.len());
-    let mut power = BFieldElement::ONE;
-    for (cell, &coefficient) in scaled_interpolant.iter_mut().zip(interpolant) {
-        *cell = coefficient * power;
-        power *= offset;
-    }
-    zero_padding.fill(FF::ZERO);
+    let scaled_randomizer = randomizer.iter().map(|&r| r * zerofier).collect_vec();
+    coset_ntt_into(interpolant, &scaled_randomizer, domain.offset(), codeword);
 
-    let mut power = zerofier;
-    for (cell, &coefficient) in codeword.iter_mut().zip(randomizer) {
-        *cell += coefficient * power;
-        power *= offset;
-    }
-
-    ntt(codeword);
+    // SAFETY: `coset_ntt_into` initializes every element.
+    unsafe { &mut *(std::ptr::from_mut(codeword) as *mut [FF]) }
 }
 
 /// The inner product `Σ values[i] · weights[i]`, where the first
@@ -1637,64 +2246,140 @@ fn inner_product(
     let (base_values, ext_values) = values.split_at(num_base_values);
     let (base_weights, ext_weights) = weights.split_at(num_base_values);
 
-    // the coefficients of the product before reduction modulo the extension
-    // field's defining polynomial x^3 - x + 1
-    let mut sums = [UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1];
-    for (value, weight) in base_values.iter().zip(base_weights) {
+    let mut sums = UnreducedProduct::ZERO;
+    for (value, &weight) in base_values.iter().zip(base_weights) {
         debug_assert!(value.unlift().is_some());
-        let value = value.coefficients[0];
-        for (sum, &w) in sums.iter_mut().zip(&weight.coefficients) {
+        sums.add_base_product(value.coefficients[0], weight);
+    }
+    sums.add_products(ext_values, ext_weights);
+
+    sums.reduce()
+}
+
+/// A sum of products of field elements with [`XFieldElement`]s, where neither
+/// the products of the coefficients nor the product polynomials are reduced
+/// individually: these are the coefficients of the sum of the products before
+/// reduction modulo the extension field's defining polynomial x^3 - x + 1.
+#[derive(Debug, Copy, Clone)]
+struct UnreducedProduct([UnreducedSum; 2 * EXTENSION_DEGREE - 1]);
+
+impl UnreducedProduct {
+    const ZERO: Self = Self([UnreducedSum::ZERO; 2 * EXTENSION_DEGREE - 1]);
+
+    #[inline(always)]
+    fn add_base_product(&mut self, value: BFieldElement, weight: XFieldElement) {
+        for (sum, &w) in self.0.iter_mut().zip(&weight.coefficients) {
             sum.add_product(value, w);
         }
     }
-    for (value, weight) in ext_values.iter().zip(ext_weights) {
+
+    #[inline(always)]
+    fn add_extension_product(&mut self, value: XFieldElement, weight: XFieldElement) {
         for (i, &v) in value.coefficients.iter().enumerate() {
             for (j, &w) in weight.coefficients.iter().enumerate() {
-                sums[i + j].add_product(v, w);
+                self.0[i + j].add_product(v, w);
             }
         }
     }
 
-    // x^3 = x - 1 and x^4 = x^2 - x
-    let [s0, s1, s2, s3, s4] = sums.map(UnreducedSum::reduce);
-    XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+    /// Add `Σ values[i] · weights[i]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the numbers of values and weights differ.
+    #[inline]
+    fn add_products<FF: BfeSlice>(&mut self, values: &[FF], weights: &[XFieldElement]) {
+        assert_eq!(values.len(), weights.len());
+        let limbs = FF::bfe_slice(values);
+        if size_of::<FF>() == size_of::<BFieldElement>() {
+            for (&value, &weight) in limbs.iter().zip(weights) {
+                self.add_base_product(value, weight);
+            }
+        } else {
+            let (values, []) = limbs.as_chunks::<EXTENSION_DEGREE>() else {
+                unreachable!("field elements are base or extension field elements");
+            };
+            for (&value, &weight) in values.iter().zip(weights) {
+                self.add_extension_product(XFieldElement::new(value), weight);
+            }
+        }
+    }
+
+    /// Add `values[i] · weight` to `sums[i]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the numbers of sums and values differ.
+    #[inline]
+    fn add_scaled<FF: BfeSlice>(sums: &mut [Self], values: &[FF], weight: XFieldElement) {
+        assert_eq!(sums.len(), values.len());
+        let limbs = FF::bfe_slice(values);
+        if size_of::<FF>() == size_of::<BFieldElement>() {
+            for (sum, &value) in sums.iter_mut().zip(limbs) {
+                sum.add_base_product(value, weight);
+            }
+        } else {
+            let (values, []) = limbs.as_chunks::<EXTENSION_DEGREE>() else {
+                unreachable!("field elements are base or extension field elements");
+            };
+            for (sum, &value) in sums.iter_mut().zip(values) {
+                sum.add_extension_product(XFieldElement::new(value), weight);
+            }
+        }
+    }
+
+    /// The reduced sum. The number of summands must be smaller than 2^29.
+    #[inline(always)]
+    fn reduce(self) -> XFieldElement {
+        // x^3 = x - 1 and x^4 = x^2 - x
+        let [s0, s1, s2, s3, s4] = self.0.map(UnreducedSum::reduce);
+        XFieldElement::new([s0 - s3, s1 + s3 - s4, s2 + s4])
+    }
 }
 
 /// A sum of products of [`BFieldElement`]s, where the products are not reduced
 /// individually. Since the elements are in Montgomery representation, a single
 /// Montgomery reduction of the sum gives the reduced sum of the products.
+///
+/// The sum is `carries · 2^128 + low`.
 #[derive(Debug, Copy, Clone)]
-struct UnreducedSum(u128);
+struct UnreducedSum {
+    low: u128,
+    carries: u64,
+}
 
 impl UnreducedSum {
-    const ZERO: Self = Self(0);
+    const ZERO: Self = Self { low: 0, carries: 0 };
 
     /// The Montgomery reduction requires its input to be smaller than this.
     const P_TIMES_2_POW_64: u128 = (BFieldElement::P as u128) << 64;
 
-    /// Equals 2^128 - p·2^64. Adding it after the sum wrapped around 2^128
-    /// keeps the sum's residue modulo p intact.
-    const WRAP_AROUND_CORRECTION: u128 = (1 << 96) - (1 << 64);
+    /// The Montgomery reduction of 2^128, i.e., 2^64 mod p.
+    const REDUCED_CARRY: u64 = u32::MAX as u64;
 
     #[inline(always)]
     fn add_product(&mut self, a: BFieldElement, b: BFieldElement) {
         let product = u128::from(a.raw_u64()) * u128::from(b.raw_u64());
-        let (sum, wrapped_around) = self.0.overflowing_add(product);
-
-        // After a wrap-around, the sum is smaller than the product, which is at
-        // most (p-1)^2 = 2^128 - 2^97 + 2^64. Adding the correction can't
-        // overflow.
-        self.0 = sum + u128::from(wrapped_around) * Self::WRAP_AROUND_CORRECTION;
+        let (low, carry) = self.low.overflowing_add(product);
+        self.low = low;
+        self.carries += u64::from(carry);
     }
 
+    /// The reduced sum. The number of summands must be smaller than 2^31.
     #[inline(always)]
     fn reduce(self) -> BFieldElement {
-        let sum = if self.0 >= Self::P_TIMES_2_POW_64 {
-            self.0 - Self::P_TIMES_2_POW_64
+        let low = if self.low >= Self::P_TIMES_2_POW_64 {
+            self.low - Self::P_TIMES_2_POW_64
         } else {
-            self.0
+            self.low
         };
-        BFieldElement::from_raw_u64(BFieldElement::montyred(sum))
+        let low = BFieldElement::from_raw_u64(BFieldElement::montyred(low));
+
+        // fewer than 2^31 carries: the product is smaller than p
+        debug_assert!(self.carries < 1 << 31);
+        let carries = BFieldElement::from_raw_u64(self.carries * Self::REDUCED_CARRY);
+
+        low + carries
     }
 }
 
@@ -1729,7 +2414,7 @@ fn gather_rows<FF: FiniteField>(
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
+pub(crate) mod tests {
     use fs_err as fs;
     use std::fmt::Debug;
     use std::ops::Add;
@@ -1740,8 +2425,26 @@ mod tests {
     use air::table::cascade::CascadeTable;
     use air::table::hash::HashTable;
     use air::table::jump_stack::JumpStackTable;
+    use air::table_column::CascadeAuxColumn;
+    use air::table_column::CascadeMainColumn;
+    use air::table_column::HashAuxColumn;
+    use air::table_column::HashMainColumn;
+    use air::table_column::JumpStackAuxColumn;
+    use air::table_column::JumpStackMainColumn;
+    use air::table_column::LookupAuxColumn;
+    use air::table_column::LookupMainColumn;
     use air::table_column::MasterAuxColumn;
     use air::table_column::MasterMainColumn;
+    use air::table_column::OpStackAuxColumn;
+    use air::table_column::OpStackMainColumn;
+    use air::table_column::ProcessorAuxColumn;
+    use air::table_column::ProcessorMainColumn;
+    use air::table_column::ProgramAuxColumn;
+    use air::table_column::ProgramMainColumn;
+    use air::table_column::RamAuxColumn;
+    use air::table_column::RamMainColumn;
+    use air::table_column::U32AuxColumn;
+    use air::table_column::U32MainColumn;
     use constraint_circuit::ConstraintCircuitBuilder;
     use constraint_circuit::ConstraintCircuitMonad;
     use constraint_circuit::DegreeLoweringInfo;
@@ -1774,6 +2477,57 @@ mod tests {
     use crate::triton_program;
 
     use super::*;
+
+    /// Low-degree extend all columns of the trace table and cache the result,
+    /// reserving the required memory on the spot.
+    ///
+    /// See also [`MasterTable::maybe_low_degree_extend_all_columns_into`].
+    pub(crate) fn low_degree_extend_all_columns<T>(table: &mut T)
+    where
+        T: MasterTable,
+        StandardUniform: Distribution<T::Field>,
+        XFieldElement: Add<T::Field, Output = XFieldElement>,
+    {
+        let num_elements = table.evaluation_domain().len() * T::NUM_COLUMNS;
+        let memory = LdeMemory::reserve(num_elements, Some(CacheDecision::Cache));
+        table.maybe_low_degree_extend_all_columns_into(memory);
+    }
+
+    /// The prover's quotient domain is derived from this bound.
+    #[macro_rules_attr::apply(test)]
+    fn constrained_trace_polynomials_respect_the_degree_bound() {
+        fn assert_bound<T>(table: &T)
+        where
+            T: MasterTable,
+            StandardUniform: Distribution<T::Field>,
+            XFieldElement: Add<T::Field, Output = XFieldElement>,
+        {
+            let bound = crate::stark::Stark::max_constrained_trace_polynomial_degree(
+                table.domains().trace.len(),
+                table.num_trace_randomizers(),
+            );
+            assert_eq!(bound, table.max_constrained_trace_polynomial_degree());
+
+            let bound = isize::try_from(bound).unwrap();
+            let max_degree = (0..T::NUM_CONSTRAINED_COLUMNS)
+                .map(|idx| table.randomized_column_interpolant(idx).degree())
+                .max()
+                .unwrap();
+            assert_eq!(bound, max_degree);
+        }
+
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        assert_bound(&artifacts.master_main_table);
+        assert_bound(&artifacts.master_aux_table);
+
+        // the batch randomizer is the reason for the distinction
+        let aux_table = artifacts.master_aux_table;
+        let batch_randomizer = MasterAuxTable::NUM_CONSTRAINED_COLUMNS;
+        assert!(
+            aux_table.num_trace_randomizers_for_column(batch_randomizer)
+                > aux_table.num_trace_randomizers()
+        );
+    }
 
     #[macro_rules_attr::apply(test)]
     fn main_table_width_is_correct() {
@@ -1874,30 +2628,149 @@ mod tests {
         assert!(aux.column(0).as_slice().is_some());
     }
 
+    fn assert_row_hashes_are_independent_of_caching<FF>(mut table: impl MasterTable<Field = FF>)
+    where
+        StandardUniform: Distribution<FF>,
+        XFieldElement: Add<FF, Output = XFieldElement>,
+    {
+        assert!(table.fri_domain_table().is_none());
+        let jit_digests = table.hash_all_fri_domain_rows();
+
+        assert!(table.fri_domain_table().is_none());
+        low_degree_extend_all_columns(&mut table);
+
+        assert!(table.fri_domain_table().is_some());
+        let cache_digests = table.hash_all_fri_domain_rows();
+
+        assert_eq!(jit_digests, cache_digests);
+    }
+
     #[macro_rules_attr::apply(test)]
     fn fri_domain_table_row_hashing_is_independent_of_fri_table_caching() {
-        fn row_hashes_are_identical<FF>(mut table: impl MasterTable<Field = FF>)
-        where
-            StandardUniform: Distribution<FF>,
-            XFieldElement: Add<FF, Output = XFieldElement>,
-        {
-            assert!(table.fri_domain_table().is_none());
-            let jit_digests = table.hash_all_fri_domain_rows();
-
-            assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
-
-            assert!(table.fri_domain_table().is_some());
-            let cache_digests = table.hash_all_fri_domain_rows();
-
-            assert_eq!(jit_digests, cache_digests);
-        }
-
         // ensure caching _can_ happen by overwriting environment variables
         crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
         let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
-        row_hashes_are_identical(artifacts.master_main_table);
-        row_hashes_are_identical(artifacts.master_aux_table);
+        assert_row_hashes_are_independent_of_caching(artifacts.master_main_table);
+        assert_row_hashes_are_independent_of_caching(artifacts.master_aux_table);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn fri_domain_table_row_hashing_is_independent_of_caching_with_more_threads_than_columns() {
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::Cache);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+
+        let num_threads = MasterMainTable::NUM_COLUMNS.max(MasterAuxTable::NUM_COLUMNS) + 1;
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        thread_pool.install(|| {
+            assert_row_hashes_are_independent_of_caching(artifacts.master_main_table);
+            assert_row_hashes_are_independent_of_caching(artifacts.master_aux_table);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[macro_rules_attr::apply(test)]
+    fn reserved_lde_memory_is_intact_after_background_threads_have_claimed_it() {
+        type Memory = LdeMemory<BFieldElement>;
+
+        let num_threads = Memory::POOL_THREADS_PER_BACKGROUND_THREAD;
+        let num_elements = 2 * Memory::BYTES_PER_CLAIM / size_of::<BFieldElement>();
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        let mut memory = thread_pool
+            .install(|| Memory::reserve(num_elements, Some(CacheDecision::Cache)))
+            .unwrap();
+        assert!(!memory.threads.is_empty());
+
+        // let the background threads claim all of the memory
+        for thread in memory.threads.drain(..) {
+            thread.join().unwrap();
+        }
+
+        let memory = memory.into_inner();
+        assert!(memory.is_empty());
+        assert!(memory.capacity() >= num_elements);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[macro_rules_attr::apply(test)]
+    fn reserved_lde_memory_can_be_dropped_while_background_threads_are_claiming_it() {
+        type Memory = LdeMemory<BFieldElement>;
+
+        let num_threads = Memory::POOL_THREADS_PER_BACKGROUND_THREAD;
+        let num_elements = 1 << 25;
+        let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+        let memory = thread_pool.install(|| Memory::reserve(num_elements, None));
+        drop(memory);
+
+        let no_memory = Memory::reserve(num_elements, Some(CacheDecision::NoCache));
+        assert!(no_memory.is_none());
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn rows_of_wrong_length_cannot_be_converted_to_main_or_aux_rows() {
+        let too_short_row = Array1::<BFieldElement>::zeros(MasterMainTable::NUM_COLUMNS - 1);
+        let Err(ProvingError::TableRowConversionError {
+            expected_len,
+            actual_len,
+        }) = MasterMainTable::try_to_main_row(too_short_row)
+        else {
+            panic!("conversion must fail");
+        };
+        assert_eq!(MasterMainTable::NUM_COLUMNS, expected_len);
+        assert_eq!(MasterMainTable::NUM_COLUMNS - 1, actual_len);
+
+        let too_long_row = Array1::<XFieldElement>::zeros(MasterAuxTable::NUM_COLUMNS + 1);
+        let Err(ProvingError::TableRowConversionError {
+            expected_len,
+            actual_len,
+        }) = MasterAuxTable::try_to_aux_row(too_long_row)
+        else {
+            panic!("conversion must fail");
+        };
+        assert_eq!(MasterAuxTable::NUM_COLUMNS, expected_len);
+        assert_eq!(MasterAuxTable::NUM_COLUMNS + 1, actual_len);
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn mutable_and_immutable_views_of_main_tables_have_same_dimensions() {
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let mut master_main_table = artifacts.master_main_table;
+        for table_id in TableId::iter() {
+            let dimensions = master_main_table.table(table_id).dim();
+            assert_eq!(dimensions, master_main_table.table_mut(table_id).dim());
+        }
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn restoring_trace_twice_is_the_same_as_restoring_it_once() {
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let mut master_main_table = artifacts.master_main_table;
+
+        master_main_table.restore_trace();
+        assert!(!master_main_table.trace_is_interpolated());
+        let trace = master_main_table.trace_table().to_owned();
+
+        master_main_table.restore_trace();
+        assert!(!master_main_table.trace_is_interpolated());
+        assert_eq!(trace, master_main_table.trace_table());
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn clone_of_working_table_has_same_dimensions_and_holds_same_coset() {
+        let mut working_table = WorkingTable::<XFieldElement>::new(8, 3);
+        working_table.coset_offset = Some(BFieldElement::new(42));
+
+        let clone = working_table.clone();
+        assert_eq!(working_table.table.dim(), clone.table.dim());
+        assert_eq!(working_table.coset_offset, clone.coset_offset);
     }
 
     fn naive_inner_product(values: &[XFieldElement], weights: &[XFieldElement]) -> XFieldElement {
@@ -1965,7 +2838,7 @@ mod tests {
             let jit_rows = table.reveal_rows(indices);
 
             assert!(table.fri_domain_table().is_none());
-            table.maybe_low_degree_extend_all_columns(Some(CacheDecision::Cache));
+            low_degree_extend_all_columns(&mut table);
 
             assert!(table.fri_domain_table().is_some());
             let cache_rows = table.reveal_rows(indices);
@@ -1983,6 +2856,62 @@ mod tests {
         let row_indices = row_indices.into_iter().map(|idx| idx % len).collect_vec();
         revealed_rows_are_identical(main_table, &row_indices);
         revealed_rows_are_identical(aux_table, &row_indices);
+    }
+
+    #[macro_rules_attr::apply(proptest(cases = 10))]
+    fn interpolating_the_trace_changes_no_result(
+        #[strategy(prop::collection::vec(0_usize..1 << 10, 1..20))] row_indices: Vec<usize>,
+        #[strategy(arb())] indeterminates: [XFieldElement; 2],
+        #[strategy(arb())] weight_seed: u64,
+    ) {
+        fn assert_same_results<FF>(
+            mut table: impl MasterTable<Field = FF> + Clone,
+            row_indices: &[usize],
+            indeterminates: &[XFieldElement],
+            weight_seed: u64,
+        ) where
+            FF: Debug + PartialEq + Clone,
+            StandardUniform: Distribution<FF>,
+            XFieldElement: Add<FF, Output = XFieldElement>,
+        {
+            let num_columns = table.trace_table().ncols();
+            let weights = || -> Array1<XFieldElement> {
+                let mut rng = StdRng::seed_from_u64(weight_seed);
+                (0..num_columns)
+                    .map(|_| rng.random::<XFieldElement>())
+                    .collect()
+            };
+            let trace = table.trace_table().to_owned();
+
+            assert!(!table.trace_is_interpolated());
+            let digests = table.hash_all_fri_domain_rows();
+            let out_of_domain_rows = table.out_of_domain_rows(indeterminates);
+            let weighted_sum = table.weighted_sum_of_columns(weights()).into_owned();
+            let revealed_rows = table.reveal_rows(row_indices);
+            assert!(!table.trace_is_interpolated());
+            assert_eq!(trace, table.trace_table());
+
+            table.interpolate_trace();
+            let interpolants = table.trace_table().to_owned();
+            assert!(table.trace_is_interpolated());
+            assert_eq!(digests, table.hash_all_fri_domain_rows());
+            assert_eq!(out_of_domain_rows, table.out_of_domain_rows(indeterminates));
+            assert_eq!(weighted_sum, table.weighted_sum_of_columns(weights()));
+            assert_eq!(revealed_rows, table.reveal_rows(row_indices));
+            assert!(table.trace_is_interpolated());
+            assert_eq!(interpolants, table.trace_table());
+
+            table.restore_trace();
+            assert!(!table.trace_is_interpolated());
+            assert_eq!(trace, table.trace_table());
+        }
+
+        crate::config::overwrite_lde_trace_caching_to(CacheDecision::NoCache);
+        let artifacts = TestableProgram::new(triton_program!(halt)).generate_proof_artifacts();
+        let main_table = artifacts.master_main_table;
+        let aux_table = artifacts.master_aux_table;
+        assert_same_results(main_table, &row_indices, &indeterminates, weight_seed);
+        assert_same_results(aux_table, &row_indices, &indeterminates, weight_seed);
     }
 
     #[macro_rules_attr::apply(test)]
@@ -2656,6 +3585,7 @@ mod tests {
             trace: ArithmeticDomain::of_length(1 << 8).unwrap(),
             randomized_trace: ArithmeticDomain::of_length(1 << 9).unwrap(),
             quotient: ArithmeticDomain::of_length(1 << 10).unwrap(),
+            quotient_overflow: None,
             fri: ArithmeticDomain::of_length(1 << 11).unwrap(),
         };
         let trace_table = Array2::zeros((domains.trace.len(), MasterAuxTable::NUM_COLUMNS));
@@ -2665,7 +3595,10 @@ mod tests {
             domains,
             trace_table,
             trace_randomizer_seed: StdRng::seed_from_u64(5323196155778693784).random(),
+            batch_randomizer_trace_randomizers: [const { OnceLock::new() }; NUM_BATCH_RANDOMIZERS],
             low_degree_extended_table: None,
+            working_table: None,
+            trace_is_interpolated: false,
         }
     }
 

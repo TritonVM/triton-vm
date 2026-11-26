@@ -3,9 +3,10 @@ use std::ops::Mul;
 use std::ops::MulAssign;
 
 use num_traits::ConstOne;
+use num_traits::One;
 use num_traits::Zero;
 use rayon::prelude::*;
-use twenty_first::math::ntt::intt;
+use twenty_first::math::ntt::intt_into;
 use twenty_first::math::traits::FiniteField;
 use twenty_first::math::traits::PrimitiveRootOfUnity;
 use twenty_first::prelude::*;
@@ -312,15 +313,25 @@ impl ArithmeticDomain {
         assert_eq!(self.length, values.len());
         let randomizer = randomizer.coefficients();
 
-        let mut coefficients =
+        let mut coefficients: Vec<FF> =
             twenty_first::memory::vec_with_capacity(self.length + randomizer.len());
-        coefficients.extend_from_slice(values);
-        intt(&mut coefficients);
-        let offset_inverse = self.offset.inverse();
-        let mut power_of_offset_inverse = BFieldElement::ONE;
-        for coefficient in &mut coefficients {
-            *coefficient *= power_of_offset_inverse;
-            power_of_offset_inverse *= offset_inverse;
+
+        // Transforming the values straight into the new vector saves copying
+        // them first, i.e., a pass over memory.
+        intt_into(
+            values,
+            &mut coefficients.spare_capacity_mut()[..self.length],
+        );
+        // SAFETY: `intt_into` initializes all `self.length` elements.
+        unsafe { coefficients.set_len(self.length) };
+
+        if !self.offset.is_one() {
+            let offset_inverse = self.offset.inverse();
+            let mut power_of_offset_inverse = BFieldElement::ONE;
+            for coefficient in &mut coefficients {
+                *coefficient *= power_of_offset_inverse;
+                power_of_offset_inverse *= offset_inverse;
+            }
         }
 
         // + x^n · randomizer - offset^n · randomizer
@@ -384,6 +395,20 @@ impl ArithmeticDomain {
     /// The `n`th element of the domain.
     pub fn value(&self, n: u32) -> BFieldElement {
         self.generator.mod_pow_u32(n) * self.offset
+    }
+
+    /// The inverses of the first `num_values` [values](Self::values) that
+    /// make up this domain.
+    ///
+    /// No inversion of any domain value is needed: the inverse of
+    /// `offset · generator^i` is `offset^-1 · (generator^-1)^i`.
+    pub(crate) fn inverses_of_first_values(&self, num_values: usize) -> Vec<BFieldElement> {
+        let inverses = Self {
+            offset: self.offset.inverse(),
+            generator: self.generator.inverse(),
+            length: num_values,
+        };
+        inverses.values()
     }
 
     /// All the values that make up this domain.

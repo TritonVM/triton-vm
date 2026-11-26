@@ -56,16 +56,6 @@ pub fn horizontal_multi_slice_mut<'a, T: 'a + Debug>(
     returnable_slices
 }
 
-/// Computes the list of partial sums, beginning with zero and including the
-/// total.
-pub fn partial_sums(summands: &[usize]) -> Vec<usize> {
-    let mut sums = vec![0];
-    for &summand in summands {
-        sums.push(sums.last().copied().unwrap() + summand);
-    }
-    sums
-}
-
 /// Given a list of neighboring columns, represented as their sorted indices,
 /// return a list of indices whose consecutive pairs (overlapping) denote the
 /// start and end point of every column. In practice, this means "append
@@ -76,6 +66,24 @@ pub fn contiguous_column_slices(column_indices: &[usize]) -> Vec<usize> {
         vec![*column_indices.last().unwrap() + 1],
     ]
     .concat()
+}
+
+/// A column-major table with uninitialized entries.
+///
+/// Unlike [zero-initialized memory][par_zeros], which the allocator prefers to
+/// request from the operating system, the table can be carved out of memory
+/// that was freed earlier. This lowers the peak memory consumption if
+/// similarly-sized tables are used one after the other.
+pub fn uninitialized_column_major_table<FF>(
+    num_rows: usize,
+    num_columns: usize,
+) -> Array2<MaybeUninit<FF>> {
+    let num_elements = num_rows * num_columns;
+    let mut elements = twenty_first::memory::vec_with_capacity(num_elements);
+    // SAFETY: `MaybeUninit<FF>` has no validity requirements, and the
+    // capacity suffices.
+    unsafe { elements.set_len(num_elements) };
+    Array2::from_shape_vec([num_rows, num_columns].f(), elements).unwrap()
 }
 
 /// Like [`Array2::zeros`], but faster because it uses parallelism.
@@ -175,6 +183,57 @@ pub fn par_fill_column<FF: Copy + Send + Sync>(
     }
 }
 
+/// Overwrite the given rows of `table` with copies of `row`.
+///
+/// The table is written column by column, with the columns in parallel:
+/// tables are column-major, so this writes memory contiguously, which is much
+/// faster than assigning row after row.
+///
+/// # Panics
+///
+/// Panics if the length of `row` differs from the table's number of columns,
+/// or if the rows are out of bounds.
+pub fn par_fill_rows<FF: Copy + Send + Sync>(
+    table: &mut ArrayViewMut2<FF>,
+    rows: std::ops::Range<usize>,
+    row: &[FF],
+) {
+    assert_eq!(table.ncols(), row.len());
+    table
+        .slice_mut(s![rows, ..])
+        .axis_iter_mut(COL_AXIS)
+        .into_par_iter()
+        .zip(row)
+        .for_each(|(mut column, &value)| column.fill(value));
+}
+
+/// Overwrite the given rows of the given column of `table`: the row with
+/// index `i` gets the value `value(i)`. In parallel where the column is
+/// contiguous in memory.
+///
+/// # Panics
+///
+/// Panics if the column or the rows are out of bounds.
+pub fn par_fill_column_with<FF: Send>(
+    table: &mut ArrayViewMut2<FF>,
+    column_index: usize,
+    rows: std::ops::Range<usize>,
+    value: impl Fn(usize) -> FF + Sync,
+) {
+    let first_row = rows.start;
+    let mut column = table.slice_mut(s![rows, column_index]);
+    if let Some(column) = column.as_slice_mut() {
+        column
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, cell)| *cell = value(first_row + i));
+    } else {
+        for (i, cell) in column.iter_mut().enumerate() {
+            *cell = value(first_row + i);
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
@@ -193,6 +252,16 @@ mod tests {
     use crate::tests::proptest;
     use crate::tests::test;
 
+    /// Computes the list of partial sums, beginning with zero and including the
+    /// total.
+    fn partial_sums(summands: &[usize]) -> Vec<usize> {
+        let mut sums = vec![0];
+        for &summand in summands {
+            sums.push(sums.last().copied().unwrap() + summand);
+        }
+        sums
+    }
+
     #[macro_rules_attr::apply(proptest)]
     fn contiguous_column_slices_generates_valid_partition(
         #[strategy(0usize..100)] start: usize,
@@ -201,6 +270,21 @@ mod tests {
         let columns = (start..=stop).collect_vec();
         let columns_slice = [columns.clone(), vec![*columns.last().unwrap() + 1]].concat();
         prop_assert_eq!(columns_slice, contiguous_column_slices(&columns));
+    }
+
+    #[macro_rules_attr::apply(test)]
+    fn columns_of_row_major_and_column_major_tables_are_filled_identically() {
+        let values = (0..5_u64).collect_vec();
+        let mut row_major = Array2::<u64>::zeros((5, 3));
+        let mut column_major = Array2::<u64>::zeros((5, 3).f());
+        for table in [&mut row_major, &mut column_major] {
+            par_fill_column(&mut table.view_mut(), 1, &values);
+            par_fill_column_with(&mut table.view_mut(), 2, 1..4, |row| 10 * row as u64);
+        }
+
+        let expected = array![[0, 0, 0], [0, 1, 10], [0, 2, 20], [0, 3, 30], [0, 4, 0]];
+        assert_eq!(expected, row_major);
+        assert_eq!(expected, column_major);
     }
 
     #[macro_rules_attr::apply(test)]
